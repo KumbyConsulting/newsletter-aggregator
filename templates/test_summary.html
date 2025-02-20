@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Summary Generation</title>
+    <script>
+        async function testSummary() {
+            const response = await fetch('/summarize', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    description: "Test description for summary generation",
+                    link: "http://test.com"
+                })
+            });
+            const data = await response.json();
+            document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+        }
+    </script>
+</head>
+<body>
+    <button onclick="testSummary()">Test Summary Generation</button>
+    <pre id="result"></pre>
+</body>
+</html> 

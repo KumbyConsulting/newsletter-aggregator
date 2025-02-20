@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+     
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .bg-custom { background-color: #f1f2e7; }
+        .card-custom { background-color: #f1f2e7; color: #00405e; }
+        .btn-custom {
+            background-color: #00405e;
+            color: #f9e15e;
+            transition: all 0.3s ease;
+        }
+        .btn-custom:hover {
+            background-color: #f9e15e;
+            color: #00405e;
+            transform: translateY(-2px);
+        }
+        .text-custom { color: #00405e; }
+        body { background-color: #7f9360; }
+        .dashboard-card {
+            background-color: rgba(241, 242, 231, 0.9);
+            transition: transform 0.2s;
+        }
+        .dashboard-card:hover {
+            transform: scale(1.02);
+        }
+        .nav-link {
+            transition: all 0.3s ease;
+        }
+        .nav-link:hover {
+            transform: translateY(-2px);
+        }
+        .back-to-top {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: none;
+            z-index: 1000;
+        }
+        .summary-container {
+            margin-top: 10px;
+            display: none;
+        }
+        .summary-container {
+            transition: all 0.3s ease-in-out;
+        }
+        
+        .summary-text {
+            transition: opacity 0.5s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        .btn-custom:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-custom.bg-yellow-500:hover {
+            transform: none;
+            cursor: default;
+        }
+        
+        @media (max-width: 640px) {
+            .flex.space-x-1 {
+                display: none;
+            }
+        }
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2300405e'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.5rem center;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+
+        .topic-filter {
+            transition: all 0.3s ease;
+        }
+
+        .topic-filter:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .filter-badge {
+            transition: all 0.2s ease;
+        }
+
+        .filter-badge:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body class="bg-custom">
+    <!-- Navigation Bar -->
+    <nav class="bg-gray-800 text-white p-4 fixed w-full top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <a href="{{ url_for('index') }}" class="home-icon">
+                    <i class="fas fa-home"></i> Home
+                </a>
+                <a href="{{ url_for('test_summary') }}" class="nav-link"><i class="fas fa-chart-line mr-2"></i>Test Summary</a>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button onclick="window.history.back()" class="btn-custom px-4 py-2 rounded-lg">
+                    <i class="fas fa-arrow-left mr-2"></i>Back
+                </button>
+                <form action="{{ url_for('update_articles') }}" method="post" class="inline">
+                    <button type="submit" class="btn-custom px-4 py-2 rounded-lg">
+                        <i class="fas fa-sync-alt mr-2"></i>Update
+                    </button>
+                </form>
+                <form action="{{ url_for('generate_summaries') }}" method="post" class="inline">
+                    <button type="submit" class="btn-custom px-4 py-2 rounded-lg">
+                        <i class="fas fa-magic mr-2"></i>Generate Missing Summaries
+                    </button>
+                </form>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Add this after the navigation bar -->
+    <div id="flash-messages" class="fixed top-16 right-4 z-50">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert-{{ category }} bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                        <span class="block sm:inline">{{ message }}</span>
+                        <button class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <div class="container mx-auto mt-24 px-8">
+        <!-- Dashboard Section -->
+        <section id="dashboard" class="mb-12">
+            <h2 class="text-3xl font-bold text-custom mb-6">Dashboard Overview</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="dashboard-card p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold mb-2">Total Articles</h3>
+                    <p class="text-4xl font-bold">{{ total }}</p>
+                </div>
+                <div class="dashboard-card p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold mb-2">Current Page</h3>
+                    <p class="text-4xl font-bold">{{ page }}</p>
+                </div>
+                <div class="dashboard-card p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-semibold mb-2">Articles Per Page</h3>
+                    <p class="text-4xl font-bold">{{ per_page }}</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Search Section -->
+        <section id="search" class="mb-12">
+            <form method="POST" class="flex justify-center">
+                <div class="flex w-full max-w-2xl">
+                    <input type="text" name="search" 
+                           class="flex-grow p-4 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                           placeholder="Search articles..." 
+                           value="{{ search_query }}">
+                    <button class="btn-custom px-8 py-4 rounded-r-lg focus:outline-none focus:ring-2 focus:ring-blue-500" type="submit">
+                        <i class="fas fa-search mr-2"></i>Search
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Add this after the search section and before the articles section -->
+        <section id="filters" class="mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <!-- Topic Filter -->
+                <div class="w-full md:w-1/3">
+                    <form method="POST" class="flex items-center space-x-2">
+                        <select name="topic" 
+                                class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-custom">
+                            <option value="All" {% if selected_topic == 'All' %}selected{% endif %}>All Topics</option>
+                            {% for topic in topics|sort %}
+                                <option value="{{ topic }}" {% if selected_topic == topic %}selected{% endif %}>
+                                    {{ topic }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit" class="btn-custom px-6 py-3 rounded-lg">
+                            <i class="fas fa-filter mr-2"></i>Filter
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Active Filters Display -->
+                <div class="flex items-center space-x-2">
+                    {% if selected_topic != 'All' %}
+                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                            Topic: {{ selected_topic }}
+                            <a href="{{ url_for('index') }}" class="ml-2 text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-times"></i>
+                            </a>
+                        </span>
+                    {% endif %}
+                    {% if search_query %}
+                        <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                            Search: {{ search_query }}
+                            <a href="{{ url_for('index') }}" class="ml-2 text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-times"></i>
+                            </a>
+                        </span>
+                    {% endif %}
+                </div>
+
+                <!-- Topic Statistics -->
+                <div class="w-full md:w-1/3 bg-white p-4 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold text-custom mb-2">Topic Distribution</h3>
+                    <div class="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                        {% set topic_counts = {} %}
+                        {% for article in articles %}
+                            {% if article.topic %}
+                                {% if article.topic in topic_counts %}
+                                    {% set _ = topic_counts.update({article.topic: topic_counts[article.topic] + 1}) %}
+                                {% else %}
+                                    {% set _ = topic_counts.update({article.topic: 1}) %}
+                                {% endif %}
+                            {% endif %}
+                        {% endfor %}
+                        
+                        {% for topic, count in topic_counts|dictsort %}
+                            <div class="topic-stat-item hover:bg-gray-50 p-2 rounded-lg transition-all duration-200">
+                                <div class="flex justify-between items-center text-sm">
+                                    <span class="text-gray-600 truncate mr-2">{{ topic }}</span>
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-24 bg-gray-200 rounded-full h-2">
+                                            {% set total = articles|length %}
+                                            {% if total > 0 %}
+                                                {% set width = (count / total * 100)|round %}
+                                            {% else %}
+                                                {% set width = 0 %}
+                                            {% endif %}
+                                            <div class="bg-blue-500 rounded-full h-2" style="width: {{ width }}%"></div>
+                                        </div>
+                                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full min-w-[2.5rem] text-center">
+                                            {{ count }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Articles Section -->
+        <section id="articles">
+            <h2 class="text-3xl font-bold text-custom mb-6">Latest News Articles</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {% for article in articles %}
+                <div class="card-custom rounded-lg shadow-lg overflow-hidden flex flex-col">
+                    <div class="p-6 flex-grow">
+                        <h5 class="text-2xl font-semibold">{{ article.title }}</h5>
+                        <p class="mt-4">{{ article.description }}</p>
+                        <p class="mt-2 text-sm text-custom">Published on: {{ article.pub_date }}</p>
+                        <p class="mt-2 text-sm text-custom">Source: {{ article.source }}</p>
+                        <p class="mt-2 text-sm text-custom">Topic: {{ article.topic }}</p>
+                        <div class="mt-4">
+                            {% if article.summary and article.summary != 'None' and article.summary|length > 0 %}
+                                <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h6 class="font-semibold text-custom">
+                                            <i class="fas fa-robot mr-2"></i>AI Summary
+                                        </h6>
+                                        <span class="text-xs text-gray-500">Generated by Gemini AI</span>
+                                    </div>
+                                    <p class="text-sm text-gray-700 leading-relaxed">{{ article.summary }}</p>
+                                </div>
+                            {% else %}
+                                <button onclick="getSummary(this, '{{ article.description|tojson|safe }}', '{{ article.link|tojson|safe }}')" 
+                                        class="btn-custom text-center py-3 px-4 rounded-lg text-sm mb-3 w-full hover:shadow-lg transform transition-all duration-200">
+                                    <i class="fas fa-robot mr-2"></i>Generate AI Summary
+                                </button>
+                                <div class="summary-container bg-gray-100 p-4 rounded-lg shadow-inner hidden">
+                                    <div class="flex items-center justify-between mb-2">
+                                        <h6 class="font-semibold text-custom">
+                                            <i class="fas fa-robot mr-2"></i>AI Summary
+                                        </h6>
+                                        <span class="text-xs text-gray-500">Generated by Gemini AI</span>
+                                    </div>
+                                    <div class="summary-loading hidden">
+                                        <div class="flex items-center justify-center py-4">
+                                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-custom"></div>
+                                        </div>
+                                    </div>
+                                    <p class="text-sm text-gray-700 leading-relaxed summary-text"></p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <a href="{{ article.link }}" class="block btn-custom text-center py-3 rounded-lg" target="_blank">
+                            <i class="fas fa-external-link-alt mr-2"></i>Read more
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- Pagination Controls -->
+        <div class="flex flex-col items-center mt-8 mb-16">
+            <div class="flex justify-center items-center space-x-2 mb-4">
+                {% if page > 1 %}
+                    <a href="{{ url_for('index', page=1) }}" class="btn-custom px-4 py-2 rounded-lg" title="First Page">
+                        <i class="fas fa-angle-double-left"></i>
+                    </a>
+                    <a href="{{ url_for('index', page=page-1) }}" class="btn-custom px-4 py-2 rounded-lg" title="Previous Page">
+                        <i class="fas fa-angle-left"></i>
+                    </a>
+                {% else %}
+                    <button class="btn-custom px-4 py-2 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                        <i class="fas fa-angle-double-left"></i>
+                    </button>
+                    <button class="btn-custom px-4 py-2 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                        <i class="fas fa-angle-left"></i>
+                    </button>
+                {% endif %}
+
+                <!-- Page Numbers -->
+                <div class="flex space-x-1">
+                    {% set total_pages = ((total - 1) // per_page) + 1 %}
+                    {% set start_page = [1, page - 2]|max %}
+                    {% set end_page = [total_pages, page + 2]|min %}
+                    
+                    {% if start_page > 1 %}
+                        <a href="{{ url_for('index', page=1) }}" class="btn-custom px-4 py-2 rounded-lg">1</a>
+                        {% if start_page > 2 %}
+                            <span class="px-3 py-2">...</span>
+                        {% endif %}
+                    {% endif %}
+                    
+                    {% for p in range(start_page, end_page + 1) %}
+                        {% if p == page %}
+                            <button class="btn-custom px-4 py-2 rounded-lg bg-yellow-500 text-blue-900">{{ p }}</button>
+                        {% else %}
+                            <a href="{{ url_for('index', page=p) }}" class="btn-custom px-4 py-2 rounded-lg">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if end_page < total_pages %}
+                        {% if end_page < total_pages - 1 %}
+                            <span class="px-3 py-2">...</span>
+                        {% endif %}
+                        <a href="{{ url_for('index', page=total_pages) }}" class="btn-custom px-4 py-2 rounded-lg">{{ total_pages }}</a>
+                    {% endif %}
+                </div>
+
+                {% if page < total_pages %}
+                    <a href="{{ url_for('index', page=page+1) }}" class="btn-custom px-4 py-2 rounded-lg" title="Next Page">
+                        <i class="fas fa-angle-right"></i>
+                    </a>
+                    <a href="{{ url_for('index', page=total_pages) }}" class="btn-custom px-4 py-2 rounded-lg" title="Last Page">
+                        <i class="fas fa-angle-double-right"></i>
+                    </a>
+                {% else %}
+                    <button class="btn-custom px-4 py-2 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                        <i class="fas fa-angle-right"></i>
+                    </button>
+                    <button class="btn-custom px-4 py-2 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                        <i class="fas fa-angle-double-right"></i>
+                    </button>
+                {% endif %}
+            </div>
+
+            <!-- Page Information -->
+            <div class="text-custom text-sm">
+                <p>Showing page {{ page }} of {{ total_pages }}</p>
+                <p>Total articles: {{ total }}</p>
+                <p>Displaying {{ per_page }} articles per page</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back to Top Button -->
+    <button onclick="scrollToTop()" class="back-to-top btn-custom p-4 rounded-full shadow-lg">
+        <i class="fas fa-arrow-up"></i>
+    </button>
+
+    <!-- Add this right after the body tag -->
+    <div id="page-loader" class="fixed inset-0 bg-white bg-opacity-90 z-50 flex items-center justify-center hidden">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-4 border-custom mb-4"></div>
+            <p class="text-custom">Loading...</p>
+        </div>
+    </div>
+
+    <script>
+        // Back to Top Button
+        window.onscroll = function() {
+            const backToTopButton = document.querySelector('.back-to-top');
+            if (document.body.scrollTop > 20 || document.documentElement.scrollTop > 20) {
+                backToTopButton.style.display = "block";
+            } else {
+                backToTopButton.style.display = "none";
+            }
+        };
+
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Summary Generation
+        async function getSummary(button, description, link) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Generating Summary...';
+            
+            const summaryContainer = button.nextElementSibling;
+            const summaryText = summaryContainer.querySelector('.summary-text');
+            const loadingIndicator = summaryContainer.querySelector('.summary-loading');
+            
+            try {
+                // Show loading state
+                summaryContainer.classList.remove('hidden');
+                loadingIndicator.classList.remove('hidden');
+                summaryText.textContent = '';
+                
+                const response = await fetch('/summarize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        description: JSON.parse(description),
+                        link: JSON.parse(link)
+                    }),
+                });
+                
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (!response.ok) {
+                    if (response.status === 429) {
+                        showError('Rate limit exceeded. Please try again in a few moments.');
+                        button.innerHTML = '<i class="fas fa-clock mr-2"></i>Try Again Later';
+                    } else {
+                        showError(data.error || 'Error generating summary');
+                        button.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i>Retry';
+                    }
+                    button.disabled = false;
+                    summaryContainer.classList.add('hidden');
+                    return;
+                }
+                
+                // Hide loading and show summary
+                loadingIndicator.classList.add('hidden');
+                button.style.display = 'none';
+                summaryText.textContent = data.summary;
+                
+                // Animate the summary appearance
+                summaryText.style.opacity = '0';
+                summaryText.style.display = 'block';
+                setTimeout(() => {
+                    summaryText.style.transition = 'opacity 0.5s ease-in-out';
+                    summaryText.style.opacity = '1';
+                }, 100);
+                
+                showSuccess('Summary generated successfully!');
+                
+            } catch (error) {
+                console.error('Error:', error);
+                showError('Network error. Please try again.');
+                button.innerHTML = '<i class="fas fa-exclamation-circle mr-2"></i>Retry';
+                button.disabled = false;
+                summaryContainer.classList.add('hidden');
+            }
+        }
+
+        // Add function to show error messages
+        function showError(message) {
+            const flashContainer = document.getElementById('flash-messages');
+            const alert = document.createElement('div');
+            alert.className = 'alert-error bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4';
+            alert.innerHTML = `
+                <span class="block sm:inline">${message}</span>
+                <button class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            flashContainer.appendChild(alert);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // Add function to show success messages
+        function showSuccess(message) {
+            const flashContainer = document.getElementById('flash-messages');
+            const alert = document.createElement('div');
+            alert.className = 'alert-success bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4';
+            alert.innerHTML = `
+                <span class="block sm:inline">${message}</span>
+                <button class="absolute top-0 right-0 px-4 py-3" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            `;
+            flashContainer.appendChild(alert);
+            
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // Update the update button to show loading state
+        document.querySelector('form[action="{{ url_for("update_articles") }}"]').addEventListener('submit', function(e) {
+            const button = this.querySelector('button');
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Updating...';
+        });
+
+        // Auto-submit form when select changes
+        document.querySelector('select[name="topic"]').addEventListener('change', function() {
+            this.closest('form').submit();
+        });
+
+        // Animation for filter badges
+        document.querySelectorAll('.filter-badge').forEach(badge => {
+            badge.addEventListener('mouseover', () => {
+                badge.style.transform = 'scale(1.05)';
+            });
+            badge.addEventListener('mouseout', () => {
+                badge.style.transform = 'scale(1)';
+            });
+        });
+
+        // Show loader when navigating or submitting forms
+        document.addEventListener('DOMContentLoaded', function() {
+            const loader = document.getElementById('page-loader');
+            
+            // Show loader on form submissions
+            document.querySelectorAll('form').forEach(form => {
+                form.addEventListener('submit', () => {
+                    loader.classList.remove('hidden');
+                });
+            });
+            
+            // Show loader on navigation
+            document.querySelectorAll('a[href]').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (!link.hasAttribute('target')) {
+                        loader.classList.remove('hidden');
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
