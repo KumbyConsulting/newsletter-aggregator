@@ -15,6 +15,15 @@ import asyncio
 import aiohttp
 from typing import Dict, List, Optional
 from dataclasses import dataclass
+from services.config_service import ConfigService
+from contextlib import asynccontextmanager
+import aiofiles
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
+import ssl
+import certifi
+import signal
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,6 +32,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 CACHE_FILE = "summary_cache.json"
 RATE_LIMIT_DELAY = 1  # seconds between API calls
 
+# Add these constants near the top after other constants
+DEFAULT_SCRAPE_INTERVAL = 3600  # Default to running every hour (in seconds)
+MINIMUM_SCRAPE_INTERVAL = 300   # Minimum 5 minutes between scrapes
+
 class RateLimitException(Exception):
     pass
 
@@ -30,11 +43,16 @@ class FeedError(Exception):
     """Custom exception for feed processing errors"""
     pass
 
+class CacheError(Exception):
+    """Custom exception for cache operations"""
+    pass
+
 class SummaryCache:
     def __init__(self, cache_file: str, max_age_days: int = 30):
         self.cache_file = cache_file
         self.max_age = timedelta(days=max_age_days)
         self.cache = self._load_cache()
+        self._lock = asyncio.Lock()
 
     def _load_cache(self) -> Dict:
         try:
@@ -58,21 +76,23 @@ class SummaryCache:
             return self.cache[key]['summary']
         return None
 
-    def set(self, key: str, summary: str):
+    async def set(self, key: str, summary: str):
         """Add summary to cache with timestamp"""
-        self.cache[key] = {
-            'summary': summary,
-            'timestamp': datetime.now().isoformat()
-        }
-        self._save_cache()
+        async with self._lock:
+            self.cache[key] = {
+                'summary': summary,
+                'timestamp': datetime.now().isoformat()
+            }
+            await self._save_cache()
 
-    def _save_cache(self):
-        """Save cache to file"""
+    async def _save_cache(self):
+        """Save cache to file with async lock"""
         try:
-            with open(self.cache_file, 'w') as f:
-                json.dump(self.cache, f)
+            async with aiofiles.open(self.cache_file, 'w') as f:
+                await f.write(json.dumps(self.cache))
         except Exception as e:
             logging.error(f"Error saving cache: {e}")
+            raise CacheError(f"Failed to save cache: {str(e)}")
 
 # Define the topics and keywords
 TOPICS = {
@@ -205,93 +225,55 @@ def process_articles(articles, source):
     return filtered_articles
 
 # Update the summarize_text function
-def summarize_text(text):
-    """Summarize text with caching and rate limit handling"""
-    if not text or len(str(text).strip()) == 0:
-        return "No text to summarize"
-    
-    # Convert text to string if it isn't already
-    text = str(text)
-    
-    # Initialize cache
-    cache = SummaryCache(CACHE_FILE)
-    cache_key = text[:100]  # Use first 100 chars as key
-    
-    # Check cache first
-    cached_summary = cache.get(cache_key)
-    if cached_summary:
-        logging.info("Using cached summary")
-        return cached_summary
-    
-    # Initialize Google AI client with configuration
-    genai.configure(api_key="AIzaSyBpaF2LwIC8Il4ojQWJ9-8ysGrSeV1YrzU")
-    
-    # Configure the model
-    generation_config = {
-        "temperature": 0.4,  # More focused/deterministic output
-        "top_p": 0.8,
-        "top_k": 40,
-        "max_output_tokens": 150,  # Limit summary length
-    }
-    
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
-    ]
-    
-    prompt = f"""
-    Summarize the following text in a concise, professional manner. Focus on key points and maintain factual accuracy:
-    
-    {text}
-    
-    Provide a 2-3 sentence summary that captures the main points.
-    """
-    
-    max_retries = 3
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            # Generate summary using Gemini model
-            model = genai.GenerativeModel(
-                'gemini-pro',
-                generation_config=generation_config,
-                safety_settings=safety_settings
-            )
-            
-            response = model.generate_content(prompt)
-            
-            if response.text:
+async def summarize_text(text: str) -> Optional[str]:
+    """Generate a summary of the text using AI"""
+    try:
+        config = ConfigService()
+        genai.configure(api_key=config.gemini_api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        # Check cache first
+        cache = SummaryCache(CACHE_FILE)
+        cached_summary = cache.get(text[:200])  # Use first 200 chars as key
+        if cached_summary:
+            return cached_summary
+
+        prompt = f"""
+        Please provide a concise summary of this pharmaceutical industry news:
+        {text}
+        
+        Focus on:
+        1. Key findings or announcements
+        2. Industry impact
+        3. Regulatory implications (if any)
+        
+        Keep the summary under 200 words.
+        """
+
+        # Generate summary with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Remove await since generate_content is not async
+                response = model.generate_content(prompt)
                 summary = response.text.strip()
                 
-                # Save to cache if successful
                 if summary:
-                    cache.set(cache_key, summary)
-                
-                return summary
-            
-            raise Exception("Empty response from AI model")
-            
-        except Exception as e:
-            if "RATE_LIMIT" in str(e):
-                if retry_count < max_retries - 1:
-                    retry_after = RATE_LIMIT_DELAY * (retry_count + 1)
-                    logging.warning(f"Rate limit hit, waiting {retry_after} seconds")
-                    time.sleep(retry_after)
-                    retry_count += 1
-                    continue
-                raise RateLimitException("Rate limit exceeded")
-            
-            logging.error(f"Error summarizing text: {e}")
-            if retry_count < max_retries - 1:
-                retry_count += 1
-                time.sleep(RATE_LIMIT_DELAY)
+                    # Cache the successful summary
+                    await cache.set(text[:200], summary)
+                    return summary
+                    
+            except Exception as e:
+                if attempt == max_retries - 1:  # Last attempt
+                    raise
+                await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
                 continue
-            return "Error generating summary"
-            
-    return "Failed to generate summary after multiple attempts"
+
+        return None
+
+    except Exception as e:
+        logging.error(f"Error in summarize_text: {e}")
+        return None
 
 # Main function to scrape and process news
 def scrape_news():
@@ -599,6 +581,264 @@ def generate_missing_summaries():
         logging.error(f"Error in generate_missing_summaries: {e}")
         return False
 
+# Add this function to handle async feed fetching
+async def fetch_feed(session: aiohttp.ClientSession, source: str, url: str) -> List[Dict]:
+    """Asynchronously fetch and process a single feed"""
+    try:
+        # Configure SSL context for aiohttp
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        
+        # Special handling for FDA domains
+        if 'fda.gov' in url:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        
+        async with session.get(url, timeout=30, ssl=ssl_context) as response:
+            if response.status == 404:
+                logging.error(f"Feed not found for {source} ({url})")
+                return []
+            
+            if response.status != 200:
+                logging.error(f"Error status {response.status} from {source} ({url})")
+                return []
+                
+            content = await response.text()
+            soup = BeautifulSoup(content, 'xml')
+            
+            if not soup.find('item'):  # Check if feed is valid
+                logging.error(f"No items found in feed from {source} ({url})")
+                return []
+                
+            articles = soup.find_all('item')
+            
+            processed_articles = []
+            for article in articles:
+                try:
+                    # Extract article data with error checking
+                    title = getattr(article.title, 'text', '') if article.title else ""
+                    description = getattr(article.description, 'text', '') if article.description else ""
+                    link = getattr(article.link, 'text', '') if article.link else ""
+                    pub_date = getattr(article.pubDate, 'text', '') if article.pubDate else ""
+
+                    if not (title and (description or link)):  # Skip articles without minimum required data
+                        continue
+
+                    # Clean description of HTML tags
+                    clean_description = BeautifulSoup(description, "html.parser").get_text()
+
+                    # Format the publication date with better error handling
+                    try:
+                        pub_date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z').strftime('%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        try:
+                            # Try alternative date format
+                            pub_date = datetime.strptime(pub_date, '%Y-%m-%dT%H:%M:%SZ').strftime('%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            pub_date = "Unknown date"
+
+                    # Check for matches with keywords
+                    matched_topic = None
+                    for topic, keywords in TOPICS.items():
+                        if any(re.search(rf"\b{re.escape(keyword)}\b", 
+                               (title + " " + clean_description), 
+                               re.IGNORECASE) for keyword in keywords):
+                            matched_topic = topic
+                            break
+
+                    if matched_topic:
+                        processed_articles.append({
+                            "source": source,
+                            "title": title.strip(),
+                            "description": clean_description.strip(),
+                            "link": link.strip(),
+                            "pub_date": pub_date,
+                            "topic": matched_topic
+                        })
+
+                except Exception as e:
+                    logging.error(f"Error processing article from {source}: {str(e)}")
+                    continue
+
+            return processed_articles
+
+    except aiohttp.ClientError as e:
+        logging.error(f"Network error fetching feed from {source} ({url}): {str(e)}")
+        return []
+    except Exception as e:
+        logging.error(f"Error fetching feed from {source} ({url}): {str(e)}")
+        return []
+
+async def scrape_news():
+    """Asynchronously scrape news from all feeds"""
+    news_data = []
+    logging.info("Starting news scraping process...")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for source, url in RSS_FEEDS.items():
+                tasks.append(fetch_feed(session, source, url))
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results
+            for articles in results:
+                if isinstance(articles, list):  # Skip any exceptions
+                    for article in articles:
+                        try:
+                            # Generate summary
+                            summary = None
+                            try:
+                                logging.info(f"Generating summary for: {article['title']}")
+                                await asyncio.sleep(RATE_LIMIT_DELAY)  # Prevent rate limiting
+                                summary = await summarize_text(article['description'])
+                            except Exception as e:
+                                logging.error(f"Error generating summary: {e}")
+
+                            article['summary'] = summary
+                            news_data.append(article)
+                            
+                        except Exception as e:
+                            logging.error(f"Error processing article: {str(e)}")
+                            continue
+
+            # Create DataFrame with new articles
+            if news_data:
+                new_df = pd.DataFrame(news_data)
+                
+                # Handle existing data
+                if os.path.exists('news_alerts.csv'):
+                    existing_df = pd.read_csv('news_alerts.csv')
+                    
+                    # Ensure all columns are strings
+                    for col in new_df.columns:
+                        new_df[col] = new_df[col].fillna('').astype(str)
+                        existing_df[col] = existing_df[col].fillna('').astype(str)
+                    
+                    # Combine and deduplicate
+                    combined_df = pd.concat([new_df, existing_df])
+                    combined_df.drop_duplicates(subset=['title', 'link'], keep='first', inplace=True)
+                    
+                    # Archive old data
+                    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+                    existing_df.to_csv(f'news_alerts_{timestamp}.csv', index=False)
+                    
+                    # Save combined data
+                    combined_df.to_csv('news_alerts.csv', index=False)
+                    logging.info(f"Saved {len(new_df)} new articles, total: {len(combined_df)}")
+                else:
+                    # Save new data
+                    new_df.to_csv('news_alerts.csv', index=False)
+                    logging.info(f"Saved {len(new_df)} new articles")
+                
+                return True
+            else:
+                logging.info("No new articles found")
+                return True
+                
+    except Exception as e:
+        logging.error(f"Error updating articles: {str(e)}")
+        return False
+
+def create_session_with_retries():
+    """Create a requests session with retry logic and SSL configuration"""
+    session = requests.Session()
+    
+    # Configure retries
+    retries = Retry(
+        total=3,  # number of retries
+        backoff_factor=1,  # wait 1, 2, 4 seconds between retries
+        status_forcelist=[500, 502, 503, 504],  # retry on these status codes
+        allowed_methods=["GET"]  # only retry on GET requests
+    )
+    
+    # Add retry adapter
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    
+    # Configure SSL verification
+    session.verify = certifi.where()
+    
+    return session
+
+class NewsletterScheduler:
+    def __init__(self, interval_seconds=DEFAULT_SCRAPE_INTERVAL):
+        self.interval = max(interval_seconds, MINIMUM_SCRAPE_INTERVAL)
+        self.is_running = False
+        self._task = None
+        
+    async def start(self):
+        """Start the periodic scraping"""
+        self.is_running = True
+        logging.info(f"Starting periodic news scraping every {self.interval} seconds")
+        
+        while self.is_running:
+            try:
+                success = await scrape_news()
+                if success:
+                    logging.info("Periodic scrape completed successfully")
+                else:
+                    logging.error("Periodic scrape completed with errors")
+            except Exception as e:
+                logging.error(f"Error during periodic scrape: {e}")
+            
+            # Wait for next interval
+            await asyncio.sleep(self.interval)
+    
+    def stop(self):
+        """Stop the periodic scraping"""
+        self.is_running = False
+        if self._task:
+            self._task.cancel()
+        logging.info("Stopping periodic news scraping")
+    
+    async def run(self):
+        """Run the scheduler"""
+        self._task = asyncio.create_task(self.start())
+        try:
+            await self._task
+        except asyncio.CancelledError:
+            logging.info("Newsletter scheduler was cancelled")
+
+def handle_shutdown(scheduler: NewsletterScheduler, sig=None):
+    """Handle graceful shutdown"""
+    if sig:
+        logging.info(f'Received shutdown signal: {sig.name}')
+    
+    scheduler.stop()
+
+async def run_newsletter_service(interval_seconds=DEFAULT_SCRAPE_INTERVAL):
+    """Run the newsletter service with periodic scraping"""
+    scheduler = NewsletterScheduler(interval_seconds)
+    
+    # Set up signal handlers for graceful shutdown
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, lambda s, _: handle_shutdown(scheduler, s))
+    
+    try:
+        # Do initial scrape immediately
+        logging.info("Performing initial scrape...")
+        await scrape_news()
+        
+        # Start periodic scraping
+        await scheduler.run()
+    except Exception as e:
+        logging.error(f"Error in newsletter service: {e}")
+        scheduler.stop()
+    finally:
+        logging.info("Newsletter service shutdown complete")
+
+# Update the main block to use the scheduler
 if __name__ == "__main__":
-    news_data = scrape_news()
-    logging.info("News scraping and processing complete!")
+    try:
+        # Get interval from environment variable or use default
+        interval = int(os.getenv('SCRAPE_INTERVAL_SECONDS', DEFAULT_SCRAPE_INTERVAL))
+        
+        # Run the service
+        asyncio.run(run_newsletter_service(interval))
+    except KeyboardInterrupt:
+        logging.info("Newsletter service stopped by user")
+    except Exception as e:
+        logging.error(f"Newsletter service error: {e}")
+        sys.exit(1)

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Pharma News Assistant{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <h1 class="text-3xl font-bold mb-8 text-center text-blue-900">Pharmaceutical News Assistant</h1>
+    
+    <!-- Conversation History -->
+    <div id="conversationHistory" class="mb-8">
+        <!-- History will be populated here -->
+    </div>
+    
+    <!-- Query Input -->
+    <div class="mb-8">
+        <div class="flex justify-between mb-2">
+            <label class="text-sm text-gray-600">Your Question:</label>
+            <button onclick="clearHistory()" 
+                    class="text-sm text-red-600 hover:text-red-800">
+                <i class="fas fa-trash mr-1"></i>Clear History
+            </button>
+        </div>
+        <textarea id="query" 
+                  class="w-full p-4 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  rows="4"
+                  placeholder="Ask me anything about pharmaceutical industry news..."></textarea>
+        <div class="flex justify-between mt-2">
+            <label class="inline-flex items-center">
+                <input type="checkbox" id="useHistory" checked 
+                       class="form-checkbox text-blue-600">
+                <span class="ml-2 text-sm text-gray-600">Use conversation history</span>
+            </label>
+            <button onclick="submitQuery()" 
+                    class="btn-custom px-6 py-2 rounded-lg">
+                <i class="fas fa-robot mr-2"></i>Get Answer
+            </button>
+        </div>
+    </div>
+    
+    <!-- Response Area -->
+    <div id="response" class="hidden">
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-xl font-bold mb-4 text-blue-900">AI Response</h2>
+            <div id="responseText" class="prose max-w-none"></div>
+        </div>
+        
+        <div id="sources" class="bg-gray-50 rounded-lg p-6">
+            <h2 class="text-xl font-bold mb-4 text-blue-900">Sources</h2>
+            <div id="sourcesList"></div>
+        </div>
+    </div>
+    
+    <!-- Loading Indicator -->
+    <div id="loading" class="hidden text-center py-8">
+        <div class="loader mx-auto"></div>
+        <p class="mt-4 text-gray-600">Processing your query...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let conversationHistory = [];
+
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/rag/history');
+        const data = await response.json();
+        conversationHistory = data.history;
+        updateHistoryDisplay();
+    } catch (error) {
+        console.error('Error loading history:', error);
+    }
+}
+
+function updateHistoryDisplay() {
+    const historyDiv = document.getElementById('conversationHistory');
+    historyDiv.innerHTML = conversationHistory.map((item, index) => `
+        <div class="mb-4 p-4 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} rounded-lg">
+            <div class="font-semibold text-gray-800">Q: ${item.query}</div>
+            <div class="mt-2 text-gray-600">A: ${item.response}</div>
+        </div>
+    `).join('');
+}
+
+async function clearHistory() {
+    try {
+        await fetch('/api/rag/history', { method: 'DELETE' });
+        conversationHistory = [];
+        updateHistoryDisplay();
+    } catch (error) {
+        console.error('Error clearing history:', error);
+    }
+}
+
+async function submitQuery() {
+    const query = document.getElementById('query').value.trim();
+    const useHistory = document.getElementById('useHistory').checked;
+    
+    if (!query) return;
+    
+    const loading = document.getElementById('loading');
+    const response = document.getElementById('response');
+    
+    try {
+        loading.classList.remove('hidden');
+        response.classList.add('hidden');
+        
+        const result = await fetch('/api/rag', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query, use_history: useHistory })
+        });
+        
+        const data = await result.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        // Update history and display
+        conversationHistory.push({ query, response: data.response });
+        updateHistoryDisplay();
+        
+        // Update response display
+        document.getElementById('responseText').innerHTML = data.response;
+        document.getElementById('sourcesList').innerHTML = (data.sources || []).map(source => `
+            <div class="mb-4 p-4 bg-white rounded shadow">
+                <h3 class="font-bold">${source.title}</h3>
+                <p class="text-sm text-gray-600 mb-2">${source.source} - ${source.date}</p>
+                <a href="${source.link}" 
+                   class="text-blue-600 hover:text-blue-800 text-sm"
+                   target="_blank">
+                    Read original article
+                </a>
+            </div>
+        `).join('');
+        
+        response.classList.remove('hidden');
+        loading.classList.add('hidden');
+        
+        // Clear input
+        document.getElementById('query').value = '';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error processing your query. Please try again.');
+        loading.classList.add('hidden');
+    }
+}
+
+// Load history on page load
+document.addEventListener('DOMContentLoaded', loadHistory);
+</script>
+{% endblock %} 

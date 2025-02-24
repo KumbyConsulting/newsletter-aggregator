@@ -1,163 +1,220 @@
 # Pharmaceutical Industry News Aggregator
 
-A Flask-based web application that aggregates and monitors news from various pharmaceutical industry sources, providing real-time updates and summaries of important industry developments.
+A Flask-based web application that aggregates and monitors news from various pharmaceutical industry sources, providing real-time updates, AI-powered summaries, and intelligent question answering through RAG (Retrieval Augmented Generation).
 
 ## Features
 
+### Core Features
 - **Automated News Scraping**: Collects news from multiple pharmaceutical industry sources via RSS feeds
+- **Periodic Updates**: Configurable automatic news updates at specified intervals
 - **Topic Classification**: Organizes news into 25 different pharmaceutical industry categories
-- **Search Functionality**: Search through collected articles by title
-- **Article Summarization**: AI-powered text summarization for article descriptions
+- **Search Functionality**: Both keyword and semantic search capabilities
+- **Article Summarization**: AI-powered text summarization with contextual awareness
 - **Pagination**: Displays 10 articles per page for better readability
 - **Duplicate Prevention**: Automatically removes duplicate articles
-- **HTML Cleaning**: Removes HTML tags from article descriptions for clean display
+- **HTML Cleaning**: Removes HTML tags from article descriptions
 
-## Directory Structure
+### RAG Features
+- **Vector Storage**: Uses ChromaDB for efficient semantic search and retrieval
+- **Contextual Summarization**: Generates summaries using related articles as context
+- **Intelligent Q&A**: Answer questions using relevant articles as context
+- **Source Attribution**: Provides sources for generated answers
+- **Similar Article Discovery**: Finds semantically similar articles
 
+## Configuration
+
+### Environment Variables
+```env
+# Required
+GEMINI_API_KEY=your-api-key
+FLASK_SECRET_KEY=your-secret-key
+
+# Optional
+RATE_LIMIT_DELAY=1
+SCRAPE_INTERVAL_SECONDS=3600  # Default 1 hour
+CACHE_EXPIRY_DAYS=30
+DEBUG_MODE=False
+```
+
+### Periodic Scraping Configuration
+```python
+# Default settings in newsLetter.py
+DEFAULT_SCRAPE_INTERVAL = 3600  # Default to running every hour (in seconds)
+MINIMUM_SCRAPE_INTERVAL = 300   # Minimum 5 minutes between scrapes
+```
+
+## Installation
+
+1. Clone the repository
+```bash
+git clone <repository-url>
+cd newsletter
+```
+
+2. Create virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Configure environment:
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
+## Running the Application
+
+### Development Mode
+```bash
+python app.py
+```
+
+### Production Mode
+```bash
+# Start the Flask application
+gunicorn app:app
+
+# Start the news scraper service (in separate terminal)
+python newsLetter.py
+```
+
+## Architecture
+
+### Component Overview
 ```
 newsletter/
 ├── app.py                 # Main Flask application
-├── newsLetter.py         # News scraping and processing logic
-├── news_alerts.csv       # Current news articles database
+├── newsLetter.py         # News scraping and scheduler service
+├── services/
+│   ├── ai_service.py     # AI and RAG functionality
+│   ├── storage_service.py # Vector storage and retrieval
+│   ├── config_service.py # Configuration management
+│   └── cache_service.py  # Caching functionality
 ├── templates/            # HTML templates
-│   └── index.html       # Main page template
-└── README.md            # This documentation
+└── tests/               # Test suite
 ```
 
-## Key Components
+### Key Components
 
-### app.py
-- Flask web application setup
-- Route handlers for main page, article updates, and summarization
-- Article pagination and search functionality
-- HTML cleaning utilities
+#### newsLetter.py
+- Periodic news scraping scheduler
+- RSS feed processing
+- Article deduplication
+- Error handling and retry logic
+- SSL certificate handling
 
-### newsLetter.py
-- RSS feed definitions for various news sources
-- Topic definitions and keywords for article classification
-- News scraping and processing functions
-- Text summarization functionality
+#### ai_service.py
+- RAG implementation using Gemini AI
+- Contextual summarization
+- Question answering with source attribution
+- Conversation history management
 
-## Topics Monitored
+#### storage_service.py
+- ChromaDB integration
+- Vector storage and retrieval
+- Similar article discovery
+- Batch article processing
 
-The system monitors news across 25 key pharmaceutical industry areas including:
-- 483 Notifications
-- Adulterated Drugs
-- AI in Medicine
-- Contamination Control
-- Regulatory Affairs
-- Clinical Trials
-- Mergers and Acquisitions
-- Drug Development
-- Market Trends
-- And many more...
+## Monitoring
 
-## News Sources
+### Key Metrics
+- Feed success rate
+- Article match rate
+- Summary generation rate
+- Cache hit rate
+- Processing duration
+- API rate limits
+- Scraping interval adherence
 
-The application aggregates news from multiple reliable sources including:
-- FDA RSS Feeds
-- European Pharmaceutical Review
-- Nature Biotechnology
-- Reuters Health
-- PharmaTimes
-- And many other industry-specific sources
+### Health Checks
+- Feed availability
+- API status
+- Storage capacity
+- Cache performance
+- Scheduler status
 
-## Requirements
+## Error Handling
 
-- Python 3.x
-- Flask
-- pandas
-- BeautifulSoup4
-- requests
-- logging
+### SSL Verification
+```python
+ssl_context = ssl.create_default_context(cafile=certifi.where())
+if 'fda.gov' in url:
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+```
 
-## Usage
+### Rate Limiting
+```python
+RATE_LIMIT_DELAY = 1  # seconds between API calls
+await asyncio.sleep(RATE_LIMIT_DELAY)
+```
 
-1. Start the application:
-   ```
-   python app.py
-   ```
-2. Access the web interface at `http://localhost:5000`
-3. Use the search bar to find specific articles
-4. Click "Update Articles" to fetch fresh news
-5. Click "Summarize" on any article to get an AI-generated summary
+### Retry Logic
+```python
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+```
 
-## Data Storage
+## Production Deployment
 
-News articles are stored in CSV format with the following information:
-- Title
-- Description
-- Link
-- Publication Date
+### Requirements
+- SSL certificates
+- Process manager (e.g., supervisord)
+- Monitoring setup
+- Backup strategy
 
-Historical data is preserved in dated CSV files for reference.
+### Example Supervisor Configuration
+```ini
+[program:newsletter-web]
+command=/path/to/venv/bin/gunicorn app:app
+directory=/path/to/newsletter
+user=newsletter
+autostart=true
+autorestart=true
 
-## Planned Improvements and Future Enhancements
+[program:newsletter-scraper]
+command=/path/to/venv/bin/python newsLetter.py
+directory=/path/to/newsletter
+user=newsletter
+autostart=true
+autorestart=true
+```
 
-### Error Handling and Resilience
-- Implement comprehensive error handling for RSS feed failures
-- Add retry mechanisms for failed requests
-- Enhance logging system for failed article fetches
-- Create health check endpoints for system monitoring
+## Security Considerations
 
-### Data Management
-- Migrate from CSV to a proper database system (SQLite/PostgreSQL)
-- Implement data retention policies
-- Add article archiving functionality
-- Enable data export in multiple formats (PDF, Excel)
+### API Protection
+- Rate limiting
+- Input validation
+- Request sanitization
+- API key rotation
 
-### User Experience
-- Add topic-based filtering
-- Implement multiple sorting options (date, relevance, source)
-- Add user preferences for favorite topics
-- Enable email notifications for specific topics
-- Implement dark mode
-- Add article bookmarking feature
-
-### Performance Optimizations
-- Implement caching for frequently accessed articles
-- Add background task processing for news scraping
-- Implement rate limiting for external API calls
-- Optimize database queries with proper indexing
-
-### Security Enhancements
-- Add input validation for search queries
-- Implement rate limiting for API endpoints
-- Add CORS policies
-- Implement request sanitization
-
-### API Features
-- Create RESTful API for programmatic access
-- Add Swagger/OpenAPI documentation
-- Implement API authentication
-- Add API usage rate limiting
-
-### Testing
-- Add unit tests for core functionality
-- Implement integration tests for RSS feed processing
-- Add end-to-end tests for web interface
-- Set up continuous integration
-
-### Monitoring and Analytics
-- Implement metrics collection (article counts, search patterns)
-- Add RSS feed health monitoring
-- Track user engagement analytics
-- Create system statistics dashboard
-
-### Content Enhancement
-- Add sentiment analysis for articles
-- Implement keyword extraction
-- Add related articles suggestions
-- Enable ML-based article categorization
-- Add multi-language support
-
-### Documentation
-- Add detailed API documentation
-- Include development setup instructions
-- Create contribution guidelines
-- Add troubleshooting section
-- Include configuration documentation
+### Data Security
+- Secure storage
+- Regular backups
+- Access control
+- SSL/TLS encryption
 
 ## Contributing
 
-We welcome contributions to improve the newsletter application. Please feel free to submit issues and pull requests for any of the planned improvements listed above or your own ideas.
+### Development Guidelines
+1. Add tests for new features
+2. Document configuration changes
+3. Update performance metrics
+4. Follow code style guide
+
+### Testing
+```bash
+pytest tests/
+```
+
+## License
+[Your License Here]
+
+## Support
+[Your Support Information]

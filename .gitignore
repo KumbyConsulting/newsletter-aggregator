@@ -37,3 +37,22 @@ ENV/
 .env
 summary_cache.json
 news_alerts*.csv
+
+# Vector DB
+chroma_db/
+*.parquet
+embeddings/
+
+# Large files
+*.vec
+*.bin
+
+# Environment and Configuration
+.env
+.env.*
+!.env.example
+
+# Secrets
+*.key
+*.pem
+secrets/
