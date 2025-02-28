@@ -3,33 +3,54 @@
 {% block title %}Pharma News Assistant{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto">
+<div class="max-w-4xl mx-auto">
     <h1 class="text-3xl font-bold mb-8 text-center text-blue-900">Pharmaceutical News Assistant</h1>
     
     <!-- Conversation History -->
-    <div id="conversationHistory" class="mb-8">
+    <div id="conversationHistory" class="mb-8 space-y-4">
         <!-- History will be populated here -->
     </div>
     
     <!-- Query Input -->
-    <div class="mb-8">
-        <div class="flex justify-between mb-2">
-            <label class="text-sm text-gray-600">Your Question:</label>
-            <button onclick="clearHistory()" 
-                    class="text-sm text-red-600 hover:text-red-800">
-                <i class="fas fa-trash mr-1"></i>Clear History
-            </button>
+    <div class="mb-8 bg-white rounded-lg shadow-lg p-6">
+        <div class="flex justify-between mb-4">
+            <h2 class="text-xl font-bold text-blue-900">Ask a Question</h2>
+            <div class="space-x-4">
+                <button onclick="clearHistory()" 
+                        class="text-red-600 hover:text-red-800 transition-colors">
+                    <i class="fas fa-trash mr-1"></i>Clear History
+                </button>
+                <button onclick="toggleSettings()"
+                        class="text-blue-600 hover:text-blue-800 transition-colors">
+                    <i class="fas fa-cog mr-1"></i>Settings
+                </button>
+            </div>
         </div>
+        
+        <!-- Settings Panel -->
+        <div id="settingsPanel" class="hidden mb-4 p-4 bg-gray-50 rounded-lg">
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" id="useHistory" checked 
+                               class="form-checkbox text-blue-600">
+                        <span class="ml-2">Use conversation history</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" id="showSources" checked 
+                               class="form-checkbox text-blue-600">
+                        <span class="ml-2">Show sources</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        
         <textarea id="query" 
                   class="w-full p-4 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   rows="4"
-                  placeholder="Ask me anything about pharmaceutical industry news..."></textarea>
-        <div class="flex justify-between mt-2">
-            <label class="inline-flex items-center">
-                <input type="checkbox" id="useHistory" checked 
-                       class="form-checkbox text-blue-600">
-                <span class="ml-2 text-sm text-gray-600">Use conversation history</span>
-            </label>
+                  placeholder="Ask about pharmaceutical industry news, regulations, research, or market trends..."></textarea>
+        
+        <div class="flex justify-end mt-4">
             <button onclick="submitQuery()" 
                     class="btn-custom px-6 py-2 rounded-lg">
                 <i class="fas fa-robot mr-2"></i>Get Answer
@@ -38,49 +59,191 @@
     </div>
     
     <!-- Response Area -->
-    <div id="response" class="hidden">
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h2 class="text-xl font-bold mb-4 text-blue-900">AI Response</h2>
+    <div id="response" class="hidden space-y-6">
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-xl font-bold mb-4 text-blue-900">Response</h2>
             <div id="responseText" class="prose max-w-none"></div>
+            <div class="mt-4 text-sm text-gray-600">
+                Confidence: <span id="confidenceScore">N/A</span>
+            </div>
         </div>
         
-        <div id="sources" class="bg-gray-50 rounded-lg p-6">
+        <div id="sourcesSection" class="bg-gray-50 rounded-lg p-6">
             <h2 class="text-xl font-bold mb-4 text-blue-900">Sources</h2>
-            <div id="sourcesList"></div>
+            <div id="sourcesList" class="space-y-4"></div>
         </div>
     </div>
     
     <!-- Loading Indicator -->
-    <div id="loading" class="hidden text-center py-8">
-        <div class="loader mx-auto"></div>
-        <p class="mt-4 text-gray-600">Processing your query...</p>
+    <div id="loading" class="hidden">
+        <div class="flex items-center justify-center p-8">
+            <div class="loader"></div>
+            <p class="ml-4 text-gray-600">Processing your query...</p>
+        </div>
+    </div>
+</div>
+
+<!-- Add keyboard shortcuts help -->
+<div class="fixed bottom-4 right-4">
+    <button onclick="toggleShortcutsHelp()" 
+            class="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
+        <i class="fas fa-keyboard"></i>
+    </button>
+</div>
+
+<!-- Add shortcuts help modal -->
+<div id="shortcutsHelp" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+    <div class="bg-white p-6 rounded-lg max-w-md">
+        <h3 class="text-xl font-bold mb-4">Keyboard Shortcuts</h3>
+        <ul class="space-y-2">
+            <li><kbd class="px-2 py-1 bg-gray-100 rounded">Enter</kbd> Send query</li>
+            <li><kbd class="px-2 py-1 bg-gray-100 rounded">Shift + Enter</kbd> New line</li>
+            <li><kbd class="px-2 py-1 bg-gray-100 rounded">Esc</kbd> Clear input</li>
+        </ul>
+        <button onclick="toggleShortcutsHelp()" class="mt-4 text-blue-600">Close</button>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<!-- Add marked.js for markdown rendering -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
+// Configure marked to sanitize HTML
+marked.setOptions({
+    sanitize: true,
+    breaks: true
+});
+
 let conversationHistory = [];
 
-async function loadHistory() {
+function toggleSettings() {
+    const panel = document.getElementById('settingsPanel');
+    panel.classList.toggle('hidden');
+}
+
+async function submitQuery() {
+    const query = document.getElementById('query').value.trim();
+    const useHistory = document.getElementById('useHistory').checked;
+    const showSources = document.getElementById('showSources').checked;
+    
+    if (!query) return;
+    
+    showLoading(true);
+    
     try {
-        const response = await fetch('/api/rag/history');
+        const response = await fetch('/api/rag', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ 
+                query, 
+                use_history: useHistory 
+            })
+        });
+        
         const data = await response.json();
-        conversationHistory = data.history;
+        
+        if (!response.ok || data.status === 'error') {
+            throw new Error(data.error || 'Failed to get response');
+        }
+        
+        // Update history
+        conversationHistory.push({
+            query,
+            response: data.response,
+            timestamp: data.timestamp,
+            confidence: data.confidence
+        });
+        
         updateHistoryDisplay();
+        displayResponse(data, showSources);
+        
+        // Clear input
+        document.getElementById('query').value = '';
+        
     } catch (error) {
-        console.error('Error loading history:', error);
+        console.error('Error:', error);
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative';
+        errorMessage.innerHTML = `Error: ${error.message}`;
+        document.getElementById('response').classList.remove('hidden');
+        document.getElementById('response').innerHTML = '';
+        document.getElementById('response').appendChild(errorMessage);
+    } finally {
+        showLoading(false);
     }
+}
+
+function displayResponse(data, showSources) {
+    const response = document.getElementById('response');
+    const responseText = document.getElementById('responseText');
+    const sourcesList = document.getElementById('sourcesList');
+    const confidenceScore = document.getElementById('confidenceScore');
+    const sourcesSection = document.getElementById('sourcesSection');
+    
+    // Clear any previous error messages
+    response.querySelectorAll('.bg-red-100').forEach(el => el.remove());
+    
+    // Display response
+    responseText.innerHTML = marked.parse(data.response);
+    confidenceScore.textContent = `${(data.confidence * 100).toFixed(1)}%`;
+    
+    // Handle sources
+    sourcesSection.style.display = showSources ? 'block' : 'none';
+    if (showSources && Array.isArray(data.sources)) {
+        sourcesList.innerHTML = data.sources.map(source => `
+            <div class="bg-white p-4 rounded shadow">
+                <h3 class="font-bold">${source.title || 'Untitled'}</h3>
+                <p class="text-sm text-gray-600">
+                    ${source.source || 'Unknown source'} - 
+                    ${source.date || 'No date'}
+                </p>
+                ${source.link ? `
+                    <a href="${source.link}" 
+                       class="text-blue-600 hover:text-blue-800 text-sm"
+                       target="_blank">
+                        Read original article
+                    </a>
+                ` : ''}
+            </div>
+        `).join('');
+    }
+    
+    response.classList.remove('hidden');
 }
 
 function updateHistoryDisplay() {
     const historyDiv = document.getElementById('conversationHistory');
     historyDiv.innerHTML = conversationHistory.map((item, index) => `
-        <div class="mb-4 p-4 ${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} rounded-lg">
-            <div class="font-semibold text-gray-800">Q: ${item.query}</div>
-            <div class="mt-2 text-gray-600">A: ${item.response}</div>
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex justify-between items-start mb-4">
+                <div class="font-semibold text-blue-900">
+                    <i class="fas fa-user mr-2"></i>Question:
+                </div>
+                <span class="text-sm text-gray-600">
+                    ${new Date(item.timestamp).toLocaleString()}
+                </span>
+            </div>
+            <p class="mb-6">${item.query}</p>
+            
+            <div class="font-semibold text-blue-900 mb-2">
+                <i class="fas fa-robot mr-2"></i>Answer:
+            </div>
+            <div class="prose">${marked(item.response)}</div>
+            
+            <div class="mt-4 text-sm text-gray-600">
+                Confidence: ${(item.confidence * 100).toFixed(1)}%
+            </div>
         </div>
     `).join('');
+}
+
+function showLoading(show) {
+    document.getElementById('loading').classList.toggle('hidden', !show);
+    document.getElementById('response').classList.toggle('hidden', show);
 }
 
 async function clearHistory() {
@@ -93,65 +256,24 @@ async function clearHistory() {
     }
 }
 
-async function submitQuery() {
-    const query = document.getElementById('query').value.trim();
-    const useHistory = document.getElementById('useHistory').checked;
-    
-    if (!query) return;
-    
-    const loading = document.getElementById('loading');
-    const response = document.getElementById('response');
-    
-    try {
-        loading.classList.remove('hidden');
-        response.classList.add('hidden');
-        
-        const result = await fetch('/api/rag', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ query, use_history: useHistory })
-        });
-        
-        const data = await result.json();
-        
-        if (data.error) {
-            throw new Error(data.error);
-        }
-        
-        // Update history and display
-        conversationHistory.push({ query, response: data.response });
-        updateHistoryDisplay();
-        
-        // Update response display
-        document.getElementById('responseText').innerHTML = data.response;
-        document.getElementById('sourcesList').innerHTML = (data.sources || []).map(source => `
-            <div class="mb-4 p-4 bg-white rounded shadow">
-                <h3 class="font-bold">${source.title}</h3>
-                <p class="text-sm text-gray-600 mb-2">${source.source} - ${source.date}</p>
-                <a href="${source.link}" 
-                   class="text-blue-600 hover:text-blue-800 text-sm"
-                   target="_blank">
-                    Read original article
-                </a>
-            </div>
-        `).join('');
-        
-        response.classList.remove('hidden');
-        loading.classList.add('hidden');
-        
-        // Clear input
-        document.getElementById('query').value = '';
-        
-    } catch (error) {
-        console.error('Error:', error);
-        alert('Error processing your query. Please try again.');
-        loading.classList.add('hidden');
-    }
-}
-
 // Load history on page load
-document.addEventListener('DOMContentLoaded', loadHistory);
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const response = await fetch('/api/rag/history');
+        const data = await response.json();
+        conversationHistory = data.history;
+        updateHistoryDisplay();
+    } catch (error) {
+        console.error('Error loading history:', error);
+    }
+});
+
+// Handle Enter key
+document.getElementById('query').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submitQuery();
+    }
+});
 </script>
 {% endblock %} 

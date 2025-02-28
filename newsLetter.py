@@ -131,7 +131,7 @@ RSS_FEEDS = {
     "European Pharmaceutical Review": "https://www.europeanpharmaceuticalreview.com/feed/",
     "PDA": "https://journal.pda.org/rss/current.xml",
     "FDA": "http://www.fda.gov/AboutFDA/ContactFDA/StayInformed/RSSFeeds/MedWatch/rss.xml",
-    "BioPharmaDive": "https://www.biopharmadive.com/feeds/news/",
+    #"BioPharmaDive": "https://www.biopharmadive.com/feeds/news/",
     "FDA Drug Updates": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/drugs/rss.xml",
     "FDA Recalls": "https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/recalls/rss.xml",
     "Nature Biotechnology": "https://www.nature.com/nbt.rss",
@@ -140,19 +140,19 @@ RSS_FEEDS = {
     "ClinicalTrials.gov": "https://clinicaltrials.gov/ct2/results/rss.xml?rcv_d=14",
     "PharmaTimes": "https://www.pharmatimes.com/rss",
     "EPR": "https://www.europeanpharmaceuticalreview.com/feed/",
-    "Reuters Health": "http://feeds.reuters.com/reuters/USHealthNews",
+    #"Reuters Health": "http://feeds.reuters.com/reuters/USHealthNews",
     "Pharmaceutical Technology": "https://www.pharmaceutical-technology.com/feed/",
     "In-Pharma Technologist": "https://www.in-pharmatechnologist.com/rss",
     "Outsourcing-Pharma.com": "https://www.outsourcing-pharma.com/rss",
     "PM Live": "https://www.pmlive.com/rss/all",
-    "The Pharma Journal": "https://www.pharmj.com/rss/latest/rss.xml",
+    #"The Pharma Journal": "https://www.pharmj.com/rss/latest/rss.xml",
     "Drug Topics": "https://www.drugtopics.com/rss",
     "STAT News": "https://www.statnews.com/feed/",
-    "The Lancet": "https://www.thelancet.com/rss/general",
-    "New England Journal of Medicine": "https://www.nejm.org/rss/most-recent",
-    "JAMA": "https://jamanetwork.com/rss/most-recent",
+    #"The Lancet": "https://www.thelancet.com/rss/general",
+    #"New England Journal of Medicine": "https://www.nejm.org/rss/most-recent",
+    #"JAMA": "https://jamanetwork.com/rss/most-recent",
     "Nature": "https://www.nature.com/nature.rss",
-    "Science": "https://www.science.org/rss/news",
+    #"Science": "https://www.science.org/rss/news",
 }
 
 # Function to fetch and parse RSS feeds
@@ -230,7 +230,7 @@ async def summarize_text(text: str) -> Optional[str]:
     try:
         config = ConfigService()
         genai.configure(api_key=config.gemini_api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-2.0-flash')
         
         # Check cache first
         cache = SummaryCache(CACHE_FILE)
@@ -254,11 +254,12 @@ async def summarize_text(text: str) -> Optional[str]:
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                # Remove await since generate_content is not async
                 response = model.generate_content(prompt)
                 summary = response.text.strip()
                 
                 if summary:
+                    # Clean summary of unwanted characters or HTML tags
+                    summary = BeautifulSoup(summary, "html.parser").get_text()
                     # Cache the successful summary
                     await cache.set(text[:200], summary)
                     return summary
@@ -275,113 +276,72 @@ async def summarize_text(text: str) -> Optional[str]:
         logging.error(f"Error in summarize_text: {e}")
         return None
 
-# Main function to scrape and process news
+def fetch_and_process_feed(source: str, feed_url: str) -> List[Dict]:
+    """Fetch and process a single RSS feed."""
+    try:
+        logging.info(f"Fetching from {source}: {feed_url}")
+        response = requests.get(feed_url, timeout=10)
+        soup = BeautifulSoup(response.content, features='xml')
+        articles = soup.find_all('item')
+        return [process_article(article, source) for article in articles]
+    except Exception as e:
+        logging.error(f"Error processing feed {feed_url}: {str(e)}")
+        return []
+
 def scrape_news():
+    """Main function to scrape and process news."""
     news_data = []
     logging.info("Starting news scraping process...")
     
     try:
-        # First, collect all articles
+        # Fetch and process each feed
         for source, feed_url in RSS_FEEDS.items():
-            try:
-                logging.info(f"Fetching from {source}: {feed_url}")
-                response = requests.get(feed_url, timeout=10)
-                soup = BeautifulSoup(response.content, features='xml')
-                
-                items = soup.find_all('item')
-                for article in items:
-                    try:
-                        title = article.title.text if article.title else ""
-                        description = article.description.text if article.description else ""
-                        link = article.link.text if article.link else ""
-                        pub_date = article.pubDate.text if article.pubDate else ""
+            articles = fetch_and_process_feed(source, feed_url)
+            news_data.extend(articles)
 
-                        # Clean description of HTML tags
-                        clean_description = BeautifulSoup(description, "html.parser").get_text()
-
-                        # Format the publication date
-                        try:
-                            pub_date = datetime.strptime(pub_date, '%a, %d %b %Y %H:%M:%S %Z').strftime('%Y-%m-%d %H:%M:%S')
-                        except ValueError:
-                            pub_date = "Unknown date"
-
-                        # Check for matches with keywords
-                        matched_topic = None
-                        for topic, keywords in TOPICS.items():
-                            for keyword in keywords:
-                                if re.search(rf"\b{re.escape(keyword)}\b", (title + " " + clean_description), re.IGNORECASE):
-                                    matched_topic = topic
-                                    break
-                            if matched_topic:
-                                break
-
-                        if matched_topic:
-                            # Generate summary immediately for new articles
-                            try:
-                                logging.info(f"Generating summary for: {title}")
-                                time.sleep(RATE_LIMIT_DELAY)  # Prevent rate limiting
-                                summary = summarize_text(clean_description)
-                            except Exception as e:
-                                logging.error(f"Error generating summary: {e}")
-                                summary = None
-
-                            news_data.append({
-                                "source": source,
-                                "title": title,
-                                "description": clean_description,
-                                "link": link,
-                                "pub_date": pub_date,
-                                "topic": matched_topic,
-                                "summary": summary
-                            })
-                            logging.info(f"Added article: {title} with summary")
-
-                    except Exception as e:
-                        logging.error(f"Error processing article: {str(e)}")
-                        continue
-                    
-            except Exception as e:
-                logging.error(f"Error processing feed {feed_url}: {str(e)}")
-                continue
-
-        # Create DataFrame with new articles
-        if news_data:
-            new_df = pd.DataFrame(news_data)
-            
-            # If file exists, merge with existing data
-            if os.path.exists('news_alerts.csv'):
-                existing_df = pd.read_csv('news_alerts.csv')
-                
-                # Ensure all columns are strings
-                for col in new_df.columns:
-                    new_df[col] = new_df[col].fillna('').astype(str)
-                    existing_df[col] = existing_df[col].fillna('').astype(str)
-                
-                # Combine new and existing data
-                combined_df = pd.concat([new_df, existing_df])
-                # Remove duplicates, keeping the first occurrence (new articles)
-                combined_df.drop_duplicates(subset=['title', 'link'], keep='first', inplace=True)
-                
-                # Archive old data
-                timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                existing_df.to_csv(f'news_alerts_{timestamp}.csv', index=False)
-                
-                # Save combined data
-                combined_df.to_csv('news_alerts.csv', index=False)
-                logging.info(f"Saved {len(new_df)} new articles, total: {len(combined_df)}")
-            else:
-                # Save new data
-                new_df.to_csv('news_alerts.csv', index=False)
-                logging.info(f"Saved {len(new_df)} new articles")
-            
-            return True
-        else:
-            logging.info("No new articles found")
-            return True
-            
+        # Save articles to CSV
+        save_articles_to_csv(news_data)
+        
+        return True
     except Exception as e:
         logging.error(f"Error in scrape_news: {str(e)}")
         return False
+
+def save_articles_to_csv(articles: List[Dict]):
+    """Save articles to a CSV file."""
+    if articles:
+        new_df = pd.DataFrame(articles)
+        
+        # If file exists, merge with existing data
+        if os.path.exists('news_alerts.csv'):
+            existing_df = pd.read_csv('news_alerts.csv')
+            
+            # Ensure all columns are strings
+            for col in new_df.columns:
+                new_df[col] = new_df[col].fillna('').astype(str)
+                existing_df[col] = existing_df[col].fillna('').astype(str)
+            
+            # Combine new and existing data
+            combined_df = pd.concat([new_df, existing_df])
+            # Remove duplicates, keeping the first occurrence (new articles)
+            combined_df.drop_duplicates(subset=['title', 'link'], keep='first', inplace=True)
+            
+            # Archive old data
+            timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            existing_df.to_csv(f'news_alerts_{timestamp}.csv', index=False)
+            
+            # Save combined data
+            combined_df.to_csv('news_alerts.csv', index=False)
+            logging.info(f"Saved {len(new_df)} new articles, total: {len(combined_df)}")
+        else:
+            # Save new data
+            new_df.to_csv('news_alerts.csv', index=False)
+            logging.info(f"Saved {len(new_df)} new articles")
+        
+        return True
+    else:
+        logging.info("No new articles found")
+        return True
 
 async def fetch_rss_feed_async(session, source, feed_url):
     """Asynchronously fetch RSS feed"""
@@ -469,7 +429,6 @@ def process_article(article, source):
 
 @dataclass
 class Article:
-    """Data class for article validation"""
     source: str
     title: str
     description: str
@@ -477,36 +436,59 @@ class Article:
     pub_date: str
     topic: Optional[str] = None
     summary: Optional[str] = None
-
-    def clean(self) -> 'Article':
-        """Clean and validate article data"""
-        # Clean HTML from description
-        clean_desc = BeautifulSoup(self.description, "html.parser").get_text().strip()
-        
-        # Validate and format date
+    
+    @classmethod
+    def from_rss_item(cls, item, source: str) -> Optional['Article']:
+        """Create an Article from an RSS item with validation"""
         try:
-            parsed_date = datetime.strptime(self.pub_date, '%a, %d %b %Y %H:%M:%S %Z')
-            formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
-        except ValueError:
-            formatted_date = "Unknown date"
-        
-        return Article(
-            source=self.source.strip(),
-            title=self.title.strip(),
-            description=clean_desc,
-            link=self.link.strip(),
-            pub_date=formatted_date,
-            topic=self.topic.strip() if self.topic else None,
-            summary=self.summary.strip() if self.summary else None
-        )
+            title = getattr(item.title, 'text', '').strip()
+            description = getattr(item.description, 'text', '').strip()
+            link = getattr(item.link, 'text', '').strip()
+            pub_date = getattr(item.pubDate, 'text', '')
 
-    def is_valid(self) -> bool:
-        """Check if article has required fields"""
-        return bool(
-            self.title.strip() and 
-            self.description.strip() and 
-            self.link.strip()
-        )
+            if not all([title, description, link]):
+                return None
+
+            # Clean description
+            clean_description = BeautifulSoup(description, "html.parser").get_text()
+
+            # Parse date with multiple format support
+            formatted_date = cls._parse_date(pub_date)
+
+            return cls(
+                source=source,
+                title=title,
+                description=clean_description,
+                link=link,
+                pub_date=formatted_date
+            )
+        except Exception as e:
+            logging.error(f"Error creating article from RSS item: {e}")
+            return None
+
+    @staticmethod
+    def _parse_date(date_str: str) -> str:
+        """Parse date string with multiple format support"""
+        date_formats = [
+            '%a, %d %b %Y %H:%M:%S %Z',
+            '%Y-%m-%dT%H:%M:%SZ',
+            '%Y-%m-%d %H:%M:%S',
+        ]
+        
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                continue
+        return "Unknown date"
+
+    def match_topic(self, topics: Dict[str, List[str]]) -> Optional[str]:
+        """Match article against topics and keywords"""
+        content = f"{self.title} {self.description}".lower()
+        for topic, keywords in topics.items():
+            if any(re.search(rf"\b{re.escape(keyword.lower())}\b", content) for keyword in keywords):
+                return topic
+        return None
 
 @dataclass
 class ScrapingMetrics:
@@ -668,76 +650,48 @@ async def fetch_feed(session: aiohttp.ClientSession, source: str, url: str) -> L
         logging.error(f"Error fetching feed from {source} ({url}): {str(e)}")
         return []
 
-async def scrape_news():
-    """Asynchronously scrape news from all feeds"""
-    news_data = []
-    logging.info("Starting news scraping process...")
+async def scrape_news() -> bool:
+    """Main function to scrape and process news"""
+    metrics = ScrapingMetrics(start_time=time.time())
     
     try:
-        async with aiohttp.ClientSession() as session:
+        async with FeedManager(RSS_FEEDS) as feed_manager:
             tasks = []
             for source, url in RSS_FEEDS.items():
-                tasks.append(fetch_feed(session, source, url))
+                tasks.append(feed_manager.fetch_feed(source, url))
             
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Process results
+            all_articles = []
             for articles in results:
-                if isinstance(articles, list):  # Skip any exceptions
-                    for article in articles:
-                        try:
-                            # Generate summary
-                            summary = None
-                            try:
-                                logging.info(f"Generating summary for: {article['title']}")
-                                await asyncio.sleep(RATE_LIMIT_DELAY)  # Prevent rate limiting
-                                summary = await summarize_text(article['description'])
-                            except Exception as e:
-                                logging.error(f"Error generating summary: {e}")
+                if isinstance(articles, list):
+                    all_articles.extend(articles)
+                    
+            if all_articles:
+                # Process summaries with rate limiting
+                rate_limiter = RateLimiter(calls_per_second=0.5)  # 2 seconds between API calls
+                for article in all_articles:
+                    await rate_limiter.acquire()
+                    try:
+                        article.summary = await summarize_text(article.description)
+                    except Exception as e:
+                        logging.error(f"Error generating summary: {e}")
+                        continue
 
-                            article['summary'] = summary
-                            news_data.append(article)
-                            
-                        except Exception as e:
-                            logging.error(f"Error processing article: {str(e)}")
-                            continue
+                # Save to CSV
+                success = await save_articles_to_csv(all_articles)
+                if not success:
+                    logging.error("Failed to save articles")
+                    return False
 
-            # Create DataFrame with new articles
-            if news_data:
-                new_df = pd.DataFrame(news_data)
-                
-                # Handle existing data
-                if os.path.exists('news_alerts.csv'):
-                    existing_df = pd.read_csv('news_alerts.csv')
-                    
-                    # Ensure all columns are strings
-                    for col in new_df.columns:
-                        new_df[col] = new_df[col].fillna('').astype(str)
-                        existing_df[col] = existing_df[col].fillna('').astype(str)
-                    
-                    # Combine and deduplicate
-                    combined_df = pd.concat([new_df, existing_df])
-                    combined_df.drop_duplicates(subset=['title', 'link'], keep='first', inplace=True)
-                    
-                    # Archive old data
-                    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-                    existing_df.to_csv(f'news_alerts_{timestamp}.csv', index=False)
-                    
-                    # Save combined data
-                    combined_df.to_csv('news_alerts.csv', index=False)
-                    logging.info(f"Saved {len(new_df)} new articles, total: {len(combined_df)}")
-                else:
-                    # Save new data
-                    new_df.to_csv('news_alerts.csv', index=False)
-                    logging.info(f"Saved {len(new_df)} new articles")
-                
+                logging.info(f"Successfully processed {len(all_articles)} articles")
                 return True
-            else:
-                logging.info("No new articles found")
-                return True
-                
+            
+            logging.info("No new articles found")
+            return True
+
     except Exception as e:
-        logging.error(f"Error updating articles: {str(e)}")
+        logging.error(f"Error in scrape_news: {e}")
         return False
 
 def create_session_with_retries():
@@ -842,3 +796,74 @@ if __name__ == "__main__":
     except Exception as e:
         logging.error(f"Newsletter service error: {e}")
         sys.exit(1)
+
+class RateLimiter:
+    def __init__(self, calls_per_second: float = 1.0):
+        self.calls_per_second = calls_per_second
+        self.minimum_interval = 1.0 / calls_per_second
+        self.last_call_time: Dict[str, float] = {}
+        self._lock = asyncio.Lock()
+
+    async def acquire(self, key: str = "default") -> None:
+        """Wait if necessary to maintain rate limits"""
+        async with self._lock:
+            if key in self.last_call_time:
+                elapsed = time.time() - self.last_call_time[key]
+                if elapsed < self.minimum_interval:
+                    await asyncio.sleep(self.minimum_interval - elapsed)
+            
+            self.last_call_time[key] = time.time()
+
+# Add this new class for feed management
+class FeedManager:
+    def __init__(self, feeds: Dict[str, str], timeout: int = 30):
+        self.feeds = feeds
+        self.timeout = timeout
+        self.rate_limiter = RateLimiter(calls_per_second=2.0)
+        self.session: Optional[aiohttp.ClientSession] = None
+
+    async def __aenter__(self):
+        """Set up the aiohttp session"""
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        self.session = aiohttp.ClientSession(timeout=timeout)
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Clean up the session"""
+        if self.session:
+            await self.session.close()
+
+    async def fetch_feed(self, source: str, url: str) -> List[Article]:
+        """Fetch and process a single feed"""
+        if not self.session:
+            raise RuntimeError("Session not initialized")
+
+        await self.rate_limiter.acquire(url)
+        
+        try:
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            if 'fda.gov' in url:
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+            async with self.session.get(url, ssl=ssl_context) as response:
+                if response.status != 200:
+                    logging.error(f"Error fetching {source}: {response.status}")
+                    return []
+
+                content = await response.text()
+                soup = BeautifulSoup(content, 'xml')
+                items = soup.find_all('item')
+                
+                articles = []
+                for item in items:
+                    if article := Article.from_rss_item(item, source):
+                        if topic := article.match_topic(TOPICS):
+                            article.topic = topic
+                            articles.append(article)
+
+                return articles
+
+        except Exception as e:
+            logging.error(f"Error processing feed {source}: {e}")
+            return []

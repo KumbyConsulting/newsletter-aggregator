@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, current_app
 from flask_cors import CORS
 import pandas as pd
 import os
@@ -9,6 +9,8 @@ from dotenv import load_dotenv
 from services.storage_service import StorageService
 from services.ai_service import AIService
 from services.config_service import ConfigService
+import asyncio
+from functools import wraps
 
 # Load environment variables
 load_dotenv()
@@ -239,38 +241,68 @@ def generate_summaries():
 def test_summary():
     return render_template('test_summary.html')
 
+def async_route(f):
+    @wraps(f)
+    def wrapped(*args, **kwargs):
+        return asyncio.run(f(*args, **kwargs))
+    return wrapped
+
 @app.route('/api/rag', methods=['POST'])
-def rag_query():
-    """Handle RAG-based queries"""
+@async_route
+async def rag_query():
+    """Handle RAG-based queries with streaming response"""
     try:
-        data = request.get_json()
+        data = request.get_json()  # No need for await with Flask
         query = data.get('query')
         use_history = data.get('use_history', True)
         
         if not query:
             return jsonify({"error": "No query provided"}), 400
             
-        result = ai_service.generate_rag_response(query, use_history=use_history)
-        return jsonify(result)
+        # Create response
+        response = await ai_service.generate_rag_response(
+            query=query,
+            use_history=use_history
+        )
+        
+        # Format response for frontend
+        with app.app_context():
+            return jsonify({
+                "response": response.text,
+                "sources": response.sources or [],  # Ensure sources is never null
+                "confidence": response.confidence,
+                "timestamp": response.timestamp,
+                "status": "success"
+            })
         
     except Exception as e:
         logging.error(f"Error in RAG query: {e}")
-        return jsonify({
-            "error": "Error processing query",
-            "response": None,
-            "sources": []
-        }), 500
+        with app.app_context():
+            return jsonify({
+                "error": str(e),
+                "status": "error",
+                "response": None,
+                "sources": []
+            }), 500
 
 @app.route('/api/rag/history', methods=['GET'])
 def get_rag_history():
     """Get conversation history"""
-    return jsonify({"history": ai_service.history})
+    try:
+        return jsonify({"history": ai_service.history})
+    except Exception as e:
+        logging.error(f"Error getting history: {e}")
+        return jsonify({"error": str(e), "history": []}), 500
 
 @app.route('/api/rag/history', methods=['DELETE'])
-def clear_rag_history():
+async def clear_rag_history():
     """Clear conversation history"""
-    ai_service.history = []
-    return jsonify({"message": "History cleared"})
+    try:
+        await ai_service.clear_history()
+        return jsonify({"message": "History cleared"})
+    except Exception as e:
+        logging.error(f"Error clearing history: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/similar-articles/<article_id>', methods=['GET'])
 def get_similar_articles(article_id):
