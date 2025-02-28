@@ -213,8 +213,4 @@ autorestart=true
 pytest tests/
 ```
 
-## License
-[Your License Here]
 
-## Support
-[Your Support Information]
