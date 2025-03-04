@@ -2,9 +2,65 @@
 
 {% block title %}Pharma News Assistant{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Dark mode styles */
+    .dark {
+        --bg-primary: #1a202c;
+        --bg-secondary: #2d3748;
+        --text-primary: #f7fafc;
+        --text-secondary: #e2e8f0;
+        --border-color: #4a5568;
+    }
+    
+    .dark body {
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+    }
+    
+    .dark .card {
+        background-color: var(--bg-secondary);
+        border-color: var(--border-color);
+    }
+    
+    .dark .btn-custom {
+        background-color: #4a5568;
+    }
+    
+    .dark .text-gray-600 {
+        color: #cbd5e0;
+    }
+    
+    .dark .bg-white {
+        background-color: var(--bg-secondary);
+    }
+    
+    .dark .bg-gray-50 {
+        background-color: #2d3748;
+    }
+    
+    .dark .text-blue-900 {
+        color: #90cdf4;
+    }
+    
+    .dark input, .dark textarea {
+        background-color: #4a5568;
+        color: var(--text-primary);
+        border-color: var(--border-color);
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-4xl mx-auto">
-    <h1 class="text-3xl font-bold mb-8 text-center text-blue-900">Pharmaceutical News Assistant</h1>
+    <!-- Header with dark mode toggle -->
+    <div class="flex justify-between items-center mb-8">
+        <h1 class="text-3xl font-bold text-blue-900">Pharmaceutical News Assistant</h1>
+        <button id="darkModeToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700">
+            <i class="fas fa-moon dark:hidden"></i>
+            <i class="fas fa-sun hidden dark:inline"></i>
+        </button>
+    </div>
     
     <!-- Conversation History -->
     <div id="conversationHistory" class="mb-8 space-y-4">
@@ -50,7 +106,10 @@
                   rows="4"
                   placeholder="Ask about pharmaceutical industry news, regulations, research, or market trends..."></textarea>
         
-        <div class="flex justify-end mt-4">
+        <div class="flex justify-between items-center mt-4">
+            <button id="voiceInputBtn" class="text-blue-600 hover:text-blue-800">
+                <i class="fas fa-microphone mr-2"></i>Voice Input
+            </button>
             <button onclick="submitQuery()" 
                     class="btn-custom px-6 py-2 rounded-lg">
                 <i class="fas fa-robot mr-2"></i>Get Answer
@@ -61,8 +120,32 @@
     <!-- Response Area -->
     <div id="response" class="hidden space-y-6">
         <div class="bg-white rounded-lg shadow-lg p-6">
-            <h2 class="text-xl font-bold mb-4 text-blue-900">Response</h2>
+            <div class="flex justify-between items-start mb-4">
+                <h2 class="text-xl font-bold text-blue-900">Response</h2>
+                
+                <!-- Save response button -->
+                <button id="saveResponseBtn" class="text-blue-600 hover:text-blue-800">
+                    <i class="far fa-bookmark"></i>
+                </button>
+            </div>
             <div id="responseText" class="prose max-w-none"></div>
+            
+            <!-- Feedback mechanism -->
+            <div class="mt-6 pt-4 border-t border-gray-200">
+                <p class="text-sm text-gray-600 mb-2">Was this response helpful?</p>
+                <div class="flex space-x-2">
+                    <button onclick="rateResponse(1)" class="feedback-btn p-2 rounded hover:bg-gray-100">
+                        <i class="far fa-thumbs-up"></i>
+                    </button>
+                    <button onclick="rateResponse(0)" class="feedback-btn p-2 rounded hover:bg-gray-100">
+                        <i class="far fa-thumbs-down"></i>
+                    </button>
+                </div>
+                <div id="feedbackSent" class="hidden mt-2 text-sm text-green-600">
+                    Thank you for your feedback!
+                </div>
+            </div>
+            
             <div class="mt-4 text-sm text-gray-600">
                 Confidence: <span id="confidenceScore">N/A</span>
             </div>
@@ -116,10 +199,57 @@ marked.setOptions({
 });
 
 let conversationHistory = [];
+let streamingEnabled = true; // Enable streaming by default
+let currentResponseId = null; // Track current response for feedback
+
+// Dark mode toggle
+function toggleDarkMode() {
+    document.documentElement.classList.toggle('dark');
+    localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
+}
+
+// Check user preference
+function setInitialTheme() {
+    if (localStorage.getItem('darkMode') === 'true' || 
+        (window.matchMedia('(prefers-color-scheme: dark)').matches && localStorage.getItem('darkMode') === null)) {
+        document.documentElement.classList.add('dark');
+    }
+}
 
 function toggleSettings() {
     const panel = document.getElementById('settingsPanel');
     panel.classList.toggle('hidden');
+}
+
+// Voice input functionality
+function startVoiceInput() {
+    if (!('webkitSpeechRecognition' in window)) {
+        alert("Your browser doesn't support speech recognition. Try Chrome.");
+        return;
+    }
+    
+    const recognition = new webkitSpeechRecognition();
+    recognition.continuous = false;
+    recognition.lang = 'en-US';
+    
+    recognition.onstart = function() {
+        const voiceBtn = document.getElementById('voiceInputBtn');
+        voiceBtn.innerHTML = '<i class="fas fa-microphone-slash mr-2"></i>Listening...';
+        voiceBtn.classList.add('text-red-600');
+    };
+    
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('query').value = transcript;
+    };
+    
+    recognition.onend = function() {
+        const voiceBtn = document.getElementById('voiceInputBtn');
+        voiceBtn.innerHTML = '<i class="fas fa-microphone mr-2"></i>Voice Input';
+        voiceBtn.classList.remove('text-red-600');
+    };
+    
+    recognition.start();
 }
 
 async function submitQuery() {
@@ -132,34 +262,13 @@ async function submitQuery() {
     showLoading(true);
     
     try {
-        const response = await fetch('/api/rag', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify({ 
-                query, 
-                use_history: useHistory 
-            })
-        });
+        currentResponseId = Date.now().toString(); // Generate a unique ID for this response
         
-        const data = await response.json();
-        
-        if (!response.ok || data.status === 'error') {
-            throw new Error(data.error || 'Failed to get response');
+        if (streamingEnabled) {
+            await handleStreamingQuery(query, useHistory, showSources);
+        } else {
+            await handleStandardQuery(query, useHistory, showSources);
         }
-        
-        // Update history
-        conversationHistory.push({
-            query,
-            response: data.response,
-            timestamp: data.timestamp,
-            confidence: data.confidence
-        });
-        
-        updateHistoryDisplay();
-        displayResponse(data, showSources);
         
         // Clear input
         document.getElementById('query').value = '';
@@ -172,9 +281,123 @@ async function submitQuery() {
         document.getElementById('response').classList.remove('hidden');
         document.getElementById('response').innerHTML = '';
         document.getElementById('response').appendChild(errorMessage);
-    } finally {
         showLoading(false);
     }
+}
+
+async function handleStreamingQuery(query, useHistory, showSources) {
+    // Show response area immediately
+    const response = document.getElementById('response');
+    const responseText = document.getElementById('responseText');
+    const sourcesList = document.getElementById('sourcesList');
+    const confidenceScore = document.getElementById('confidenceScore');
+    const sourcesSection = document.getElementById('sourcesSection');
+    
+    response.classList.remove('hidden');
+    responseText.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+    sourcesSection.style.display = showSources ? 'block' : 'none';
+    sourcesList.innerHTML = '<div class="animate-pulse bg-gray-200 h-20 rounded"></div>';
+    
+    try {
+        // Create EventSource for streaming
+        const eventSource = new EventSource(`/api/rag/stream?query=${encodeURIComponent(query)}&use_history=${useHistory}`);
+        let fullResponse = '';
+        
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            
+            if (data.chunk) {
+                fullResponse += data.chunk;
+                responseText.innerHTML = marked.parse(fullResponse);
+                // Scroll to bottom of response
+                responseText.scrollTop = responseText.scrollHeight;
+            }
+            
+            if (data.done) {
+                // Update sources
+                if (showSources && Array.isArray(data.sources)) {
+                    sourcesList.innerHTML = data.sources.map(source => `
+                        <div class="bg-white p-4 rounded shadow">
+                            <h3 class="font-bold">${source.title || 'Untitled'}</h3>
+                            <p class="text-sm text-gray-600">
+                                ${source.source || 'Unknown source'} - 
+                                ${source.date || 'No date'}
+                            </p>
+                            ${source.link ? `
+                                <a href="${source.link}" 
+                                   class="text-blue-600 hover:text-blue-800 text-sm"
+                                   target="_blank">
+                                    Read original article
+                                </a>
+                            ` : ''}
+                        </div>
+                    `).join('');
+                }
+                
+                // Update history
+                const timestamp = new Date().toISOString();
+                conversationHistory.push({
+                    id: currentResponseId,
+                    query,
+                    response: data.full_response || fullResponse,
+                    timestamp: timestamp,
+                    confidence: 0.8, // Default confidence
+                    feedback: null
+                });
+                
+                updateHistoryDisplay();
+                showLoading(false);
+                eventSource.close();
+            }
+        };
+        
+        eventSource.onerror = function(error) {
+            console.error('EventSource error:', error);
+            responseText.innerHTML = marked.parse(fullResponse || 'Error receiving streaming response');
+            showLoading(false);
+            eventSource.close();
+        };
+        
+    } catch (error) {
+        console.error('Streaming error:', error);
+        responseText.innerHTML = 'Error with streaming response. Please try again.';
+        showLoading(false);
+        throw error;
+    }
+}
+
+async function handleStandardQuery(query, useHistory, showSources) {
+    const response = await fetch('/api/rag', {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+            query, 
+            use_history: useHistory 
+        })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok || data.status === 'error') {
+        throw new Error(data.error || 'Failed to get response');
+    }
+    
+    // Update history
+    conversationHistory.push({
+        id: currentResponseId,
+        query,
+        response: data.response,
+        timestamp: data.timestamp,
+        confidence: data.confidence,
+        feedback: null
+    });
+    
+    updateHistoryDisplay();
+    displayResponse(data, showSources);
+    showLoading(false);
 }
 
 function displayResponse(data, showSources) {
@@ -212,6 +435,12 @@ function displayResponse(data, showSources) {
         `).join('');
     }
     
+    // Reset feedback UI
+    document.getElementById('feedbackSent').classList.add('hidden');
+    document.querySelectorAll('.feedback-btn').forEach(btn => {
+        btn.classList.remove('text-blue-600', 'text-red-600');
+    });
+    
     response.classList.remove('hidden');
 }
 
@@ -232,10 +461,18 @@ function updateHistoryDisplay() {
             <div class="font-semibold text-blue-900 mb-2">
                 <i class="fas fa-robot mr-2"></i>Answer:
             </div>
-            <div class="prose">${marked(item.response)}</div>
+            <div class="prose">${marked.parse(item.response)}</div>
             
-            <div class="mt-4 text-sm text-gray-600">
-                Confidence: ${(item.confidence * 100).toFixed(1)}%
+            <div class="flex justify-between items-center mt-4">
+                <div class="text-sm text-gray-600">
+                    Confidence: ${(item.confidence * 100).toFixed(1)}%
+                </div>
+                ${item.feedback !== null ? `
+                <div class="text-sm ${item.feedback ? 'text-green-600' : 'text-red-600'}">
+                    <i class="fas fa-${item.feedback ? 'thumbs-up' : 'thumbs-down'}"></i> 
+                    ${item.feedback ? 'Helpful' : 'Not helpful'}
+                </div>
+                ` : ''}
             </div>
         </div>
     `).join('');
@@ -243,7 +480,9 @@ function updateHistoryDisplay() {
 
 function showLoading(show) {
     document.getElementById('loading').classList.toggle('hidden', !show);
-    document.getElementById('response').classList.toggle('hidden', show);
+    if (!show) {
+        document.getElementById('response').classList.remove('hidden');
+    }
 }
 
 async function clearHistory() {
@@ -256,12 +495,156 @@ async function clearHistory() {
     }
 }
 
+// Submit feedback for a response
+async function rateResponse(rating) {
+    if (!currentResponseId) return;
+    
+    try {
+        // Update UI first
+        const thumbsUp = document.querySelector('.feedback-btn:first-child');
+        const thumbsDown = document.querySelector('.feedback-btn:last-child');
+        
+        if (rating) {
+            thumbsUp.classList.add('text-blue-600');
+            thumbsDown.classList.remove('text-red-600');
+        } else {
+            thumbsUp.classList.remove('text-blue-600');
+            thumbsDown.classList.add('text-red-600');
+        }
+        
+        // Show thank you message
+        document.getElementById('feedbackSent').classList.remove('hidden');
+        
+        // Update history
+        const historyItem = conversationHistory.find(item => item.id === currentResponseId);
+        if (historyItem) {
+            historyItem.feedback = rating;
+            updateHistoryDisplay();
+        }
+        
+        // You would typically send this to your backend
+        /*
+        await fetch('/api/rag/feedback', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                response_id: currentResponseId,
+                rating: rating,
+                timestamp: new Date().toISOString()
+            })
+        });
+        */
+    } catch (error) {
+        console.error('Error submitting feedback:', error);
+    }
+}
+
+// Save current response to bookmarks
+function saveResponse() {
+    const currentResponse = conversationHistory.find(item => item.id === currentResponseId);
+    if (!currentResponse) return;
+    
+    const savedResponses = JSON.parse(localStorage.getItem('savedResponses') || '[]');
+    
+    // Check if already saved
+    if (savedResponses.some(item => item.id === currentResponseId)) {
+        alert('This response is already saved');
+        return;
+    }
+    
+    // Add to saved responses
+    savedResponses.push(currentResponse);
+    localStorage.setItem('savedResponses', JSON.stringify(savedResponses));
+    
+    // Update UI
+    const saveBtn = document.getElementById('saveResponseBtn');
+    saveBtn.innerHTML = '<i class="fas fa-bookmark"></i>';
+    
+    // Show notification
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 left-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+    toast.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Response saved!';
+    document.body.appendChild(toast);
+    
+    // Remove toast after 3 seconds
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
 // Load history on page load
 document.addEventListener('DOMContentLoaded', async () => {
     try {
+        // Set initial theme
+        setInitialTheme();
+        
+        // Dark mode toggle event listener
+        document.getElementById('darkModeToggle').addEventListener('click', toggleDarkMode);
+        
+        // Voice input button
+        document.getElementById('voiceInputBtn').addEventListener('click', startVoiceInput);
+        
+        // Save response button
+        document.getElementById('saveResponseBtn').addEventListener('click', saveResponse);
+        
+        // Add streaming toggle to settings
+        const settingsPanel = document.getElementById('settingsPanel');
+        const streamingToggle = document.createElement('div');
+        streamingToggle.className = 'flex items-center justify-between mt-2';
+        streamingToggle.innerHTML = `
+            <label class="inline-flex items-center">
+                <input type="checkbox" id="enableStreaming" checked 
+                       class="form-checkbox text-blue-600">
+                <span class="ml-2">Enable streaming responses</span>
+            </label>
+        `;
+        settingsPanel.appendChild(streamingToggle);
+        
+        // Add event listener for streaming toggle
+        document.getElementById('enableStreaming').addEventListener('change', function(e) {
+            streamingEnabled = e.target.checked;
+        });
+        
+        // Add typing indicator styles
+        const style = document.createElement('style');
+        style.textContent = `
+            .typing-indicator {
+                display: flex;
+                align-items: center;
+                margin: 10px 0;
+            }
+            .typing-indicator span {
+                height: 8px;
+                width: 8px;
+                background: #3B82F6;
+                border-radius: 50%;
+                display: inline-block;
+                margin-right: 5px;
+                animation: bounce 1.5s infinite ease-in-out;
+            }
+            .typing-indicator span:nth-child(2) {
+                animation-delay: 0.2s;
+            }
+            .typing-indicator span:nth-child(3) {
+                animation-delay: 0.4s;
+            }
+            @keyframes bounce {
+                0%, 60%, 100% { transform: translateY(0); }
+                30% { transform: translateY(-5px); }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Load conversation history
         const response = await fetch('/api/rag/history');
         const data = await response.json();
-        conversationHistory = data.history;
+        conversationHistory = data.history.map(item => ({
+            ...item,
+            id: item.id || Date.now().toString() + Math.random().toString(36).substring(2, 8),
+            feedback: null
+        }));
         updateHistoryDisplay();
     } catch (error) {
         console.error('Error loading history:', error);
@@ -275,5 +658,10 @@ document.getElementById('query').addEventListener('keydown', (e) => {
         submitQuery();
     }
 });
+
+function toggleShortcutsHelp() {
+    const helpModal = document.getElementById('shortcutsHelp');
+    helpModal.classList.toggle('hidden');
+}
 </script>
 {% endblock %} 

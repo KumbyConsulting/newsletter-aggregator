@@ -1,3 +1,8 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -16,43 +21,53 @@ lib64/
 parts/
 sdist/
 var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
-# Virtual Environment
 venv/
-ENV/
+.venv/
+
+# Flask
+instance/
+.webassets-cache
+
+# ChromaDB
+chroma_db/
+
+# Logs
+*.log
+logs/
+
+# Cache files
+summary_cache.json
+*.cache
+
+# Data files
+news_alerts.csv
+*.csv
+*.json
+!package.json
+!package-lock.json
+
+# Google Cloud
+.gcloud/
+*.pem
+credentials.json
+token.json
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.DS_Store
 
-# Project specific
-*.csv
-*.json
-.env
-summary_cache.json
-news_alerts*.csv
+# Temporary files
+tmp/
+temp/
+*.tmp
 
-# Vector DB
-chroma_db/
-*.parquet
-embeddings/
-
-# Large files
-*.vec
-*.bin
-
-# Environment and Configuration
-.env
-.env.*
-!.env.example
-
-# Secrets
-*.key
-*.pem
-secrets/
+# Backup files
+*.bak
+backups/
+node_modules

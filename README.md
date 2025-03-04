@@ -1,216 +1,287 @@
-# Pharmaceutical Industry News Aggregator
+# Newsletter Aggregator
 
-A Flask-based web application that aggregates and monitors news from various pharmaceutical industry sources, providing real-time updates, AI-powered summaries, and intelligent question answering through RAG (Retrieval Augmented Generation).
+A comprehensive application for aggregating, summarizing, and querying pharmaceutical industry newsletters using Google Cloud services and Retrieval-Augmented Generation (RAG).
 
 ## Features
 
-### Core Features
-- **Automated News Scraping**: Collects news from multiple pharmaceutical industry sources via RSS feeds
-- **Periodic Updates**: Configurable automatic news updates at specified intervals
-- **Topic Classification**: Organizes news into 25 different pharmaceutical industry categories
-- **Search Functionality**: Both keyword and semantic search capabilities
-- **Article Summarization**: AI-powered text summarization with contextual awareness
-- **Pagination**: Displays 10 articles per page for better readability
-- **Duplicate Prevention**: Automatically removes duplicate articles
-- **HTML Cleaning**: Removes HTML tags from article descriptions
+- **Newsletter Scraping**: Automatically scrapes pharmaceutical industry news from various sources
+- **AI-Powered Summaries**: Generates concise summaries of articles using Google's Gemini AI
+- **RAG-Based Querying**: Ask questions about pharmaceutical topics and get answers based on the aggregated content
+- **Google Cloud Integration**: Seamlessly integrates with Google Cloud services:
+  - Cloud Storage for backups
+  - Vertex AI for enhanced AI capabilities
+  - Cloud Logging for centralized logging
+  - Cloud Monitoring for performance tracking
+  - Secret Manager for secure credential management
+- **Streaming Responses**: Real-time streaming of AI responses for better user experience
 
-### RAG Features
-- **Vector Storage**: Uses ChromaDB for efficient semantic search and retrieval
-- **Contextual Summarization**: Generates summaries using related articles as context
-- **Intelligent Q&A**: Answer questions using relevant articles as context
-- **Source Attribution**: Provides sources for generated answers
-- **Similar Article Discovery**: Finds semantically similar articles
+## Prerequisites
 
-## Configuration
+- Python 3.11+
+- Google Cloud account with billing enabled
+- Gemini API key
 
-### Environment Variables
-```env
-# Required
-GEMINI_API_KEY=your-api-key
-FLASK_SECRET_KEY=your-secret-key
+## Local Setup
 
-# Optional
-RATE_LIMIT_DELAY=1
-SCRAPE_INTERVAL_SECONDS=3600  # Default 1 hour
-CACHE_EXPIRY_DAYS=30
-DEBUG_MODE=False
-```
+1. Clone the repository:
+   ```
+   git clone <repository-url>
+   cd newsletter-aggregator
+   ```
 
-### Periodic Scraping Configuration
-```python
-# Default settings in newsLetter.py
-DEFAULT_SCRAPE_INTERVAL = 3600  # Default to running every hour (in seconds)
-MINIMUM_SCRAPE_INTERVAL = 300   # Minimum 5 minutes between scrapes
-```
-
-## Installation
-
-1. Clone the repository
-```bash
-git clone <repository-url>
-cd newsletter
-```
-
-2. Create virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
-```
+2. Create a virtual environment:
+   ```
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
 3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+   ```
+   pip install -r requirements.txt
+   ```
 
-4. Configure environment:
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
+4. Create a `.env` file based on `.env.example`:
+   ```
+   cp .env.example .env
+   ```
 
-## Running the Application
+5. Edit the `.env` file with your configuration:
+   - Add your Gemini API key
+   - Configure Google Cloud settings if needed
+   - Adjust other settings as necessary
 
-### Development Mode
-```bash
-python app.py
-```
+6. Run the application:
+   ```
+   python app.py
+   ```
 
-### Production Mode
-```bash
-# Start the Flask application
-gunicorn app:app
+## Deployment
 
-# Start the news scraper service (in separate terminal)
-python newsLetter.py
-```
+The deployment files for this application have been removed. A new deployment process will be implemented according to your specific requirements.
+
+## Google Cloud Configuration
+
+### Secret Manager
+
+To use Secret Manager for storing sensitive information:
+
+1. Set `USE_SECRET_MANAGER=true` in your `.env` file
+2. Configure the following secrets in Google Cloud Secret Manager:
+   - `gemini-api-key`
+   - `flask-secret-key`
+
+### Cloud Storage Backups
+
+To enable automatic backups to Cloud Storage:
+
+1. Set the following in your `.env` file:
+   ```
+   USE_GCS_BACKUP=true
+   GCS_BUCKET_NAME=your-backup-bucket-name
+   ```
+
+2. Create a Cloud Storage bucket with an appropriate lifecycle policy.
+
+## API Endpoints
+
+The application provides several API endpoints:
+
+- `/api/rag`: Submit questions for RAG-based answers
+- `/api/rag/stream`: Stream RAG-based answers in real-time
+- `/api/rag/history`: Manage conversation history
+- `/api/update`: Trigger news scraping
+- `/api/backup`: Create backups to Cloud Storage
+- `/api/backups`: List available backups
+- `/api/restore`: Restore from a backup
+- `/api/articles`: Get paginated, filtered articles
+- `/api/topics`: Get topic distribution statistics
+
+## Web Interfaces
+
+- `/`: Main article listing page
+- `/rag`: RAG interface for asking questions
+- `/test_summary`: Test interface for article summarization
 
 ## Architecture
 
-### Component Overview
-```
-newsletter/
-├── app.py                 # Main Flask application
-├── newsLetter.py         # News scraping and scheduler service
-├── services/
-│   ├── ai_service.py     # AI and RAG functionality
-│   ├── storage_service.py # Vector storage and retrieval
-│   ├── config_service.py # Configuration management
-│   └── cache_service.py  # Caching functionality
-├── templates/            # HTML templates
-└── tests/               # Test suite
-```
+The application follows a modular architecture with several key services:
 
-### Key Components
+- **Storage Service**: Manages article storage and retrieval using ChromaDB or Firestore
+- **AI Service**: Handles interactions with Gemini AI or Vertex AI
+- **Configuration Service**: Manages application settings and secrets
+- **Logging Service**: Configures logging with Cloud Logging integration
+- **Monitoring Service**: Tracks application performance metrics
 
-#### newsLetter.py
-- Periodic news scraping scheduler
-- RSS feed processing
-- Article deduplication
-- Error handling and retry logic
-- SSL certificate handling
+## Troubleshooting
 
-#### ai_service.py
-- RAG implementation using Gemini AI
-- Contextual summarization
-- Question answering with source attribution
-- Conversation history management
+- **Environment Issues**: Make sure all required environment variables are set correctly in your `.env` file
+- **API Key Issues**: Verify that your Gemini API key is valid and correctly formatted
+- **Connection Issues**: Check your internet connection and firewall settings
+- **Google Cloud Service Issues**: Verify your Google Cloud authentication is correctly set up for any enabled services
 
-#### storage_service.py
-- ChromaDB integration
-- Vector storage and retrieval
-- Similar article discovery
-- Batch article processing
+## License
 
-## Monitoring
+[MIT License](LICENSE)
 
-### Key Metrics
-- Feed success rate
-- Article match rate
-- Summary generation rate
-- Cache hit rate
-- Processing duration
-- API rate limits
-- Scraping interval adherence
+# Newsletter Aggregator Web Crawler
 
-### Health Checks
-- Feed availability
-- API status
-- Storage capacity
-- Cache performance
-- Scheduler status
+This module enhances the existing newsletter aggregator with a more robust and reliable web crawler. It builds on the foundation of the original `newsLetter.py` implementation but adds additional features for more reliable content extraction, cache management, and error handling.
 
-## Error Handling
+## Features
 
-### SSL Verification
-```python
-ssl_context = ssl.create_default_context(cafile=certifi.where())
-if 'fda.gov' in url:
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
-```
+- **Robust Cache Management**: Atomic writes and better error handling to prevent JSON parse errors
+- **Domain-aware Rate Limiting**: Prevents overloading websites while allowing parallel crawling of different domains
+- **Respect for robots.txt**: Follows crawling etiquette by respecting websites' robots.txt directives
+- **Intelligent Content Extraction**: Uses multiple strategies to extract article content, titles, authors, and dates
+- **Link Discovery and Following**: Ability to discover and follow links with depth control
+- **Comprehensive Error Handling**: Retries with exponential backoff, SSL handling, and robust error reporting
+- **Metrics Collection**: Detailed statistics on crawl performance and results
+- **RSS Feed Support**: Integrated fetching and parsing of RSS feeds
+- **Progress Reporting**: Callback mechanism to report on crawl progress
 
-### Rate Limiting
-```python
-RATE_LIMIT_DELAY = 1  # seconds between API calls
-await asyncio.sleep(RATE_LIMIT_DELAY)
-```
+## Installation
 
-### Retry Logic
-```python
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-```
-
-## Production Deployment
-
-### Requirements
-- SSL certificates
-- Process manager (e.g., supervisord)
-- Monitoring setup
-- Backup strategy
-
-### Example Supervisor Configuration
-```ini
-[program:newsletter-web]
-command=/path/to/venv/bin/gunicorn app:app
-directory=/path/to/newsletter
-user=newsletter
-autostart=true
-autorestart=true
-
-[program:newsletter-scraper]
-command=/path/to/venv/bin/python newsLetter.py
-directory=/path/to/newsletter
-user=newsletter
-autostart=true
-autorestart=true
-```
-
-## Security Considerations
-
-### API Protection
-- Rate limiting
-- Input validation
-- Request sanitization
-- API key rotation
-
-### Data Security
-- Secure storage
-- Regular backups
-- Access control
-- SSL/TLS encryption
-
-## Contributing
-
-### Development Guidelines
-1. Add tests for new features
-2. Document configuration changes
-3. Update performance metrics
-4. Follow code style guide
-
-### Testing
 ```bash
-pytest tests/
+# Install required dependencies
+pip install aiohttp beautifulsoup4 feedparser certifi
 ```
+
+## Usage
+
+### Basic Usage
+
+```python
+import asyncio
+from web_crawler import WebCrawler
+
+async def main():
+    # Initialize crawler as a context manager
+    async with WebCrawler(cache_file="crawler_cache.json") as crawler:
+        # Fetch a single URL
+        result = await crawler.fetch_url("https://example.com")
+        print(f"Title: {result.get('title')}")
+        print(f"Excerpt: {result.get('excerpt')}")
+        
+        # Fetch an RSS feed
+        articles = await crawler.fetch_rss_feed("https://example.com/feed.xml")
+        print(f"Found {len(articles)} articles")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Advanced Crawling
+
+```python
+import asyncio
+from web_crawler import WebCrawler
+
+async def main():
+    # Progress callback function
+    def status_callback(progress, message, processed, total, found):
+        print(f"Progress: {progress}%, {message} ({processed}/{total}, found: {found})")
+    
+    # Initialize with custom settings
+    async with WebCrawler(
+        cache_file="crawler_cache.json",
+        max_age_days=7,  # Cache TTL
+        calls_per_second=2.0,  # Rate limit
+        timeout_seconds=30,
+        max_redirects=5,
+        max_retries=3,
+        user_agent="MyCustomBot/1.0",
+        max_urls_per_domain=50,
+        respect_robots_txt=True
+    ) as crawler:
+        # Crawl multiple seed URLs with link following
+        results = await crawler.crawl(
+            seed_urls=["https://example.com", "https://another-site.com"],
+            follow_links=True,
+            max_depth=2,
+            max_urls=100,
+            status_callback=status_callback
+        )
+        
+        # Print metrics
+        print("\nCrawl Metrics:")
+        for key, value in results['metrics'].items():
+            print(f"{key}: {value}")
+        
+        # Process results
+        for result in results['results']:
+            if result.get('success'):
+                print(f"URL: {result['url']}")
+                print(f"Title: {result['title']}")
+                print(f"Content length: {len(result['content'])}")
+                print("---")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Integration with Newsletter Aggregator
+
+To use the web crawler with the existing newsletter aggregator system:
+
+1. Import the `WebCrawler` class in your main application:
+
+```python
+from web_crawler import WebCrawler
+```
+
+2. Replace the existing article content fetching with the new crawler:
+
+```python
+async with WebCrawler() as crawler:
+    # Fetch and process RSS feeds
+    articles = []
+    for source, url in RSS_FEEDS.items():
+        feed_articles = await crawler.fetch_rss_feed(url)
+        for article in feed_articles:
+            # Process articles as needed
+            articles.append(article)
+            
+    # Optionally fetch full content for each article
+    for article in articles:
+        if article.get('link'):
+            result = await crawler.fetch_url(article['link'])
+            if result.get('success'):
+                article['full_content'] = result.get('content', '')
+                article['image_url'] = result.get('image_url', '')
+```
+
+## Handling Cache Errors
+
+The web crawler includes a `RobustCache` class that handles cache loading errors by:
+
+1. Creating a backup of corrupted cache files
+2. Gracefully falling back to an empty cache when JSON parsing fails
+3. Using atomic writes to prevent cache corruption during saving
+4. Cleaning up old entries to maintain performance
+
+This addresses the cache loading errors seen in the logs such as:
+```
+ERROR - Error loading cache: Expecting value: line 1 column 1 (char 0)
+```
+
+## Customization
+
+The web crawler is highly customizable with parameters for:
+
+- Rate limiting
+- Timeout and retry behavior
+- Cache management
+- Content extraction strategies
+- Domain limits
+
+Refer to the class documentation for details on all available options.
+
+## Requirements
+
+- Python 3.7+
+- aiohttp
+- BeautifulSoup4
+- feedparser
+- certifi
 
 

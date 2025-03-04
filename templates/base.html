@@ -5,50 +5,138 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Pharma News Dashboard{% endblock %}</title>
     
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+    
     <!-- Tailwind CSS -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     <style>
-        .bg-custom { background-color: #f1f2e7; }
-        .card-custom { background-color: #f1f2e7; color: #00405e; }
+        :root {
+            --primary-color: #1a365d;
+            --secondary-color: #2c5282;
+            --accent-color: #f6ad55;
+            --background-color: #f7fafc;
+            --card-color: #ffffff;
+            --text-primary: #2d3748;
+            --text-secondary: #4a5568;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-primary);
+        }
+        
+        h1, h2, h3, h4 {
+            font-family: 'Playfair Display', serif;
+        }
+        
+        .bg-custom { 
+            background-color: var(--primary-color);
+            color: white;
+        }
+        
+        .card-custom { 
+            background-color: var(--card-color);
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            overflow: hidden;
+        }
+        
+        .card-custom:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+        }
+        
         .btn-custom {
-            background-color: #00405e;
-            color: #f9e15e;
+            background-color: var(--secondary-color);
+            color: white;
+            font-weight: 500;
             transition: all 0.3s ease;
+            border-radius: 0.5rem;
         }
+        
         .btn-custom:hover {
-            background-color: #005c8a;
+            background-color: var(--primary-color);
             transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
+        
+        .accent-btn {
+            background-color: var(--accent-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .accent-btn:hover {
+            background-color: #f59e0b;
+            color: var(--primary-color);
+        }
+        
         .loader {
-            border-top-color: #00405e;
-            animation: spinner 1.5s linear infinite;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid var(--secondary-color);
+            width: 24px;
+            height: 24px;
+            animation: spinner 1s linear infinite;
         }
+        
         @keyframes spinner {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        .nav-link {
+            position: relative;
+            color: white;
+            font-weight: 500;
+            padding: 0.5rem 0;
+        }
+        
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: 0;
+            left: 0;
+            background-color: var(--accent-color);
+            transition: width 0.3s ease;
+        }
+        
+        .nav-link:hover::after {
+            width: 100%;
+        }
+        
+        .nav-link.active::after {
+            width: 100%;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="bg-gray-100">
+<body>
     <!-- Navigation -->
-    <nav class="bg-custom shadow-lg">
+    <nav class="bg-custom shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4">
             <div class="flex justify-between h-16">
-                <div class="flex">
+                <div class="flex items-center">
                     <a href="{{ url_for('index') }}" class="flex items-center">
-                        <i class="fas fa-newspaper text-2xl text-blue-900 mr-2"></i>
-                        <span class="text-xl font-bold text-blue-900">Pharma News</span>
+                        <i class="fas fa-newspaper text-2xl text-white mr-2"></i>
+                        <span class="text-xl font-bold text-white">Pharma News</span>
                     </a>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <a href="{{ url_for('index') }}" class="text-blue-900 hover:text-blue-700">
+                <div class="flex items-center space-x-6">
+                    <a href="{{ url_for('index') }}" class="nav-link {% if request.path == url_for('index') %}active{% endif %}">
                         <i class="fas fa-home mr-1"></i> Home
                     </a>
-                    <a href="{{ url_for('rag_interface') }}" class="text-blue-900 hover:text-blue-700">
+                    <a href="{{ url_for('rag_interface') }}" class="nav-link {% if request.path == url_for('rag_interface') %}active{% endif %}">
                         <i class="fas fa-robot mr-1"></i> AI Assistant
                     </a>
                 </div>
@@ -61,7 +149,8 @@
         {% if messages %}
             <div class="max-w-7xl mx-auto px-4 mt-4">
                 {% for category, message in messages %}
-                    <div class="p-4 mb-4 rounded-lg {% if category == 'error' %}bg-red-100 text-red-700{% elif category == 'success' %}bg-green-100 text-green-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                    <div class="p-4 mb-4 rounded-lg flex items-center {% if category == 'error' %}bg-red-100 text-red-700{% elif category == 'success' %}bg-green-100 text-green-700{% else %}bg-blue-100 text-blue-700{% endif %}">
+                        <i class="fas {% if category == 'error' %}fa-exclamation-circle{% elif category == 'success' %}fa-check-circle{% else %}fa-info-circle{% endif %} mr-3 text-lg"></i>
                         {{ message }}
                     </div>
                 {% endfor %}
@@ -70,9 +159,10 @@
     {% endwith %}
 
     <!-- Loading Indicator -->
-    <div id="loader" class="hidden fixed top-0 left-0 w-full h-full bg-white bg-opacity-75 z-50">
-        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-            <div class="loader border-4 border-gray-200 rounded-full w-12 h-12"></div>
+    <div id="loader" class="hidden fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white p-5 rounded-lg shadow-lg flex flex-col items-center">
+            <div class="loader mb-3"></div>
+            <p class="text-gray-700">Loading...</p>
         </div>
     </div>
 
@@ -82,9 +172,24 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-custom mt-8 py-4">
-        <div class="max-w-7xl mx-auto px-4 text-center text-blue-900">
-            <p>&copy; 2025 Kumby Consulting Newsboard. All rights reserved.</p>
+    <footer class="bg-custom mt-8 py-6">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-4 md:mb-0">
+                    <p class="text-white">&copy; 2025 Kumby Consulting Newsboard. All rights reserved.</p>
+                </div>
+                <div class="flex space-x-4">
+                    <a href="#" class="text-white hover:text-accent-color">
+                        <i class="fab fa-twitter"></i>
+                    </a>
+                    <a href="#" class="text-white hover:text-accent-color">
+                        <i class="fab fa-linkedin"></i>
+                    </a>
+                    <a href="#" class="text-white hover:text-accent-color">
+                        <i class="fab fa-facebook"></i>
+                    </a>
+                </div>
+            </div>
         </div>
     </footer>
 

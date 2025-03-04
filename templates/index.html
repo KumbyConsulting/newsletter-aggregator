@@ -2,79 +2,320 @@
 
 {% block title %}News Dashboard{% endblock %}
 
+{% block extra_css %}
+<style>
+    .article-card {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .article-card__image {
+        height: 180px;
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
+        border-top-left-radius: 0.75rem;
+        border-top-right-radius: 0.75rem;
+        position: relative;
+    }
+    
+    .article-card__image-placeholder {
+        background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .article-card__topic {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+    }
+    
+    .article-card__content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .article-card__title {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        line-height: 1.4;
+    }
+    
+    .article-card__description {
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        line-height: 1.6;
+    }
+    
+    .article-card__footer {
+        margin-top: auto;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(0,0,0,0.05);
+    }
+    
+    .search-container {
+        background-color: white;
+        border-radius: 1rem;
+        padding: 1.5rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        margin-bottom: 2rem;
+    }
+    
+    .topic-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.025em;
+        background-color: rgba(49, 130, 206, 0.1);
+        color: var(--secondary-color);
+        transition: all 0.2s ease;
+    }
+    
+    .topic-badge:hover {
+        background-color: rgba(49, 130, 206, 0.2);
+    }
+    
+    .action-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        transition: all 0.2s ease;
+    }
+    
+    .action-btn:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+    }
+    
+    .pagination-container {
+        background-color: white;
+        border-radius: 0.75rem;
+        padding: 1rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+    
+    .skeleton {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 6px;
+        background-color: rgba(0, 0, 0, 0.1);
+        border-radius: 3px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+    
+    .progress-bar__fill {
+        height: 100%;
+        background-color: var(--secondary-color);
+        border-radius: 3px;
+        transition: width 0.5s ease;
+        width: 0%;
+    }
+    
+    .update-loader {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    
+    .update-loader__content {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 0.75rem;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        width: 90%;
+        max-width: 500px;
+        text-align: center;
+    }
+    
+    .update-loader__icon {
+        display: inline-block;
+        position: relative;
+        width: 80px;
+        height: 80px;
+    }
+    
+    .update-loader__icon div {
+        position: absolute;
+        top: 33px;
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        background: var(--secondary-color);
+        animation-timing-function: cubic-bezier(0, 1, 1, 0);
+    }
+    
+    .update-loader__icon div:nth-child(1) {
+        left: 8px;
+        animation: update-loader1 0.6s infinite;
+    }
+    
+    .update-loader__icon div:nth-child(2) {
+        left: 8px;
+        animation: update-loader2 0.6s infinite;
+    }
+    
+    .update-loader__icon div:nth-child(3) {
+        left: 32px;
+        animation: update-loader2 0.6s infinite;
+    }
+    
+    .update-loader__icon div:nth-child(4) {
+        left: 56px;
+        animation: update-loader3 0.6s infinite;
+    }
+    
+    @keyframes update-loader1 {
+        0% { transform: scale(0); }
+        100% { transform: scale(1); }
+    }
+    
+    @keyframes update-loader2 {
+        0% { transform: translate(0, 0); }
+        100% { transform: translate(24px, 0); }
+    }
+    
+    @keyframes update-loader3 {
+        0% { transform: scale(1); }
+        100% { transform: scale(0); }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="max-w-7xl mx-auto">
-    <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold text-blue-900">Pharmaceutical Industry News</h1>
-        <form action="{{ url_for('update_articles') }}" method="post" class="inline">
-            <button type="submit" class="btn-custom px-4 py-2 rounded-lg shadow hover:shadow-lg">
+    <!-- Header Section -->
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+            <h1 class="text-4xl font-bold text-primary-color mb-2">Pharmaceutical Industry News</h1>
+            <p class="text-gray-600">Stay updated with the latest developments in the pharmaceutical industry</p>
+        </div>
+        <div class="flex space-x-2">
+            <button id="updateNewsBtn" class="btn-custom px-4 py-2 rounded-lg shadow hover:shadow-lg flex items-center">
                 <i class="fas fa-sync-alt mr-2"></i>Update News
             </button>
-        </form>
+            
+            <!-- Admin dropdown menu for storage management -->
+            <div class="relative inline-block text-left hidden">
+                <button id="adminDropdownBtn" class="bg-gray-700 text-white px-4 py-2 rounded-lg shadow hover:shadow-lg flex items-center">
+                    <i class="fas fa-database mr-2"></i>Storage
+                    <i class="fas fa-chevron-down ml-2"></i>
+                </button>
+                
+                <div id="adminDropdownMenu" class="origin-top-right absolute right-0 mt-2 w-48 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 divide-y divide-gray-100 focus:outline-none z-10 hidden">
+                    <div class="py-1">
+                        <button id="exportToCsvBtn" class="text-gray-700 group flex items-center px-4 py-2 text-sm w-full text-left hover:bg-gray-100">
+                            <i class="fas fa-file-export mr-3 text-gray-500"></i>
+                            Export to CSV
+                        </button>
+                        <button id="forceSyncBtn" class="text-gray-700 group flex items-center px-4 py-2 text-sm w-full text-left hover:bg-gray-100">
+                            <i class="fas fa-bolt mr-3 text-gray-500"></i>
+                            Force Full Sync
+                        </button>
+                        <button id="cleanupDuplicatesBtn" class="text-gray-700 group flex items-center px-4 py-2 text-sm w-full text-left hover:bg-gray-100">
+                            <i class="fas fa-broom mr-3 text-gray-500"></i>
+                            Clean Up Duplicates
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Search Form -->
-    <form action="{{ url_for('index') }}" method="get" class="mb-8">
-        <div class="flex flex-col md:flex-row gap-4">
-            <!-- Search Input -->
-            <div class="flex-1">
-                <input type="text" 
-                       name="search" 
-                       value="{{ request.args.get('search', '') }}"
-                       class="w-full p-2 border rounded-lg"
-                       placeholder="Search articles...">
+    <div class="search-container mb-8">
+        <form action="{{ url_for('index') }}" method="get" id="searchForm">
+            <div class="flex flex-col md:flex-row gap-4">
+                <!-- Search Input -->
+                <div class="flex-1">
+                    <label for="search" class="block text-sm font-medium text-gray-700 mb-1">Search Articles</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-search text-gray-400"></i>
+                        </div>
+                        <input type="text" 
+                               id="search"
+                               name="search" 
+                               value="{{ request.args.get('search', '') }}"
+                               aria-label="Search articles"
+                               class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="Search by keyword, company, or drug...">
+                    </div>
+                </div>
+
+                <!-- Topic Filter -->
+                <div class="md:w-1/3">
+                    <label for="topic" class="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-filter text-gray-400"></i>
+                        </div>
+                        <select id="topic" 
+                                name="topic" 
+                                aria-label="Filter by topic"
+                                class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none">
+                            <option value="All" {% if selected_topic == 'All' %}selected{% endif %}>All Topics</option>
+                            {% for topic in topics %}
+                            <option value="{{ topic }}" {% if topic == selected_topic %}selected{% endif %}>{{ topic }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
+                            <i class="fas fa-chevron-down text-gray-400"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
             
-            <!-- Topic Filter -->
-            <div class="flex-shrink-0">
-                <select name="topic" 
-                        class="p-2 border rounded-lg bg-white min-w-[200px]"
-                        onchange="this.form.submit()">
-                    <option value="All" {% if selected_topic == 'All' %}selected{% endif %}>All Topics</option>
-                    {% for topic in topics %}
-                    <option value="{{ topic }}" {% if selected_topic == topic %}selected{% endif %}>
-                        {{ topic }}
-                    </option>
-                    {% endfor %}
-                </select>
+            <!-- Search Button and Loading Indicator -->
+            <div class="mt-4 flex justify-end">
+                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center">
+                    <span>Search</span>
+                    <i class="fas fa-search ml-2"></i>
+                </button>
+                <div id="searchLoading" class="hidden ml-4 flex items-center">
+                    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <span class="ml-2 text-gray-600">Searching...</span>
+                </div>
             </div>
-            
-            <!-- Search Button -->
-            <button type="submit" class="btn-custom px-6 py-2 rounded-lg">
-                <i class="fas fa-search mr-2"></i>Search
-            </button>
-        </div>
-        
-        <!-- Active Filters Display -->
-        {% if selected_topic != 'All' or request.args.get('search') %}
-        <div class="mt-4 flex flex-wrap gap-2">
-            {% if selected_topic != 'All' %}
-            <div class="inline-flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                <span class="mr-2">Topic: {{ selected_topic }}</span>
-                <a href="{{ url_for('index', search=request.args.get('search', '')) }}" 
-                   class="hover:text-blue-600">
-                    <i class="fas fa-times"></i>
-                </a>
-            </div>
-            {% endif %}
-            {% if request.args.get('search') %}
-            <div class="inline-flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                <span class="mr-2">Search: {{ request.args.get('search') }}</span>
-                <a href="{{ url_for('index', topic=selected_topic) }}" 
-                   class="hover:text-blue-600">
-                    <i class="fas fa-times"></i>
-                </a>
-            </div>
-            {% endif %}
-        </div>
-        {% endif %}
-    </form>
+        </form>
+    </div>
 
     <!-- Topic Distribution -->
     <div class="mb-8 bg-white rounded-lg shadow-lg p-6">
         <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-bold text-blue-900">Topic Distribution</h2>
-            <button onclick="toggleChartView()" class="text-blue-600 hover:text-blue-800">
+            <h2 class="text-2xl font-bold text-primary-color">Topic Distribution</h2>
+            <button onclick="toggleChartView()" class="text-blue-600 hover:text-blue-800 flex items-center">
                 <i class="fas fa-chart-bar mr-1"></i>Toggle View
             </button>
         </div>
@@ -95,7 +336,7 @@
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-2">
                             <a href="{{ url_for('index', topic=topic.topic) }}" 
-                               class="text-blue-600 hover:text-blue-800">
+                               class="text-blue-600 hover:text-blue-800 font-medium">
                                 {{ topic.topic }}
                             </a>
                         </td>
@@ -103,9 +344,7 @@
                         <td class="px-4 py-2">{{ topic.percentage }}%</td>
                         <td class="px-4 py-2">
                             <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                <div class="bg-blue-600 h-2.5 rounded-full" 
-                                     style="width: {{ topic.percentage }}%">
-                                </div>
+                                <div class="bg-blue-600 h-2.5 rounded-full progress-bar" data-percentage="{{ topic.percentage }}"></div>
                             </div>
                         </td>
                     </tr>
@@ -115,47 +354,90 @@
         </div>
         
         <!-- Chart View -->
-        <div id="chartView" class="hidden">
+        <div id="chartView" class="hidden h-80">
             <canvas id="topicChart"></canvas>
         </div>
     </div>
 
     <!-- Articles Grid -->
+    <h2 class="text-2xl font-bold text-primary-color mb-6">Latest Articles</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {% for article in articles %}
-        <div class="card-custom rounded-lg shadow-lg p-6">
-            <h2 class="text-xl font-bold mb-2">{{ article.title }}</h2>
-            <div class="text-sm text-gray-600 mb-2">
-                <span class="mr-2"><i class="fas fa-newspaper"></i> {{ article.source }}</span>
-                <span><i class="fas fa-calendar"></i> {{ article.pub_date }}</span>
+        <div class="card-custom article-card">
+            <!-- Article Image or Placeholder -->
+            <div class="article-card__image {% if not article.image_url %}article-card__image-placeholder{% endif %}" 
+                 {% if article.image_url %}style="background-image: url('{{ article.image_url }}');"{% endif %}>
+                {% if not article.image_url %}
+                <i class="fas fa-newspaper text-white text-4xl"></i>
+                {% endif %}
+                
+                <!-- Topic Badge -->
+                <div class="article-card__topic">
+                    <span class="topic-badge">
+                        {{ article.topic }}
+                    </span>
+                </div>
             </div>
-            <div class="mb-2">
-                <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
-                    {{ article.topic }}
-                </span>
-            </div>
-            <p class="text-gray-700 mb-4">{{ article.description[:200] }}...</p>
-            {% if article.summary %}
-            <div class="bg-gray-50 p-4 rounded-lg mb-4">
-                <h3 class="font-bold mb-2">Summary</h3>
-                <p class="text-sm">{{ article.summary | safe }}</p>
-            </div>
-            {% endif %}
-            <div class="flex justify-between items-center">
-                <a href="{{ article.link }}" 
-                   target="_blank" 
-                   class="text-blue-600 hover:text-blue-800">
-                    Read More <i class="fas fa-external-link-alt ml-1"></i>
-                </a>
-                <div class="flex space-x-2">
-                    <button onclick="showSimilarArticles('{{ article.id }}')"
-                            class="text-gray-600 hover:text-gray-800">
-                        <i class="fas fa-layer-group mr-1"></i> Similar
-                    </button>
-                    <button onclick="shareArticle('{{ article.title }}', '{{ article.link }}')"
-                            class="text-gray-600 hover:text-gray-800">
-                        <i class="fas fa-share-alt mr-1"></i> Share
-                    </button>
+            
+            <!-- Article Content -->
+            <div class="p-6 article-card__content">
+                <!-- Source and Date -->
+                <div class="flex justify-between items-center text-sm text-gray-600 mb-3">
+                    <span><i class="fas fa-newspaper mr-1"></i> {{ article.source }}</span>
+                    <span><i class="fas fa-calendar-alt mr-1"></i> {{ article.pub_date }}</span>
+                </div>
+                
+                <!-- Title -->
+                <h3 class="text-xl font-bold mb-3 article-card__title">{{ article.title }}</h3>
+                
+                <!-- Description -->
+                <div class="mb-4">
+                    {% if article.has_full_content %}
+                        <div class="flex justify-between items-center mb-2">
+                            <h4 class="font-bold text-sm uppercase tracking-wider text-gray-600">Full Article</h4>
+                            <button class="text-blue-600 hover:text-blue-800 text-sm" 
+                                    onclick="toggleArticleContent(this)">
+                                Show Full Content
+                            </button>
+                        </div>
+                        <p class="text-gray-700 article-card__description">{{ article.description[:200]|striptags }}...</p>
+                        <div class="article-full-content hidden mt-2 max-h-96 overflow-y-auto">
+                            {{ article.description|safe }}
+                        </div>
+                    {% else %}
+                        <div class="mb-4">
+                            <p class="text-gray-700 article-card__description">{{ article.description[:200]|striptags }}...</p>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Summary (if available) -->
+                {% if article.summary %}
+                <div class="bg-gray-50 p-4 rounded-lg mb-4 border-l-4 border-blue-500">
+                    <h4 class="font-bold mb-2 text-sm uppercase tracking-wider text-gray-600">Summary</h4>
+                    <p class="text-sm text-gray-700">{{ article.summary | safe }}</p>
+                </div>
+                {% endif %}
+                
+                <!-- Actions Footer -->
+                <div class="article-card__footer flex justify-between items-center">
+                    <a href="{{ article.link }}" 
+                       target="_blank" 
+                       class="btn-custom px-4 py-2 rounded-lg text-sm">
+                        Read Article <i class="fas fa-external-link-alt ml-1"></i>
+                    </a>
+                    <div class="flex space-x-1">
+                        <button onclick="showSimilarArticles('{{ article.id }}')"
+                                class="action-btn text-gray-600 hover:text-gray-800" 
+                                title="Find similar articles">
+                            <i class="fas fa-layer-group"></i>
+                        </button>
+                        <button onclick="shareArticle('{{ article.title }}', '{{ article.link }}')"
+                                class="action-btn text-gray-600 hover:text-gray-800"
+                                title="Share article">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -163,70 +445,117 @@
     </div>
 
     <!-- Pagination -->
-    <div class="mt-8 flex flex-col items-center">
-        <!-- Page Info -->
-        <div class="text-sm text-gray-700 mb-4">
-            Showing <span class="font-semibold">{{ showing_from }}</span> to 
-            <span class="font-semibold">{{ showing_to }}</span> of 
-            <span class="font-semibold">{{ total }}</span> articles
-        </div>
-        
-        <!-- Pagination Controls -->
-        <div class="flex items-center space-x-2">
-            <!-- First Page -->
-            {% if page > 1 %}
-            <a href="{{ url_for('index', page=1, search=request.args.get('search', ''), topic=selected_topic) }}"
-               class="btn-custom px-3 py-2 rounded-lg" title="First Page">
-                <i class="fas fa-angle-double-left"></i>
-            </a>
-            {% endif %}
-            
-            <!-- Previous Page -->
-            {% if page > 1 %}
-            <a href="{{ url_for('index', page=page-1, search=request.args.get('search', ''), topic=selected_topic) }}"
-               class="btn-custom px-4 py-2 rounded-lg">
-                <i class="fas fa-chevron-left mr-1"></i> Previous
-            </a>
-            {% endif %}
-            
-            <!-- Page Numbers -->
-            <div class="flex space-x-1">
-                {% for p in range(start_page, end_page + 1) %}
-                <a href="{{ url_for('index', page=p, search=request.args.get('search', ''), topic=selected_topic) }}"
-                   class="px-4 py-2 rounded-lg {% if p == page %}bg-blue-600 text-white{% else %}btn-custom{% endif %}">
-                    {{ p }}
-                </a>
-                {% endfor %}
+    <div class="mt-8 pagination-container">
+        <div class="flex flex-col md:flex-row justify-between items-center">
+            <!-- Page Info -->
+            <div class="text-sm text-gray-700 mb-4 md:mb-0">
+                Showing <span class="font-semibold">{{ showing_from }}</span> to 
+                <span class="font-semibold">{{ showing_to }}</span> of 
+                <span class="font-semibold">{{ total }}</span> articles
             </div>
             
-            <!-- Next Page -->
-            {% if page < last_page %}
-            <a href="{{ url_for('index', page=page+1, search=request.args.get('search', ''), topic=selected_topic) }}"
-               class="btn-custom px-4 py-2 rounded-lg">
-                Next <i class="fas fa-chevron-right ml-1"></i>
-            </a>
-            {% endif %}
-            
-            <!-- Last Page -->
-            {% if page < last_page %}
-            <a href="{{ url_for('index', page=last_page, search=request.args.get('search', ''), topic=selected_topic) }}"
-               class="btn-custom px-3 py-2 rounded-lg" title="Last Page">
-                <i class="fas fa-angle-double-right"></i>
-            </a>
-            {% endif %}
-        </div>
-        
-        <!-- Mobile Pagination Info -->
-        <div class="mt-4 text-sm text-gray-600 md:hidden">
-            Page {{ page }} of {{ last_page }}
+            <!-- Pagination Controls -->
+            <div class="flex items-center space-x-2">
+                <!-- First Page -->
+                {% if page > 1 %}
+                <a href="{{ url_for('index', page=1, search=request.args.get('search', ''), topic=selected_topic) }}"
+                   class="btn-custom px-3 py-2 rounded-lg" title="First Page">
+                    <i class="fas fa-angle-double-left"></i>
+                </a>
+                {% endif %}
+                
+                <!-- Previous Page -->
+                {% if page > 1 %}
+                <a href="{{ url_for('index', page=page-1, search=request.args.get('search', ''), topic=selected_topic) }}"
+                   class="btn-custom px-4 py-2 rounded-lg">
+                    <i class="fas fa-chevron-left mr-1"></i> Previous
+                </a>
+                {% endif %}
+                
+                <!-- Page Numbers -->
+                <div class="flex space-x-1">
+                    {% for p in range(start_page, end_page + 1) %}
+                    <a href="{{ url_for('index', page=p, search=request.args.get('search', ''), topic=selected_topic) }}"
+                       class="px-4 py-2 rounded-lg {% if p == page %}bg-blue-600 text-white{% else %}btn-custom{% endif %}">
+                        {{ p }}
+                    </a>
+                    {% endfor %}
+                </div>
+                
+                <!-- Next Page -->
+                {% if page < last_page %}
+                <a href="{{ url_for('index', page=page+1, search=request.args.get('search', ''), topic=selected_topic) }}"
+                   class="btn-custom px-4 py-2 rounded-lg">
+                    Next <i class="fas fa-chevron-right ml-1"></i>
+                </a>
+                {% endif %}
+                
+                <!-- Last Page -->
+                {% if page < last_page %}
+                <a href="{{ url_for('index', page=last_page, search=request.args.get('search', ''), topic=selected_topic) }}"
+                   class="btn-custom px-3 py-2 rounded-lg" title="Last Page">
+                    <i class="fas fa-angle-double-right"></i>
+                </a>
+                {% endif %}
+            </div>
         </div>
     </div>
 
-    <!-- Add infinite scroll loading indicator -->
+    <!-- Infinite Scroll Loading Indicator -->
     <div id="loadingIndicator" class="hidden mt-8 text-center">
-        <div class="inline-flex items-center">
+        <div class="inline-flex items-center bg-white p-4 rounded-lg shadow">
             <div class="loader mr-3"></div>
             <span>Loading more articles...</span>
+        </div>
+    </div>
+</div>
+
+<!-- Update News Loader Overlay -->
+<div id="updateNewsLoader" class="hidden fixed top-0 left-0 w-full h-full bg-black bg-opacity-50 z-50 flex items-center justify-center">
+    <div class="update-loader__content">
+        <div class="update-loader__icon mb-6">
+            <div></div><div></div><div></div><div></div>
+        </div>
+        <h3 class="text-2xl font-bold mb-3">Updating News...</h3>
+        <p id="updateLoaderMessage" class="text-gray-600 mb-4">Contacting news sources...</p>
+        
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-6">
+            <div id="updateLoaderProgressBar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+        </div>
+        
+        <div class="flex justify-between text-sm text-gray-600 mb-6">
+            <span><strong id="sourcesProcessed">0</strong> of <strong id="totalSources">...</strong> sources</span>
+            <span><strong id="articlesFound">0</strong> articles found</span>
+        </div>
+        
+        <button id="continueButton" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+            Continue in Background
+        </button>
+    </div>
+</div>
+
+<!-- Update Status Bar -->
+<div id="updateStatusBar" class="hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t border-gray-200 p-4 z-40">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex justify-between items-center mb-2">
+            <div class="flex items-center">
+                <i id="updateStatusIcon" class="fas fa-sync-alt animate-spin mr-2 text-blue-500"></i>
+                <h4 id="updateStatusTitle" class="font-bold">Updating News</h4>
+            </div>
+            <button id="closeUpdateStatus" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <p id="updateStatusMessage" class="text-gray-600 mb-2">Fetching latest articles...</p>
+        
+        <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+            <div id="updateProgressBar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+        </div>
+        
+        <div class="flex justify-between text-xs text-gray-500">
+            <span id="sourcesProcessedText">0 of 0 sources processed</span>
+            <span id="articlesFoundText">0 articles found</span>
         </div>
     </div>
 </div>
@@ -236,8 +565,30 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 // Topic Distribution Chart
-const topicData = {{ topic_distribution|tojson }};
+const topicData = JSON.parse('{{ topic_distribution|tojson }}');
 let topicChart = null;
+
+// Function to toggle article content visibility
+function toggleArticleContent(button) {
+    const contentContainer = button.closest('div').parentElement;
+    const fullContent = contentContainer.querySelector('.article-full-content');
+    
+    if (fullContent.classList.contains('hidden')) {
+        fullContent.classList.remove('hidden');
+        button.textContent = 'Hide Full Content';
+    } else {
+        fullContent.classList.add('hidden');
+        button.textContent = 'Show Full Content';
+    }
+}
+
+// Helper function to strip HTML tags for safe display
+function stripHtmlTags(html) {
+    if (!html) return '';
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    return tempDiv.textContent || tempDiv.innerText || '';
+}
 
 function createChart() {
     const ctx = document.getElementById('topicChart').getContext('2d');
@@ -248,9 +599,12 @@ function createChart() {
             datasets: [{
                 label: 'Number of Articles',
                 data: topicData.map(t => t.count),
-                backgroundColor: 'rgba(59, 130, 246, 0.5)',
-                borderColor: 'rgba(59, 130, 246, 1)',
-                borderWidth: 1
+                backgroundColor: 'rgba(49, 130, 206, 0.7)',
+                borderColor: 'rgba(49, 130, 206, 1)',
+                borderWidth: 1,
+                borderRadius: 4,
+                barThickness: 20,
+                maxBarThickness: 30
             }]
         },
         options: {
@@ -261,6 +615,15 @@ function createChart() {
                     display: false
                 },
                 tooltip: {
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: 12,
+                    titleFont: {
+                        size: 14,
+                        weight: 'bold'
+                    },
+                    bodyFont: {
+                        size: 13
+                    },
                     callbacks: {
                         label: function(context) {
                             const topic = topicData[context.dataIndex];
@@ -271,7 +634,15 @@ function createChart() {
             },
             scales: {
                 y: {
-                    beginAtZero: true
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(0, 0, 0, 0.05)'
+                    }
+                },
+                x: {
+                    grid: {
+                        display: false
+                    }
                 }
             }
         }
@@ -304,27 +675,46 @@ async function showSimilarArticles(articleId) {
         const data = await response.json();
         
         // Create modal content
-        let modalContent = `<div class="bg-white p-6 rounded-lg max-w-2xl mx-auto">
-            <h2 class="text-2xl font-bold mb-4">Similar Articles</h2>`;
+        let modalContent = `
+        <div class="bg-white p-6 rounded-lg max-w-2xl mx-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">Similar Articles</h2>
+                <button class="text-gray-500 hover:text-gray-700" onclick="this.closest('.fixed').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="space-y-4">`;
             
-        data.articles.forEach(article => {
-            modalContent += `
-                <div class="mb-4 p-4 border rounded">
-                    <h3 class="font-bold">${article.metadata.title}</h3>
-                    <p class="text-sm text-gray-600">${article.metadata.source} - ${article.metadata.pub_date}</p>
-                    <a href="${article.metadata.link}" 
-                       class="text-blue-600 hover:text-blue-800 mt-2 inline-block"
-                       target="_blank">
-                        Read Article
-                    </a>
-                </div>`;
-        });
+        if (data.articles.length === 0) {
+            modalContent += `<p class="text-gray-600">No similar articles found.</p>`;
+        } else {
+            data.articles.forEach(article => {
+                modalContent += `
+                    <div class="p-4 border border-gray-200 rounded-lg hover:shadow-md transition-shadow">
+                        <h3 class="font-bold text-lg mb-1">${article.metadata.title}</h3>
+                        <div class="flex justify-between text-sm text-gray-600 mb-2">
+                            <span>${article.metadata.source}</span>
+                            <span>${article.metadata.pub_date}</span>
+                        </div>
+                        <div class="mb-3">
+                            <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs">
+                                ${article.metadata.topic || 'Uncategorized'}
+                            </span>
+                        </div>
+                        <a href="${article.metadata.link}" 
+                           class="text-blue-600 hover:text-blue-800 inline-flex items-center"
+                           target="_blank">
+                            Read Article <i class="fas fa-external-link-alt ml-1"></i>
+                        </a>
+                    </div>`;
+            });
+        }
         
-        modalContent += `</div>`;
+        modalContent += `</div></div>`;
         
         // Show modal
         const modal = document.createElement('div');
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50';
         modal.innerHTML = modalContent;
         modal.onclick = e => {
             if (e.target === modal) modal.remove();
@@ -346,28 +736,53 @@ function shareArticle(title, url) {
     } else {
         // Fallback copy to clipboard
         navigator.clipboard.writeText(url).then(() => {
-            alert('Link copied to clipboard!');
+            // Show toast notification
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-4 right-4 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+            toast.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Link copied to clipboard!';
+            document.body.appendChild(toast);
+            
+            // Remove toast after 3 seconds
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
         }).catch(console.error);
     }
 }
 
-// Improve infinite scroll
+// Improved infinite scroll
 let isLoading = false;
 let hasMore = true;
+const loadingIndicator = document.getElementById('loadingIndicator');
+
+function checkScrollPosition() {
+    if (isLoading || !hasMore) return;
+    
+    const scrollPosition = window.innerHeight + window.scrollY;
+    const bodyHeight = document.body.offsetHeight;
+    
+    // Load more when user scrolls to 80% of the page
+    if (scrollPosition >= bodyHeight * 0.8) {
+        loadMoreArticles();
+    }
+}
 
 async function loadMoreArticles() {
     if (isLoading || !hasMore) return;
     
-    const loadingIndicator = document.getElementById('loadingIndicator');
     loadingIndicator.classList.remove('hidden');
     isLoading = true;
     
     try {
         const nextPage = parseInt(new URLSearchParams(window.location.search).get('page') || '1') + 1;
-        const response = await fetch(`${window.location.pathname}?page=${nextPage}&${window.location.search.slice(1)}`);
+        const searchQuery = new URLSearchParams(window.location.search).get('search') || '';
+        const topicFilter = new URLSearchParams(window.location.search).get('topic') || 'All';
+        
+        // Use the API endpoint instead of the current page path
+        const response = await fetch(`/api/articles?page=${nextPage}&per_page=9&sort_by=pub_date&sort_order=desc${searchQuery ? `&search=${searchQuery}` : ''}${topicFilter !== 'All' ? `&topic=${topicFilter}` : ''}`);
         const data = await response.json();
         
-        if (data.articles.length === 0) {
+        if (!data.articles || data.articles.length === 0) {
             hasMore = false;
             return;
         }
@@ -391,15 +806,453 @@ async function loadMoreArticles() {
     }
 }
 
-// Add loading skeleton
-<template id="article-skeleton">
-    <div class="animate-pulse">
-        <div class="h-4 bg-gray-200 rounded w-3/4"></div>
-        <div class="space-y-3 mt-4">
-            <div class="h-4 bg-gray-200 rounded"></div>
-            <div class="h-4 bg-gray-200 rounded w-5/6"></div>
+function createArticleCard(article) {
+    const card = document.createElement('div');
+    card.className = 'card-custom article-card';
+    
+    // Create image or placeholder
+    const hasImage = article.image_url && article.image_url.trim() !== '';
+    
+    // Build HTML content with proper handling of full content
+    let descriptionHtml = '';
+    if (article.has_full_content) {
+        descriptionHtml = `
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <h4 class="font-bold text-sm uppercase tracking-wider text-gray-600">Full Article</h4>
+                    <button class="text-blue-600 hover:text-blue-800 text-sm" 
+                            onclick="toggleArticleContent(this)">
+                        Show Full Content
+                    </button>
+                </div>
+                <p class="text-gray-700 article-card__description">${stripHtmlTags(article.description.substring(0, 200))}...</p>
+                <div class="article-full-content hidden mt-2 max-h-96 overflow-y-auto">
+                </div>
+            </div>
+        `;
+    } else {
+        descriptionHtml = `
+            <div class="mb-4">
+                <p class="text-gray-700 article-card__description">${stripHtmlTags(article.description.substring(0, 200))}...</p>
+            </div>
+        `;
+    }
+    
+    card.innerHTML = `
+        <div class="article-card__image ${!hasImage ? 'article-card__image-placeholder' : ''}" 
+             ${hasImage ? `style="background-image: url('${article.image_url}');"` : ''}>
+            ${!hasImage ? '<i class="fas fa-newspaper text-white text-4xl"></i>' : ''}
+            <div class="article-card__topic">
+                <span class="topic-badge">
+                    ${article.topic}
+                </span>
+            </div>
         </div>
-    </div>
-</template>
+        <div class="p-6 article-card__content">
+            <div class="flex justify-between items-center text-sm text-gray-600 mb-3">
+                <span><i class="fas fa-newspaper mr-1"></i> ${article.source}</span>
+                <span><i class="fas fa-calendar-alt mr-1"></i> ${article.pub_date}</span>
+            </div>
+            <h3 class="text-xl font-bold mb-3 article-card__title">${article.title}</h3>
+            ${descriptionHtml}
+            ${article.summary ? `
+            <div class="bg-gray-50 p-4 rounded-lg mb-4 border-l-4 border-blue-500">
+                <h4 class="font-bold mb-2 text-sm uppercase tracking-wider text-gray-600">Summary</h4>
+                <p class="text-sm text-gray-700">${article.summary}</p>
+            </div>
+            ` : ''}
+            <div class="article-card__footer flex justify-between items-center">
+                <a href="${article.link}" 
+                   target="_blank" 
+                   class="btn-custom px-4 py-2 rounded-lg text-sm">
+                    Read Article <i class="fas fa-external-link-alt ml-1"></i>
+                </a>
+                <div class="flex space-x-1">
+                    <button onclick="showSimilarArticles('${article.id}')"
+                            class="action-btn text-gray-600 hover:text-gray-800" 
+                            title="Find similar articles">
+                        <i class="fas fa-layer-group"></i>
+                    </button>
+                    <button onclick="shareArticle('${article.title}', '${article.link}')"
+                            class="action-btn text-gray-600 hover:text-gray-800"
+                            title="Share article">
+                        <i class="fas fa-share-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Set full content HTML safely after the card is created
+    if (article.has_full_content) {
+        const fullContentDiv = card.querySelector('.article-full-content');
+        if (fullContentDiv) {
+            fullContentDiv.innerHTML = article.description;
+        }
+    }
+    
+    return card;
+}
+
+// Initialize infinite scroll
+window.addEventListener('scroll', checkScrollPosition);
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize chart if needed
+    if (document.getElementById('chartView') && !document.getElementById('chartView').classList.contains('hidden')) {
+        createChart();
+    }
+});
+
+// Initialize progress bars for topic distribution
+document.addEventListener('DOMContentLoaded', function() {
+    const progressBars = document.querySelectorAll('.progress-bar');
+    progressBars.forEach(bar => {
+        const percentage = bar.getAttribute('data-percentage');
+        if (percentage) {
+            bar.style.width = percentage + '%';
+        }
+    });
+
+    // Initialize update functionality
+    const updateBtn = document.getElementById('updateNewsBtn');
+    const updateLoader = document.getElementById('updateNewsLoader');
+    const updateStatusBar = document.getElementById('updateStatusBar');
+    const closeUpdateStatus = document.getElementById('closeUpdateStatus');
+    const continueButton = document.getElementById('continueButton');
+    
+    // Progress elements in loader
+    const loaderProgressBar = document.getElementById('updateLoaderProgressBar');
+    const loaderMessage = document.getElementById('updateLoaderMessage');
+    const sourcesProcessed = document.getElementById('sourcesProcessed');
+    const totalSources = document.getElementById('totalSources');
+    const articlesFound = document.getElementById('articlesFound');
+    
+    // Progress elements in status bar
+    const statusProgressBar = document.getElementById('updateProgressBar');
+    const statusMessage = document.getElementById('updateStatusMessage');
+    const statusTitle = document.getElementById('updateStatusTitle');
+    const sourcesProcessedText = document.getElementById('sourcesProcessedText');
+    const articlesFoundText = document.getElementById('articlesFoundText');
+    
+    // Function to update both progress indicators
+    function updateProgressIndicators(data) {
+        // Update loader
+        if (loaderProgressBar) loaderProgressBar.style.width = data.progress + '%';
+        if (loaderMessage) loaderMessage.textContent = data.message;
+        if (sourcesProcessed) sourcesProcessed.textContent = data.sources_processed;
+        if (totalSources) totalSources.textContent = data.total_sources;
+        if (articlesFound) articlesFound.textContent = data.articles_found;
+        
+        // Update status bar
+        if (statusProgressBar) statusProgressBar.style.width = data.progress + '%';
+        if (statusMessage) statusMessage.textContent = data.message;
+        if (sourcesProcessedText) sourcesProcessedText.textContent = 
+            `${data.sources_processed} of ${data.total_sources} sources processed`;
+        if (articlesFoundText) articlesFoundText.textContent = 
+            `${data.articles_found} articles found`;
+        
+        // Update title and icon based on status
+        const statusIcon = document.getElementById('updateStatusIcon');
+        
+        if (statusTitle) {
+            if (data.in_progress) {
+                // Add spinning animation only for in-progress updates
+                if (statusIcon) statusIcon.classList.add('animate-spin');
+            } else {
+                // Remove spinning animation when not in progress
+                if (statusIcon) statusIcon.classList.remove('animate-spin');
+                
+                if (data.status === 'completed') {
+                    statusTitle.textContent = 'Update Complete';
+                    statusTitle.classList.add('text-green-600');
+                    if (statusIcon) {
+                        statusIcon.className = 'fas fa-check-circle mr-2 text-green-500';
+                    }
+                } else if (data.status === 'failed') {
+                    statusTitle.textContent = 'Update Failed';
+                    statusTitle.classList.add('text-red-600');
+                    if (statusIcon) {
+                        statusIcon.className = 'fas fa-times-circle mr-2 text-red-500';
+                    }
+                } else if (data.status === 'completed_with_warnings' || data.status === 'completed_with_errors') {
+                    statusTitle.textContent = 'Update Completed with Warnings';
+                    statusTitle.classList.add('text-yellow-600');
+                    if (statusIcon) {
+                        statusIcon.className = 'fas fa-exclamation-triangle mr-2 text-yellow-500';
+                    }
+                }
+            }
+        }
+    }
+    
+    // Function to poll update status
+    let statusInterval = null;
+    function pollUpdateStatus() {
+        fetch('/api/update/status')
+            .then(response => response.json())
+            .then(data => {
+                updateProgressIndicators(data);
+                
+                // If update is complete, stop polling
+                if (!data.in_progress && data.status !== 'idle') {
+                    if (statusInterval) {
+                        clearInterval(statusInterval);
+                        statusInterval = null;
+                    }
+                    
+                    // Show completion message
+                    if (data.status === 'completed') {
+                        // Optional: reload the page to show new articles
+                        // window.location.reload();
+                        
+                        // Or just show a success message
+                        const toast = document.createElement('div');
+                        toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+                        toast.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Update completed successfully!';
+                        document.body.appendChild(toast);
+                        
+                        // Remove toast after 5 seconds
+                        setTimeout(() => {
+                            toast.remove();
+                        }, 5000);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error polling update status:', error);
+            });
+    }
+    
+    // Start update process
+    function startUpdate() {
+        fetch('/api/update/start', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show status bar
+                updateStatusBar.classList.remove('hidden');
+                
+                // Start polling for updates
+                if (statusInterval) {
+                    clearInterval(statusInterval);
+                }
+                statusInterval = setInterval(pollUpdateStatus, 2000);
+                
+                // Initial poll
+                pollUpdateStatus();
+            } else {
+                // Show error message
+                alert('Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error starting update:', error);
+            alert('Error starting update. Please try again.');
+        });
+    }
+    
+    // Event listeners
+    if (updateBtn) {
+        updateBtn.addEventListener('click', function() {
+            // Show loader
+            if (updateLoader) {
+                updateLoader.classList.remove('hidden');
+            }
+            
+            // Initialize values
+            if (totalSources) totalSources.textContent = '...';
+            if (sourcesProcessed) sourcesProcessed.textContent = '0';
+            if (articlesFound) articlesFound.textContent = '0';
+            if (loaderProgressBar) loaderProgressBar.style.width = '0%';
+            
+            // Start update process
+            startUpdate();
+        });
+    }
+    
+    // Continue button - hide loader but keep status bar
+    if (continueButton) {
+        continueButton.addEventListener('click', function() {
+            if (updateLoader) {
+                updateLoader.classList.add('hidden');
+            }
+        });
+    }
+    
+    // Close status bar
+    if (closeUpdateStatus) {
+        closeUpdateStatus.addEventListener('click', function() {
+            if (updateStatusBar) {
+                updateStatusBar.classList.add('hidden');
+            }
+            
+            // Stop polling if active
+            if (statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+        });
+    }
+    
+    // Check if update is in progress on page load
+    fetch('/api/update/status')
+        .then(response => response.json())
+        .then(data => {
+            if (data.in_progress) {
+                // Show status bar
+                if (updateStatusBar) {
+                    updateStatusBar.classList.remove('hidden');
+                }
+                
+                // Start polling
+                statusInterval = setInterval(pollUpdateStatus, 2000);
+                
+                // Initial update
+                updateProgressIndicators(data);
+            }
+        })
+        .catch(error => {
+            console.error('Error checking update status:', error);
+        });
+});
+
+// Storage admin functionality
+const adminDropdownBtn = document.getElementById('adminDropdownBtn');
+const adminDropdownMenu = document.getElementById('adminDropdownMenu');
+
+if (adminDropdownBtn && adminDropdownMenu) {
+    adminDropdownBtn.addEventListener('click', function() {
+        adminDropdownMenu.classList.toggle('hidden');
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(event) {
+        if (!adminDropdownBtn.contains(event.target) && !adminDropdownMenu.contains(event.target)) {
+            adminDropdownMenu.classList.add('hidden');
+        }
+    });
+    
+    // Sync storage button
+    const exportToCsvBtn = document.getElementById('exportToCsvBtn');
+    if (exportToCsvBtn) {
+        exportToCsvBtn.addEventListener('click', function() {
+            adminDropdownMenu.classList.add('hidden');
+            exportToCsv(false);
+        });
+    }
+    
+    // Force sync button
+    const forceSyncBtn = document.getElementById('forceSyncBtn');
+    if (forceSyncBtn) {
+        forceSyncBtn.addEventListener('click', function() {
+            adminDropdownMenu.classList.add('hidden');
+            exportToCsv(true);
+        });
+    }
+    
+    // Clean up duplicates button
+    const cleanupDuplicatesBtn = document.getElementById('cleanupDuplicatesBtn');
+    if (cleanupDuplicatesBtn) {
+        cleanupDuplicatesBtn.addEventListener('click', function() {
+            cleanupDuplicates();
+        });
+    }
+}
+
+// Function to export articles to CSV
+function exportToCsv(force = false) {
+    // Show status
+    const statusBar = document.getElementById('updateStatusBar');
+    const statusTitle = document.getElementById('updateStatusTitle');
+    const statusMessage = document.getElementById('updateStatusMessage');
+    
+    if (statusBar && statusTitle && statusMessage) {
+        statusBar.classList.remove('hidden');
+        statusTitle.textContent = 'Exporting Articles';
+        statusMessage.textContent = 'Exporting articles from database to CSV...';
+        
+        // Make API call
+        fetch('/api/storage/export', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ limit: 0 })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Update status
+            statusTitle.textContent = data.success ? 'Export Complete' : 'Export Warning';
+            statusMessage.textContent = data.message;
+            
+            // Change icon based on result
+            const icon = statusTitle.previousElementSibling;
+            if (icon) {
+                icon.className = data.success ? 
+                    'fas fa-check-circle mr-2 text-green-500' : 
+                    'fas fa-exclamation-triangle mr-2 text-yellow-500';
+            }
+            
+            // Auto-close after delay if successful
+            if (data.success) {
+                setTimeout(() => {
+                    statusBar.classList.add('hidden');
+                }, 5000);
+            }
+        })
+        .catch(error => {
+            console.error('Error exporting to CSV:', error);
+            statusTitle.textContent = 'Export Failed';
+            statusMessage.textContent = 'An error occurred while exporting articles.';
+            
+            // Change icon to error
+            const icon = statusTitle.previousElementSibling;
+            if (icon) {
+                icon.className = 'fas fa-times-circle mr-2 text-red-500';
+            }
+        });
+    }
+}
+
+// Add to the javascript section
+document.addEventListener('DOMContentLoaded', function() {
+    // Add search form loading indicator
+    const searchForm = document.getElementById('searchForm');
+    const searchLoading = document.getElementById('searchLoading');
+    
+    if (searchForm && searchLoading) {
+        searchForm.addEventListener('submit', function() {
+            searchLoading.classList.remove('hidden');
+        });
+    }
+});
+
+// Add this with the other event listeners for admin functions
+function cleanupDuplicates() {
+    // Update the sync status bar
+    $('#syncStatusBar').removeClass('d-none').addClass('d-flex');
+    $('#syncIcon').removeClass('text-success text-danger').addClass('fa-spin');
+    $('#syncStatusMessage').text('Cleaning up duplicate articles...');
+    
+    $.ajax({
+        url: '/api/storage/cleanup',
+        type: 'POST',
+        success: function(response) {
+            $('#syncIcon').removeClass('fa-spin').addClass('text-success');
+            $('#syncStatusMessage').text(response.message);
+            console.log('Cleanup stats:', response.stats);
+        },
+        error: function(xhr, status, error) {
+            $('#syncIcon').removeClass('fa-spin').addClass('text-danger');
+            $('#syncStatusMessage').text('Error: ' + (xhr.responseJSON ? xhr.responseJSON.message : error));
+            console.error('Cleanup error:', error);
+        }
+    });
+}
 </script>
 {% endblock %}
