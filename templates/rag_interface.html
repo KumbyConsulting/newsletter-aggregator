@@ -1,9 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Pharma News Assistant{% endblock %}
+{% block title %}Kumby Consulting - Pharma News Assistant{% endblock %}
 
 {% block extra_css %}
 <style>
+    :root {
+        --primary-color: #00405e;
+        --secondary-color: #7f9360;
+        --accent-color: #f9e15e;
+        --background-color: #f1f2e7;
+    }
+    
     /* Dark mode styles */
     .dark {
         --bg-primary: #1a202c;
@@ -24,11 +31,11 @@
     }
     
     .dark .btn-custom {
-        background-color: #4a5568;
+        background-color: var(--primary-color);
     }
     
     .dark .text-gray-600 {
-        color: #cbd5e0;
+        color: var(--text-secondary);
     }
     
     .dark .bg-white {
@@ -36,27 +43,425 @@
     }
     
     .dark .bg-gray-50 {
-        background-color: #2d3748;
+        background-color: var(--bg-secondary);
     }
     
     .dark .text-blue-900 {
-        color: #90cdf4;
+        color: var(--accent-color);
     }
     
     .dark input, .dark textarea {
-        background-color: #4a5568;
+        background-color: var(--bg-secondary);
         color: var(--text-primary);
         border-color: var(--border-color);
+    }
+
+    /* RAG Interface Specific Styles */
+    .rag-container {
+        max-width: 4xl;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .company-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+    }
+
+    .company-name {
+        color: var(--primary-color);
+        font-weight: bold;
+        font-size: 1.5rem;
+    }
+
+    .company-tagline {
+        color: var(--secondary-color);
+        font-size: 1rem;
+    }
+
+    .conversation-card {
+        background: white;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 64, 94, 0.1);
+        margin-bottom: 1rem;
+        border: 1px solid rgba(0, 64, 94, 0.1);
+    }
+
+    .conversation-card:hover {
+        box-shadow: 0 4px 6px rgba(0, 64, 94, 0.15);
+    }
+
+    .btn-custom {
+        background: var(--primary-color);
+        color: white;
+        transition: all 0.2s;
+    }
+
+    .btn-custom:hover {
+        background: var(--secondary-color);
+        transform: translateY(-1px);
+    }
+
+    .feedback-btn {
+        padding: 0.5rem;
+        border-radius: 0.375rem;
+        transition: all 0.2s;
+    }
+
+    .feedback-btn:hover {
+        background-color: var(--background-color);
+        color: var(--primary-color);
+    }
+
+    .typing-indicator {
+        display: flex;
+        align-items: center;
+        margin: 10px 0;
+    }
+
+    .typing-indicator span {
+        height: 8px;
+        width: 8px;
+        background: var(--primary-color);
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+        animation: bounce 1.5s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-indicator span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @keyframes bounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-5px); }
+    }
+
+    .source-card {
+        background: white;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(0, 64, 94, 0.1);
+    }
+
+    .source-card:hover {
+        box-shadow: 0 2px 4px rgba(0, 64, 94, 0.1);
+    }
+
+    .source-title {
+        color: var(--primary-color);
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+
+    .source-meta {
+        color: var(--secondary-color);
+        font-size: 0.875rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .source-link {
+        color: var(--primary-color);
+        text-decoration: none;
+        transition: color 0.2s;
+    }
+
+    .source-link:hover {
+        color: var(--secondary-color);
+    }
+
+    /* Floating KumbyAI Chat Interface */
+    .kumbyai-chat {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s ease-in-out;
+        transform-origin: bottom right;
+    }
+
+    .kumbyai-chat.minimized {
+        transform: scale(0.95);
+        opacity: 0.8;
+    }
+
+    .kumbyai-chat-button {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        transition: all 0.2s ease;
+        position: relative;
+    }
+
+    .kumbyai-chat-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .kumbyai-chat-button i {
+        font-size: 24px;
+        transition: transform 0.3s ease;
+    }
+
+    .kumbyai-chat-button.active i {
+        transform: rotate(360deg);
+    }
+
+    .kumbyai-chat-window {
+        position: fixed;
+        bottom: 100px;
+        right: 24px;
+        width: 380px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transform-origin: bottom right;
+        max-height: 600px;
+        opacity: 0;
+        visibility: hidden;
+        transform: scale(0.95) translateY(20px);
+    }
+
+    .kumbyai-chat-window.active {
+        opacity: 1;
+        visibility: visible;
+        transform: scale(1) translateY(0);
+    }
+
+    .kumbyai-chat-header {
+        padding: 16px;
+        background: var(--primary-color);
+        color: white;
+        border-radius: 12px 12px 0 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .kumbyai-chat-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+    }
+
+    .kumbyai-chat-controls {
+        display: flex;
+        gap: 8px;
+    }
+
+    .kumbyai-chat-control {
+        background: none;
+        border: none;
+        color: white;
+        opacity: 0.8;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+    .kumbyai-chat-control:hover {
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .kumbyai-chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 300px;
+        max-height: 400px;
+    }
+
+    .kumbyai-message {
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+        transform: translateY(10px);
+        animation: messageAppear 0.3s ease forwards;
+    }
+
+    @keyframes messageAppear {
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .kumbyai-message-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--primary-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 14px;
+    }
+
+    .kumbyai-message-content {
+        flex: 1;
+        background: #f8f9fa;
+        padding: 12px;
+        border-radius: 12px;
+        border-top-left-radius: 4px;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .kumbyai-message.user .kumbyai-message-content {
+        background: var(--primary-color);
+        color: white;
+        border-top-right-radius: 4px;
+        border-top-left-radius: 12px;
+    }
+
+    .kumbyai-chat-input {
+        padding: 16px;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .kumbyai-chat-form {
+        display: flex;
+        gap: 8px;
+    }
+
+    .kumbyai-chat-textarea {
+        flex: 1;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 8px 12px;
+        resize: none;
+        min-height: 40px;
+        max-height: 120px;
+        font-size: 14px;
+        line-height: 1.5;
+        transition: all 0.2s ease;
+    }
+
+    .kumbyai-chat-textarea:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(0, 64, 94, 0.1);
+    }
+
+    .kumbyai-chat-send {
+        background: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 8px 16px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .kumbyai-chat-send:hover {
+        background: var(--secondary-color);
+        transform: translateY(-1px);
+    }
+
+    .kumbyai-chat-send:disabled {
+        background: #e9ecef;
+        cursor: not-allowed;
+        transform: none;
+    }
+
+    .kumbyai-typing {
+        display: flex;
+        gap: 4px;
+        padding: 8px 12px;
+        background: #f8f9fa;
+        border-radius: 12px;
+        width: fit-content;
+        margin-left: 40px;
+    }
+
+    .kumbyai-typing span {
+        width: 6px;
+        height: 6px;
+        background: var(--primary-color);
+        border-radius: 50%;
+        animation: typing 1s infinite ease-in-out;
+    }
+
+    .kumbyai-typing span:nth-child(2) { animation-delay: 0.2s; }
+    .kumbyai-typing span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes typing {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-4px); }
+    }
+
+    /* Accessibility improvements */
+    .kumbyai-chat-button:focus-visible,
+    .kumbyai-chat-control:focus-visible,
+    .kumbyai-chat-textarea:focus-visible,
+    .kumbyai-chat-send:focus-visible {
+        outline: 2px solid var(--primary-color);
+        outline-offset: 2px;
+    }
+
+    /* Dark mode support */
+    .dark .kumbyai-chat-window {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+    }
+
+    .dark .kumbyai-message-content {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+    }
+
+    .dark .kumbyai-chat-textarea {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: var(--border-color);
+    }
+
+    .dark .kumbyai-typing {
+        background: var(--bg-primary);
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="max-w-4xl mx-auto">
+<div class="rag-container">
     <!-- Header with dark mode toggle -->
-    <div class="flex justify-between items-center mb-8">
-        <h1 class="text-3xl font-bold text-blue-900">Pharmaceutical News Assistant</h1>
-        <button id="darkModeToggle" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700">
+    <div class="company-header">
+        <div>
+            <h1 class="company-name">Kumby Consulting</h1>
+            <p class="company-tagline">Pharmaceutical News Assistant</p>
+        </div>
+        <button id="darkModeToggle" class="btn-custom p-2 rounded-full">
             <i class="fas fa-moon dark:hidden"></i>
             <i class="fas fa-sun hidden dark:inline"></i>
         </button>
@@ -68,16 +473,16 @@
     </div>
     
     <!-- Query Input -->
-    <div class="mb-8 bg-white rounded-lg shadow-lg p-6">
+    <div class="conversation-card p-6">
         <div class="flex justify-between mb-4">
-            <h2 class="text-xl font-bold text-blue-900">Ask a Question</h2>
+            <h2 class="text-xl font-bold text-primary-color">Ask a Question</h2>
             <div class="space-x-4">
                 <button onclick="clearHistory()" 
                         class="text-red-600 hover:text-red-800 transition-colors">
                     <i class="fas fa-trash mr-1"></i>Clear History
                 </button>
                 <button onclick="toggleSettings()"
-                        class="text-blue-600 hover:text-blue-800 transition-colors">
+                        class="text-primary-color hover:text-secondary-color transition-colors">
                     <i class="fas fa-cog mr-1"></i>Settings
                 </button>
             </div>
@@ -89,25 +494,265 @@
                 <div class="flex items-center justify-between">
                     <label class="inline-flex items-center">
                         <input type="checkbox" id="useHistory" checked 
-                               class="form-checkbox text-blue-600">
+                               class="form-checkbox text-primary-color">
                         <span class="ml-2">Use conversation history</span>
                     </label>
                     <label class="inline-flex items-center">
                         <input type="checkbox" id="showSources" checked 
-                               class="form-checkbox text-blue-600">
+                               class="form-checkbox text-primary-color">
                         <span class="ml-2">Show sources</span>
                     </label>
+                </div>
+                <div class="flex items-center justify-between mt-2">
+                    <label class="inline-flex items-center">
+                        <input type="checkbox" id="enableStreaming" checked 
+                               class="form-checkbox text-primary-color">
+                        <span class="ml-2">Enable streaming responses</span>
+                    </label>
+                </div>
+                
+                <!-- Topic Analysis -->
+                <div class="mt-4 pt-4 border-t border-gray-200">
+                    <h3 class="font-semibold mb-2">Topic Analysis</h3>
+                    <div class="flex items-center">
+                        <input type="text" id="topicInput" 
+                               class="flex-1 mr-2 p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                               placeholder="Enter a pharmaceutical topic">
+                        <button onclick="analyzeTopic()" 
+                                class="btn-custom px-3 py-2 rounded-lg">
+                            <i class="fas fa-chart-line mr-1"></i>Analyze
+                        </button>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-1">
+                        Get in-depth analysis of pharmaceutical topics with time-aware context (2023-2025)
+                    </p>
+                </div>
+
+                <!-- Insights Mode -->
+                <div class="mt-4 pt-4 border-t border-gray-200">
+                    <h3 class="font-semibold mb-2">Insights Mode</h3>
+                    <div class="flex items-center justify-between">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" id="insightMode" 
+                                   class="form-checkbox text-primary-color">
+                            <span class="ml-2">Enable business insights</span>
+                        </label>
+                    </div>
+                    <p class="text-sm text-gray-600 mt-1">
+                        Provides concise data-driven insights from recent articles (under 150 words)
+                    </p>
                 </div>
             </div>
         </div>
         
+        <!-- Add KumbyAI features section after the settings panel -->
+        <div id="kumbyAIFeatures" class="mt-4 pt-4 border-t border-gray-200">
+            <h3 class="font-semibold mb-4 text-primary-color">KumbyAI Features</h3>
+            
+            <!-- Regulatory Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Regulatory Analysis</h4>
+                <textarea id="regulatoryContent" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter pharmaceutical content for regulatory analysis..."></textarea>
+                <button onclick="analyzeRegulatory()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-balance-scale mr-1"></i>Analyze Regulatory Impact
+                </button>
+            </div>
+            
+            <!-- Market Insights -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Market Insights</h4>
+                <div class="flex space-x-2">
+                    <input type="text" id="marketTopic" 
+                           class="flex-1 p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                           placeholder="Enter market topic...">
+                    <select id="marketTimeframe" 
+                            class="p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color">
+                        <option value="recent">Recent</option>
+                        <option value="1month">Past Month</option>
+                        <option value="3months">Past 3 Months</option>
+                        <option value="6months">Past 6 Months</option>
+                    </select>
+                    <button onclick="generateMarketInsight()" 
+                            class="btn-custom px-3 py-2 rounded-lg">
+                        <i class="fas fa-chart-line mr-1"></i>Get Insights
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Drug Development -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Drug Development Analysis</h4>
+                <div class="flex space-x-2">
+                    <input type="text" id="drugName" 
+                           class="flex-1 p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                           placeholder="Enter drug name...">
+                    <button onclick="analyzeDrugDevelopment()" 
+                            class="btn-custom px-3 py-2 rounded-lg">
+                        <i class="fas fa-flask mr-1"></i>Analyze Development
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Competitive Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Competitive Analysis</h4>
+                <div class="flex space-x-2">
+                    <input type="text" id="companyName" 
+                           class="flex-1 p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                           placeholder="Enter company name...">
+                    <button onclick="generateCompetitiveAnalysis()" 
+                            class="btn-custom px-3 py-2 rounded-lg">
+                        <i class="fas fa-chess mr-1"></i>Analyze Competition
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Advanced Analysis Features -->
+        <div class="mt-6 pt-4 border-t border-gray-200">
+            <h3 class="font-semibold mb-4 text-primary-color">Advanced Analysis Features</h3>
+            
+            <!-- Clinical Trial Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Clinical Trial Analysis</h4>
+                <textarea id="clinicalTrialData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter clinical trial data for analysis..."></textarea>
+                <button onclick="analyzeClinicalTrial()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-microscope mr-1"></i>Analyze Trial
+                </button>
+            </div>
+            
+            <!-- Patent Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Patent Analysis</h4>
+                <textarea id="patentData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter patent information for analysis..."></textarea>
+                <button onclick="analyzePatent()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-file-contract mr-1"></i>Analyze Patent
+                </button>
+            </div>
+            
+            <!-- Manufacturing Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Manufacturing & Supply Chain Analysis</h4>
+                <textarea id="manufacturingData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter manufacturing and supply chain data..."></textarea>
+                <button onclick="analyzeManufacturing()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-industry mr-1"></i>Analyze Manufacturing
+                </button>
+            </div>
+            
+            <!-- Market Access Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Market Access & Pricing Analysis</h4>
+                <textarea id="marketAccessData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter market access and pricing data..."></textarea>
+                <button onclick="analyzeMarketAccess()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-chart-line mr-1"></i>Analyze Market Access
+                </button>
+            </div>
+            
+            <!-- Safety Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Safety & Pharmacovigilance Analysis</h4>
+                <textarea id="safetyData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter safety and pharmacovigilance data..."></textarea>
+                <button onclick="analyzeSafety()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-shield-alt mr-1"></i>Analyze Safety
+                </button>
+            </div>
+            
+            <!-- Pipeline Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Pipeline Analysis</h4>
+                <textarea id="pipelineData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter pipeline data for analysis..."></textarea>
+                <button onclick="analyzePipeline()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-project-diagram mr-1"></i>Analyze Pipeline
+                </button>
+            </div>
+            
+            <!-- Therapeutic Area Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Therapeutic Area Analysis</h4>
+                <input type="text" id="therapeuticArea" 
+                       class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                       placeholder="Enter therapeutic area...">
+                <button onclick="analyzeTherapeuticArea()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-heartbeat mr-1"></i>Analyze Area
+                </button>
+            </div>
+            
+            <!-- Regulatory Strategy Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Regulatory Strategy Analysis</h4>
+                <textarea id="regulatoryData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter regulatory strategy data..."></textarea>
+                <button onclick="analyzeRegulatoryStrategy()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-balance-scale mr-1"></i>Analyze Strategy
+                </button>
+            </div>
+            
+            <!-- Digital Health Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Digital Health Analysis</h4>
+                <textarea id="digitalHealthData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter digital health integration data..."></textarea>
+                <button onclick="analyzeDigitalHealth()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-laptop-medical mr-1"></i>Analyze Digital Health
+                </button>
+            </div>
+            
+            <!-- Value & Evidence Analysis -->
+            <div class="mb-6">
+                <h4 class="font-medium mb-2">Value & Evidence Analysis</h4>
+                <textarea id="valueEvidenceData" 
+                          class="w-full p-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
+                          rows="3"
+                          placeholder="Enter value and evidence data..."></textarea>
+                <button onclick="analyzeValueEvidence()" 
+                        class="btn-custom mt-2 px-3 py-2 rounded-lg">
+                    <i class="fas fa-chart-bar mr-1"></i>Analyze Value & Evidence
+                </button>
+            </div>
+        </div>
+        
         <textarea id="query" 
-                  class="w-full p-4 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  class="w-full p-4 border rounded-lg shadow-sm focus:ring-2 focus:ring-primary-color focus:border-primary-color"
                   rows="4"
                   placeholder="Ask about pharmaceutical industry news, regulations, research, or market trends..."></textarea>
         
         <div class="flex justify-between items-center mt-4">
-            <button id="voiceInputBtn" class="text-blue-600 hover:text-blue-800">
+            <button id="voiceInputBtn" class="text-primary-color hover:text-secondary-color">
                 <i class="fas fa-microphone mr-2"></i>Voice Input
             </button>
             <button onclick="submitQuery()" 
@@ -119,12 +764,10 @@
     
     <!-- Response Area -->
     <div id="response" class="hidden space-y-6">
-        <div class="bg-white rounded-lg shadow-lg p-6">
+        <div class="conversation-card p-6">
             <div class="flex justify-between items-start mb-4">
-                <h2 class="text-xl font-bold text-blue-900">Response</h2>
-                
-                <!-- Save response button -->
-                <button id="saveResponseBtn" class="text-blue-600 hover:text-blue-800">
+                <h2 class="text-xl font-bold text-primary-color">Response</h2>
+                <button id="saveResponseBtn" class="text-primary-color hover:text-secondary-color">
                     <i class="far fa-bookmark"></i>
                 </button>
             </div>
@@ -152,7 +795,7 @@
         </div>
         
         <div id="sourcesSection" class="bg-gray-50 rounded-lg p-6">
-            <h2 class="text-xl font-bold mb-4 text-blue-900">Sources</h2>
+            <h2 class="text-xl font-bold mb-4 text-primary-color">Sources</h2>
             <div id="sourcesList" class="space-y-4"></div>
         </div>
     </div>
@@ -166,10 +809,62 @@
     </div>
 </div>
 
+<!-- Floating KumbyAI Chat Interface -->
+<div class="kumbyai-chat" id="kumbyaiChat">
+    <button class="kumbyai-chat-button" id="kumbyaiToggle" aria-label="Toggle KumbyAI Chat" aria-expanded="false">
+        <i class="fas fa-robot"></i>
+    </button>
+    
+    <div class="kumbyai-chat-window" id="kumbyaiWindow" role="dialog" aria-label="KumbyAI Chat">
+        <div class="kumbyai-chat-header">
+            <div class="kumbyai-chat-title">
+                <i class="fas fa-robot"></i>
+                <span>KumbyAI Assistant</span>
+            </div>
+            <div class="kumbyai-chat-controls">
+                <button class="kumbyai-chat-control" id="kumbyaiMinimize" aria-label="Minimize chat">
+                    <i class="fas fa-minus"></i>
+                </button>
+                <button class="kumbyai-chat-control" id="kumbyaiClose" aria-label="Close chat">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="kumbyai-chat-messages" id="kumbyaiMessages">
+            <!-- Welcome message -->
+            <div class="kumbyai-message">
+                <div class="kumbyai-message-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="kumbyai-message-content">
+                    Hello! I'm KumbyAI, your pharmaceutical assistant. How can I help you today?
+                </div>
+            </div>
+        </div>
+        
+        <div class="kumbyai-chat-input">
+            <form class="kumbyai-chat-form" id="kumbyaiForm">
+                <textarea 
+                    class="kumbyai-chat-textarea" 
+                    id="kumbyaiInput" 
+                    placeholder="Type your message..."
+                    rows="1"
+                    aria-label="Chat message"
+                ></textarea>
+                <button type="submit" class="kumbyai-chat-send" id="kumbyaiSend" disabled>
+                    <span>Send</span>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <!-- Add keyboard shortcuts help -->
 <div class="fixed bottom-4 right-4">
     <button onclick="toggleShortcutsHelp()" 
-            class="bg-gray-100 p-2 rounded-full hover:bg-gray-200 transition-colors">
+            class="btn-custom p-2 rounded-full hover:shadow-lg transition-colors">
         <i class="fas fa-keyboard"></i>
     </button>
 </div>
@@ -177,13 +872,13 @@
 <!-- Add shortcuts help modal -->
 <div id="shortcutsHelp" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
     <div class="bg-white p-6 rounded-lg max-w-md">
-        <h3 class="text-xl font-bold mb-4">Keyboard Shortcuts</h3>
+        <h3 class="text-xl font-bold mb-4 text-primary-color">Keyboard Shortcuts</h3>
         <ul class="space-y-2">
             <li><kbd class="px-2 py-1 bg-gray-100 rounded">Enter</kbd> Send query</li>
             <li><kbd class="px-2 py-1 bg-gray-100 rounded">Shift + Enter</kbd> New line</li>
             <li><kbd class="px-2 py-1 bg-gray-100 rounded">Esc</kbd> Clear input</li>
         </ul>
-        <button onclick="toggleShortcutsHelp()" class="mt-4 text-blue-600">Close</button>
+        <button onclick="toggleShortcutsHelp()" class="mt-4 text-primary-color hover:text-secondary-color">Close</button>
     </div>
 </div>
 {% endblock %}
@@ -199,8 +894,80 @@ marked.setOptions({
 });
 
 let conversationHistory = [];
-let streamingEnabled = true; // Enable streaming by default
-let currentResponseId = null; // Track current response for feedback
+let streamingEnabled = true;
+let currentResponseId = null;
+
+// Initialize all event listeners
+function initializeEventListeners() {
+    // Dark mode toggle
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('click', toggleDarkMode);
+    }
+
+    // Voice input button
+    const voiceInputBtn = document.getElementById('voiceInputBtn');
+    if (voiceInputBtn) {
+        voiceInputBtn.addEventListener('click', startVoiceInput);
+    }
+
+    // Settings toggle
+    const settingsBtn = document.querySelector('[onclick="toggleSettings()"]');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', toggleSettings);
+    }
+
+    // Clear history button
+    const clearHistoryBtn = document.querySelector('[onclick="clearHistory()"]');
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', clearHistory);
+    }
+
+    // Submit query button
+    const submitQueryBtn = document.querySelector('[onclick="submitQuery()"]');
+    if (submitQueryBtn) {
+        submitQueryBtn.addEventListener('click', submitQuery);
+    }
+    
+    // Topic analysis button
+    const analyzeTopicBtn = document.querySelector('[onclick="analyzeTopic()"]');
+    if (analyzeTopicBtn) {
+        analyzeTopicBtn.addEventListener('click', analyzeTopic);
+    }
+
+    // Save response button
+    const saveResponseBtn = document.getElementById('saveResponseBtn');
+    if (saveResponseBtn) {
+        saveResponseBtn.addEventListener('click', saveResponse);
+    }
+
+    // Keyboard shortcuts help
+    const shortcutsHelpBtn = document.querySelector('[onclick="toggleShortcutsHelp()"]');
+    if (shortcutsHelpBtn) {
+        shortcutsHelpBtn.addEventListener('click', toggleShortcutsHelp);
+    }
+
+    // Query input Enter key handler
+    const queryInput = document.getElementById('query');
+    if (queryInput) {
+        queryInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitQuery();
+            }
+        });
+    }
+
+    // Feedback buttons
+    const thumbsUpBtn = document.querySelector('[onclick="rateResponse(1)"]');
+    const thumbsDownBtn = document.querySelector('[onclick="rateResponse(0)"]');
+    if (thumbsUpBtn) {
+        thumbsUpBtn.addEventListener('click', () => rateResponse(1));
+    }
+    if (thumbsDownBtn) {
+        thumbsDownBtn.addEventListener('click', () => rateResponse(0));
+    }
+}
 
 // Dark mode toggle
 function toggleDarkMode() {
@@ -218,7 +985,9 @@ function setInitialTheme() {
 
 function toggleSettings() {
     const panel = document.getElementById('settingsPanel');
-    panel.classList.toggle('hidden');
+    if (panel) {
+        panel.classList.toggle('hidden');
+    }
 }
 
 // Voice input functionality
@@ -234,19 +1003,26 @@ function startVoiceInput() {
     
     recognition.onstart = function() {
         const voiceBtn = document.getElementById('voiceInputBtn');
-        voiceBtn.innerHTML = '<i class="fas fa-microphone-slash mr-2"></i>Listening...';
-        voiceBtn.classList.add('text-red-600');
+        if (voiceBtn) {
+            voiceBtn.innerHTML = '<i class="fas fa-microphone-slash mr-2"></i>Listening...';
+            voiceBtn.classList.add('text-red-600');
+        }
     };
     
     recognition.onresult = function(event) {
         const transcript = event.results[0][0].transcript;
-        document.getElementById('query').value = transcript;
+        const queryInput = document.getElementById('query');
+        if (queryInput) {
+            queryInput.value = transcript;
+        }
     };
     
     recognition.onend = function() {
         const voiceBtn = document.getElementById('voiceInputBtn');
-        voiceBtn.innerHTML = '<i class="fas fa-microphone mr-2"></i>Voice Input';
-        voiceBtn.classList.remove('text-red-600');
+        if (voiceBtn) {
+            voiceBtn.innerHTML = '<i class="fas fa-microphone mr-2"></i>Voice Input';
+            voiceBtn.classList.remove('text-red-600');
+        }
     };
     
     recognition.start();
@@ -256,21 +1032,21 @@ async function submitQuery() {
     const query = document.getElementById('query').value.trim();
     const useHistory = document.getElementById('useHistory').checked;
     const showSources = document.getElementById('showSources').checked;
+    const insightMode = document.getElementById('insightMode').checked;
     
     if (!query) return;
     
     showLoading(true);
     
     try {
-        currentResponseId = Date.now().toString(); // Generate a unique ID for this response
+        currentResponseId = Date.now().toString();
         
         if (streamingEnabled) {
-            await handleStreamingQuery(query, useHistory, showSources);
+            await handleStreamingQuery(query, useHistory, showSources, insightMode);
         } else {
-            await handleStandardQuery(query, useHistory, showSources);
+            await handleStandardQuery(query, useHistory, showSources, insightMode);
         }
         
-        // Clear input
         document.getElementById('query').value = '';
         
     } catch (error) {
@@ -285,12 +1061,10 @@ async function submitQuery() {
     }
 }
 
-async function handleStreamingQuery(query, useHistory, showSources) {
-    // Show response area immediately
+async function handleStreamingQuery(query, useHistory, showSources, insightMode) {
     const response = document.getElementById('response');
     const responseText = document.getElementById('responseText');
     const sourcesList = document.getElementById('sourcesList');
-    const confidenceScore = document.getElementById('confidenceScore');
     const sourcesSection = document.getElementById('sourcesSection');
     
     response.classList.remove('hidden');
@@ -299,8 +1073,7 @@ async function handleStreamingQuery(query, useHistory, showSources) {
     sourcesList.innerHTML = '<div class="animate-pulse bg-gray-200 h-20 rounded"></div>';
     
     try {
-        // Create EventSource for streaming
-        const eventSource = new EventSource(`/api/rag/stream?query=${encodeURIComponent(query)}&use_history=${useHistory}`);
+        const eventSource = new EventSource(`/api/rag/stream?query=${encodeURIComponent(query)}&use_history=${useHistory}&insight_mode=${insightMode}`);
         let fullResponse = '';
         
         eventSource.onmessage = function(event) {
@@ -309,39 +1082,49 @@ async function handleStreamingQuery(query, useHistory, showSources) {
             if (data.chunk) {
                 fullResponse += data.chunk;
                 responseText.innerHTML = marked.parse(fullResponse);
-                // Scroll to bottom of response
                 responseText.scrollTop = responseText.scrollHeight;
             }
             
             if (data.done) {
-                // Update sources
-                if (showSources && Array.isArray(data.sources)) {
-                    sourcesList.innerHTML = data.sources.map(source => `
-                        <div class="bg-white p-4 rounded shadow">
-                            <h3 class="font-bold">${source.title || 'Untitled'}</h3>
-                            <p class="text-sm text-gray-600">
-                                ${source.source || 'Unknown source'} - 
-                                ${source.date || 'No date'}
-                            </p>
-                            ${source.link ? `
-                                <a href="${source.link}" 
-                                   class="text-blue-600 hover:text-blue-800 text-sm"
-                                   target="_blank">
-                                    Read original article
-                                </a>
-                            ` : ''}
-                        </div>
-                    `).join('');
+                // Handle sources display
+                if (showSources) {
+                    try {
+                        // Ensure sources exists and is an array
+                        const sourcesToDisplay = Array.isArray(data.sources) ? data.sources : [];
+                        
+                        if (sourcesToDisplay.length > 0) {
+                            sourcesList.innerHTML = sourcesToDisplay.map(source => `
+                                <div class="source-card">
+                                    <h3 class="source-title">${source.title || 'Untitled'}</h3>
+                                    <p class="source-meta">
+                                        ${source.source || 'Unknown source'} - 
+                                        ${source.date || 'No date'}
+                                    </p>
+                                    ${source.link ? `
+                                        <a href="${source.link}" 
+                                           class="source-link"
+                                           target="_blank">
+                                            Read original article <i class="fas fa-external-link-alt ml-1"></i>
+                                        </a>
+                                    ` : ''}
+                                </div>
+                            `).join('');
+                        } else {
+                            sourcesList.innerHTML = '<p class="text-gray-500">No specific sources found for this query.</p>';
+                        }
+                    } catch(e) {
+                        console.error("Error displaying sources:", e);
+                        sourcesList.innerHTML = '<p class="text-gray-500">Unable to display sources.</p>';
+                    }
                 }
                 
-                // Update history
                 const timestamp = new Date().toISOString();
                 conversationHistory.push({
                     id: currentResponseId,
                     query,
                     response: data.full_response || fullResponse,
                     timestamp: timestamp,
-                    confidence: 0.8, // Default confidence
+                    confidence: 0.8,
                     feedback: null
                 });
                 
@@ -354,6 +1137,7 @@ async function handleStreamingQuery(query, useHistory, showSources) {
         eventSource.onerror = function(error) {
             console.error('EventSource error:', error);
             responseText.innerHTML = marked.parse(fullResponse || 'Error receiving streaming response');
+            sourcesList.innerHTML = '<p class="text-red-500">Error loading sources. The connection was interrupted.</p>';
             showLoading(false);
             eventSource.close();
         };
@@ -361,12 +1145,13 @@ async function handleStreamingQuery(query, useHistory, showSources) {
     } catch (error) {
         console.error('Streaming error:', error);
         responseText.innerHTML = 'Error with streaming response. Please try again.';
+        sourcesList.innerHTML = '<p class="text-red-500">Error loading sources.</p>';
         showLoading(false);
         throw error;
     }
 }
 
-async function handleStandardQuery(query, useHistory, showSources) {
+async function handleStandardQuery(query, useHistory, showSources, insightMode) {
     const response = await fetch('/api/rag', {
         method: 'POST',
         headers: { 
@@ -375,7 +1160,8 @@ async function handleStandardQuery(query, useHistory, showSources) {
         },
         body: JSON.stringify({ 
             query, 
-            use_history: useHistory 
+            use_history: useHistory,
+            insight_mode: insightMode
         })
     });
     
@@ -385,7 +1171,6 @@ async function handleStandardQuery(query, useHistory, showSources) {
         throw new Error(data.error || 'Failed to get response');
     }
     
-    // Update history
     conversationHistory.push({
         id: currentResponseId,
         query,
@@ -407,35 +1192,31 @@ function displayResponse(data, showSources) {
     const confidenceScore = document.getElementById('confidenceScore');
     const sourcesSection = document.getElementById('sourcesSection');
     
-    // Clear any previous error messages
     response.querySelectorAll('.bg-red-100').forEach(el => el.remove());
     
-    // Display response
     responseText.innerHTML = marked.parse(data.response);
     confidenceScore.textContent = `${(data.confidence * 100).toFixed(1)}%`;
     
-    // Handle sources
     sourcesSection.style.display = showSources ? 'block' : 'none';
     if (showSources && Array.isArray(data.sources)) {
         sourcesList.innerHTML = data.sources.map(source => `
-            <div class="bg-white p-4 rounded shadow">
-                <h3 class="font-bold">${source.title || 'Untitled'}</h3>
-                <p class="text-sm text-gray-600">
+            <div class="source-card">
+                <h3 class="source-title">${source.title || 'Untitled'}</h3>
+                <p class="source-meta">
                     ${source.source || 'Unknown source'} - 
                     ${source.date || 'No date'}
                 </p>
                 ${source.link ? `
                     <a href="${source.link}" 
-                       class="text-blue-600 hover:text-blue-800 text-sm"
+                       class="source-link"
                        target="_blank">
-                        Read original article
+                        Read original article <i class="fas fa-external-link-alt ml-1"></i>
                     </a>
                 ` : ''}
             </div>
         `).join('');
     }
     
-    // Reset feedback UI
     document.getElementById('feedbackSent').classList.add('hidden');
     document.querySelectorAll('.feedback-btn').forEach(btn => {
         btn.classList.remove('text-blue-600', 'text-red-600');
@@ -447,9 +1228,9 @@ function displayResponse(data, showSources) {
 function updateHistoryDisplay() {
     const historyDiv = document.getElementById('conversationHistory');
     historyDiv.innerHTML = conversationHistory.map((item, index) => `
-        <div class="bg-white rounded-lg shadow-lg p-6">
+        <div class="conversation-card p-6">
             <div class="flex justify-between items-start mb-4">
-                <div class="font-semibold text-blue-900">
+                <div class="font-semibold text-primary-color">
                     <i class="fas fa-user mr-2"></i>Question:
                 </div>
                 <span class="text-sm text-gray-600">
@@ -458,7 +1239,7 @@ function updateHistoryDisplay() {
             </div>
             <p class="mb-6">${item.query}</p>
             
-            <div class="font-semibold text-blue-900 mb-2">
+            <div class="font-semibold text-primary-color mb-2">
                 <i class="fas fa-robot mr-2"></i>Answer:
             </div>
             <div class="prose">${marked.parse(item.response)}</div>
@@ -495,147 +1276,640 @@ async function clearHistory() {
     }
 }
 
-// Submit feedback for a response
 async function rateResponse(rating) {
     if (!currentResponseId) return;
     
     try {
-        // Update UI first
         const thumbsUp = document.querySelector('.feedback-btn:first-child');
         const thumbsDown = document.querySelector('.feedback-btn:last-child');
         
         if (rating) {
-            thumbsUp.classList.add('text-blue-600');
+            thumbsUp.classList.add('text-green-600');
             thumbsDown.classList.remove('text-red-600');
         } else {
-            thumbsUp.classList.remove('text-blue-600');
+            thumbsUp.classList.remove('text-green-600');
             thumbsDown.classList.add('text-red-600');
         }
         
-        // Show thank you message
         document.getElementById('feedbackSent').classList.remove('hidden');
         
-        // Update history
         const historyItem = conversationHistory.find(item => item.id === currentResponseId);
         if (historyItem) {
             historyItem.feedback = rating;
             updateHistoryDisplay();
         }
-        
-        // You would typically send this to your backend
-        /*
-        await fetch('/api/rag/feedback', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                response_id: currentResponseId,
-                rating: rating,
-                timestamp: new Date().toISOString()
-            })
-        });
-        */
     } catch (error) {
         console.error('Error submitting feedback:', error);
     }
 }
 
-// Save current response to bookmarks
 function saveResponse() {
     const currentResponse = conversationHistory.find(item => item.id === currentResponseId);
     if (!currentResponse) return;
     
     const savedResponses = JSON.parse(localStorage.getItem('savedResponses') || '[]');
     
-    // Check if already saved
     if (savedResponses.some(item => item.id === currentResponseId)) {
         alert('This response is already saved');
         return;
     }
     
-    // Add to saved responses
     savedResponses.push(currentResponse);
     localStorage.setItem('savedResponses', JSON.stringify(savedResponses));
     
-    // Update UI
     const saveBtn = document.getElementById('saveResponseBtn');
     saveBtn.innerHTML = '<i class="fas fa-bookmark"></i>';
     
-    // Show notification
     const toast = document.createElement('div');
     toast.className = 'fixed bottom-4 left-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
     toast.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Response saved!';
     document.body.appendChild(toast);
     
-    // Remove toast after 3 seconds
     setTimeout(() => {
         toast.remove();
     }, 3000);
 }
 
-// Load history on page load
+function toggleShortcutsHelp() {
+    const helpModal = document.getElementById('shortcutsHelp');
+    helpModal.classList.toggle('hidden');
+}
+
+async function analyzeTopic() {
+    const topicInput = document.getElementById('topicInput');
+    const topic = topicInput.value.trim();
+    
+    if (!topic) {
+        alert('Please enter a pharmaceutical topic to analyze');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        currentResponseId = Date.now().toString();
+        
+        const response = await fetch('/api/topic-analysis', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ topic })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to analyze topic');
+        }
+        
+        // Create history entry
+        conversationHistory.push({
+            id: currentResponseId,
+            query: `Analyze pharmaceutical topic: ${topic}`,
+            response: data.analysis,
+            timestamp: data.timestamp,
+            confidence: data.confidence,
+            feedback: null
+        });
+        
+        // Update display
+        updateHistoryDisplay();
+        
+        // Display the analysis
+        const showSources = document.getElementById('showSources').checked;
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources,
+            confidence: data.confidence
+        }, showSources);
+        
+        // Clear the topic input
+        topicInput.value = '';
+        
+    } catch (error) {
+        console.error('Error:', error);
+        const errorMessage = document.createElement('div');
+        errorMessage.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative';
+        errorMessage.innerHTML = `Error analyzing topic: ${error.message}`;
+        document.getElementById('response').classList.remove('hidden');
+        document.getElementById('response').innerHTML = '';
+        document.getElementById('response').appendChild(errorMessage);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// KumbyAI Functions
+async function analyzeRegulatory() {
+    const content = document.getElementById('regulatoryContent').value.trim();
+    if (!content) {
+        alert('Please enter content for regulatory analysis');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/kumby/regulatory', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ content })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to analyze regulatory impact');
+        }
+        
+        // Display the analysis
+        displayResponse({
+            response: data.analysis,
+            confidence: 0.9,
+            sources: []
+        }, true);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function generateMarketInsight() {
+    const topic = document.getElementById('marketTopic').value.trim();
+    const timeframe = document.getElementById('marketTimeframe').value;
+    
+    if (!topic) {
+        alert('Please enter a market topic');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/kumby/market', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ topic, timeframe })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate market insight');
+        }
+        
+        // Display the insight
+        displayResponse({
+            response: data.insight,
+            sources: data.sources || [],
+            confidence: 0.9
+        }, true);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeDrugDevelopment() {
+    const drugName = document.getElementById('drugName').value.trim();
+    
+    if (!drugName) {
+        alert('Please enter a drug name');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/kumby/drug', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ drug_name: drugName })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to analyze drug development');
+        }
+        
+        // Display the analysis
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: 0.9
+        }, true);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function generateCompetitiveAnalysis() {
+    const companyName = document.getElementById('companyName').value.trim();
+    
+    if (!companyName) {
+        alert('Please enter a company name');
+        return;
+    }
+    
+    showLoading(true);
+    
+    try {
+        const response = await fetch('/api/kumby/competitive', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ company_name: companyName })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to generate competitive analysis');
+        }
+        
+        // Display the analysis
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: 0.9
+        }, true);
+        
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+function displayError(message) {
+    const errorMessage = document.createElement('div');
+    errorMessage.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative';
+    errorMessage.innerHTML = `Error: ${message}`;
+    document.getElementById('response').classList.remove('hidden');
+    document.getElementById('response').innerHTML = '';
+    document.getElementById('response').appendChild(errorMessage);
+}
+
+// Advanced Analysis Functions
+async function analyzeClinicalTrial() {
+    const trialData = document.getElementById('clinicalTrialData').value.trim();
+    if (!trialData) {
+        alert('Please enter clinical trial data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/clinical-trial', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trial_data: trialData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze clinical trial');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzePatent() {
+    const patentData = document.getElementById('patentData').value.trim();
+    if (!patentData) {
+        alert('Please enter patent data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/patent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ patent_data: patentData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze patent');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeManufacturing() {
+    const manufacturingData = document.getElementById('manufacturingData').value.trim();
+    if (!manufacturingData) {
+        alert('Please enter manufacturing data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/manufacturing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ manufacturing_data: manufacturingData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze manufacturing');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeMarketAccess() {
+    const marketData = document.getElementById('marketAccessData').value.trim();
+    if (!marketData) {
+        alert('Please enter market access data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/market-access', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ market_data: marketData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze market access');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeSafety() {
+    const safetyData = document.getElementById('safetyData').value.trim();
+    if (!safetyData) {
+        alert('Please enter safety data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/safety', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ safety_data: safetyData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze safety');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzePipeline() {
+    const pipelineData = document.getElementById('pipelineData').value.trim();
+    if (!pipelineData) {
+        alert('Please enter pipeline data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/pipeline', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pipeline_data: pipelineData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze pipeline');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeTherapeuticArea() {
+    const therapeuticArea = document.getElementById('therapeuticArea').value.trim();
+    if (!therapeuticArea) {
+        alert('Please enter therapeutic area');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/therapeutic-area', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ therapeutic_area: therapeuticArea })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze therapeutic area');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeRegulatoryStrategy() {
+    const regulatoryData = document.getElementById('regulatoryData').value.trim();
+    if (!regulatoryData) {
+        alert('Please enter regulatory strategy data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/regulatory-strategy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regulatory_data: regulatoryData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze regulatory strategy');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeDigitalHealth() {
+    const digitalData = document.getElementById('digitalHealthData').value.trim();
+    if (!digitalData) {
+        alert('Please enter digital health data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/digital-health', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ digital_data: digitalData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze digital health');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+async function analyzeValueEvidence() {
+    const valueData = document.getElementById('valueEvidenceData').value.trim();
+    if (!valueData) {
+        alert('Please enter value and evidence data');
+        return;
+    }
+    
+    showLoading(true);
+    try {
+        const response = await fetch('/api/kumby/value-evidence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ value_data: valueData })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to analyze value and evidence');
+        
+        displayResponse({
+            response: data.analysis,
+            sources: data.sources || [],
+            confidence: data.confidence || 0.9
+        }, true);
+    } catch (error) {
+        console.error('Error:', error);
+        displayError(error.message);
+    } finally {
+        showLoading(false);
+    }
+}
+
+// Initialize on page load
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        // Set initial theme
         setInitialTheme();
-        
-        // Dark mode toggle event listener
-        document.getElementById('darkModeToggle').addEventListener('click', toggleDarkMode);
-        
-        // Voice input button
-        document.getElementById('voiceInputBtn').addEventListener('click', startVoiceInput);
-        
-        // Save response button
-        document.getElementById('saveResponseBtn').addEventListener('click', saveResponse);
+        initializeEventListeners();
         
         // Add streaming toggle to settings
         const settingsPanel = document.getElementById('settingsPanel');
-        const streamingToggle = document.createElement('div');
-        streamingToggle.className = 'flex items-center justify-between mt-2';
-        streamingToggle.innerHTML = `
-            <label class="inline-flex items-center">
-                <input type="checkbox" id="enableStreaming" checked 
-                       class="form-checkbox text-blue-600">
-                <span class="ml-2">Enable streaming responses</span>
-            </label>
-        `;
-        settingsPanel.appendChild(streamingToggle);
-        
-        // Add event listener for streaming toggle
-        document.getElementById('enableStreaming').addEventListener('change', function(e) {
-            streamingEnabled = e.target.checked;
-        });
-        
-        // Add typing indicator styles
-        const style = document.createElement('style');
-        style.textContent = `
-            .typing-indicator {
-                display: flex;
-                align-items: center;
-                margin: 10px 0;
+        if (settingsPanel) {
+            const streamingToggle = document.createElement('div');
+            streamingToggle.className = 'flex items-center justify-between mt-2';
+            streamingToggle.innerHTML = `
+                <label class="inline-flex items-center">
+                    <input type="checkbox" id="enableStreaming" checked 
+                           class="form-checkbox text-primary-color">
+                    <span class="ml-2">Enable streaming responses</span>
+                </label>
+            `;
+            settingsPanel.appendChild(streamingToggle);
+            
+            // Add event listener for streaming toggle
+            const streamingToggleInput = document.getElementById('enableStreaming');
+            if (streamingToggleInput) {
+                streamingToggleInput.addEventListener('change', function(e) {
+                    streamingEnabled = e.target.checked;
+                });
             }
-            .typing-indicator span {
-                height: 8px;
-                width: 8px;
-                background: #3B82F6;
-                border-radius: 50%;
-                display: inline-block;
-                margin-right: 5px;
-                animation: bounce 1.5s infinite ease-in-out;
-            }
-            .typing-indicator span:nth-child(2) {
-                animation-delay: 0.2s;
-            }
-            .typing-indicator span:nth-child(3) {
-                animation-delay: 0.4s;
-            }
-            @keyframes bounce {
-                0%, 60%, 100% { transform: translateY(0); }
-                30% { transform: translateY(-5px); }
-            }
-        `;
-        document.head.appendChild(style);
+        }
         
         // Load conversation history
         const response = await fetch('/api/rag/history');
@@ -651,17 +1925,128 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// Handle Enter key
-document.getElementById('query').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        submitQuery();
+document.addEventListener('DOMContentLoaded', function() {
+    const chat = document.getElementById('kumbyaiChat');
+    const toggle = document.getElementById('kumbyaiToggle');
+    const window = document.getElementById('kumbyaiWindow');
+    const minimize = document.getElementById('kumbyaiMinimize');
+    const close = document.getElementById('kumbyaiClose');
+    const messages = document.getElementById('kumbyaiMessages');
+    const form = document.getElementById('kumbyaiForm');
+    const input = document.getElementById('kumbyaiInput');
+    const send = document.getElementById('kumbyaiSend');
+    
+    let isMinimized = false;
+    
+    // Toggle chat window
+    toggle.addEventListener('click', () => {
+        const isOpen = window.classList.contains('active');
+        toggleChat(!isOpen);
+    });
+    
+    // Minimize chat
+    minimize.addEventListener('click', () => {
+        isMinimized = !isMinimized;
+        chat.classList.toggle('minimized', isMinimized);
+        minimize.querySelector('i').className = isMinimized ? 'fas fa-expand' : 'fas fa-minus';
+        minimize.setAttribute('aria-label', isMinimized ? 'Expand chat' : 'Minimize chat');
+    });
+    
+    // Close chat
+    close.addEventListener('click', () => {
+        toggleChat(false);
+    });
+    
+    function toggleChat(open) {
+        window.classList.toggle('active', open);
+        toggle.classList.toggle('active', open);
+        toggle.setAttribute('aria-expanded', open);
+        if (open) {
+            input.focus();
+        }
     }
+    
+    // Auto-resize textarea
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = (input.scrollHeight) + 'px';
+        send.disabled = !input.value.trim();
+    });
+    
+    // Handle form submission
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = input.value.trim();
+        if (!message) return;
+        
+        // Add user message
+        addMessage(message, true);
+        
+        // Clear input
+        input.value = '';
+        input.style.height = 'auto';
+        send.disabled = true;
+        
+        // Show typing indicator
+        const typingIndicator = document.createElement('div');
+        typingIndicator.className = 'kumbyai-typing';
+        typingIndicator.innerHTML = '<span></span><span></span><span></span>';
+        messages.appendChild(typingIndicator);
+        messages.scrollTop = messages.scrollHeight;
+        
+        try {
+            // Send message to backend
+            const response = await fetch('/api/kumbyai/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ message })
+            });
+            
+            const data = await response.json();
+            
+            // Remove typing indicator
+            typingIndicator.remove();
+            
+            // Add AI response
+            addMessage(data.response, false);
+            
+        } catch (error) {
+            console.error('Error:', error);
+            typingIndicator.remove();
+            addMessage('Sorry, I encountered an error. Please try again.', false);
+        }
+    });
+    
+    function addMessage(content, isUser) {
+        const message = document.createElement('div');
+        message.className = `kumbyai-message ${isUser ? 'user' : ''}`;
+        message.innerHTML = `
+            <div class="kumbyai-message-avatar">
+                <i class="fas ${isUser ? 'fa-user' : 'fa-robot'}"></i>
+            </div>
+            <div class="kumbyai-message-content">
+                ${content}
+            </div>
+        `;
+        messages.appendChild(message);
+        messages.scrollTop = messages.scrollHeight;
+    }
+    
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        // Toggle chat with Ctrl+K
+        if (e.ctrlKey && e.key === 'k') {
+            e.preventDefault();
+            toggleChat(!window.classList.contains('active'));
+        }
+        
+        // Close chat with Escape
+        if (e.key === 'Escape' && window.classList.contains('active')) {
+            toggleChat(false);
+        }
+    });
 });
-
-function toggleShortcutsHelp() {
-    const helpModal = document.getElementById('shortcutsHelp');
-    helpModal.classList.toggle('hidden');
-}
 </script>
 {% endblock %} 

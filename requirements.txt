@@ -2,6 +2,7 @@
 Flask==3.0.0
 Flask-CORS==4.0.0
 # uwsgi removed, using gunicorn instead
+waitress==3.0.2
 pandas==2.1.4
 numpy>=1.26.0  # Adding numpy since pandas usually requires it
 requests==2.31.0

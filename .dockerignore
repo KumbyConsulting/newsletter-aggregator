@@ -43,13 +43,14 @@ npm-debug.log
 yarn-debug.log
 yarn-error.log
 
-# Data and logs
+# Logs
 logs/
 *.log
-data/
-*.csv
 .DS_Store
-chroma_db/
+
+# Google Cloud components we don't need in the container
+google-cloud-cli-*.tar.gz
+google-cloud-sdk/
 
 # Docker
 .dockerignore

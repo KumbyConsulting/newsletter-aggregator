@@ -7,7 +7,7 @@ from newsLetter import scrape_news, RateLimitException, generate_missing_summari
 import logging
 from dotenv import load_dotenv
 from services.storage_service import StorageService
-from services.ai_service import AIService, AIResponse
+from services.ai_service import KumbyAI, AIServiceException
 from services.config_service import ConfigService
 from services.logging_service import LoggingService
 from services.monitoring_service import MonitoringService
@@ -19,6 +19,10 @@ import time
 import argparse
 from google.auth.exceptions import DefaultCredentialsError
 from google.cloud import storage
+from cachetools import TTLCache, LRUCache
+from datetime import datetime
+import io
+import csv
 
 # Load environment variables
 load_dotenv()
@@ -42,7 +46,7 @@ app.secret_key = config.flask_secret_key
 
 # Initialize services
 storage_service = StorageService()
-ai_service = AIService(storage_service)
+ai_service = KumbyAI(storage_service)  # Use KumbyAI instead of AIService
 
 # Log GCP configuration status
 if config.is_gcp_enabled:
@@ -65,6 +69,11 @@ def max_value(a, b):
 @app.template_filter('min_value')
 def min_value(a, b):
     return min(a, b)
+
+@app.route('/_ah/health')
+def health_check():
+    """Health check endpoint for Cloud Run"""
+    return jsonify({"status": "healthy"}), 200
 
 def clean_html(raw_html):
     """Sanitize HTML content for safe display"""
@@ -115,170 +124,184 @@ def strip_html_tags(raw_html):
 
 @app.route('/', methods=['GET', 'POST'])
 async def index():
-    # Try to load articles from Firestore first
+    """Main index route with improved search functionality and caching"""
+    # Get query parameters with improved defaults and sanitization
+    search_query = request.args.get('search', '').strip()
+    selected_topic = request.args.get('topic', 'All')
+    sort_by = request.args.get('sort_by', 'pub_date')  # New sorting parameter
+    sort_order = request.args.get('sort_order', 'desc')  # New sort order parameter
+    page = max(1, request.args.get('page', 1, type=int))  # Ensure page is at least 1
+    per_page = min(50, max(10, request.args.get('per_page', 10, type=int)))  # Limit per_page between 10 and 50
+    
+    # Set default values
+    formatted_articles = []
+    total = 0
+    showing_from = 0
+    showing_to = 0
+    last_page = 1
+    start_page = 1
+    end_page = 1
+    topic_distribution = []
+    
+    # Generate cache key for this request
+    cache_key_str = f"index:{selected_topic}:{page}:{search_query}:{sort_by}:{sort_order}:{per_page}"
+    cached_result = article_cache.get(cache_key_str)
+    
+    if cached_result:
+        # Use cached result if available
+        return render_template('index.html', **cached_result)
+    
     try:
-        # Get query parameters
-        search_query = request.args.get('search', '')
-        selected_topic = request.args.get('topic', 'All')
-        page = request.args.get('page', 1, type=int)
-        per_page = 10
+        # Get articles with enhanced parameters
+        result = await storage_service.get_articles(
+            page=page,
+            limit=per_page,
+            topic=selected_topic if selected_topic != 'All' else None,
+            search_query=search_query,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
         
-        # Get recent articles from Firestore
-        if selected_topic != 'All':
-            articles = await storage_service.get_recent_articles(limit=100, topic=selected_topic)
-        else:
-            articles = await storage_service.get_recent_articles(limit=100)
-            
-        # Format articles from Firestore response
         formatted_articles = []
-        for article in articles:
+        for article in result['articles']:
             metadata = article.get('metadata', {})
+            # Enhanced article formatting with more metadata
             formatted_articles.append({
+                'id': article.get('id'),  # Add article ID for similar articles feature
                 'title': metadata.get('title', 'Unknown Title'),
-                'description': metadata.get('description', 'No description available'),
+                'description': clean_html(metadata.get('description', 'No description available')),
                 'link': metadata.get('link', '#'),
                 'pub_date': metadata.get('pub_date', 'Unknown date'),
                 'topic': metadata.get('topic', 'Uncategorized'),
                 'source': metadata.get('source', 'Unknown source'),
-                'summary': metadata.get('summary', None)
+                'summary': metadata.get('summary'),
+                'image_url': metadata.get('image_url', ''),
+                'has_full_content': metadata.get('has_full_content', False),
+                'reading_time': metadata.get('reading_time', calculate_reading_time(metadata.get('description', ''))),
+                'relevance_score': metadata.get('relevance_score', None),  # Add relevance score for search results
+                'is_recent': is_recent_article(metadata.get('pub_date', '')),  # Add flag for recent articles
             })
-            
-        # Apply search filter if needed
-        if search_query:
-            formatted_articles = [a for a in formatted_articles 
-                                 if search_query.lower() in a['title'].lower()]
         
-        # Calculate pagination
-        total = len(formatted_articles)
+        # Use pagination info from result
+        total = result['total']
         showing_from = (page - 1) * per_page + 1 if total > 0 else 0
         showing_to = min(page * per_page, total)
-        last_page = (total + per_page - 1) // per_page  # Ceiling division
+        last_page = (total + per_page - 1) // per_page
         
-        # Calculate page range for pagination
-        start_page = max(page - 2, 1)
-        end_page = min(start_page + 4, last_page)
-        start_page = max(end_page - 4, 1)
+        # Improved pagination range calculation
+        if last_page <= 5:
+            start_page = 1
+            end_page = last_page
+        else:
+            if page <= 3:
+                start_page = 1
+                end_page = 5
+            elif page >= last_page - 2:
+                start_page = last_page - 4
+                end_page = last_page
+            else:
+                start_page = page - 2
+                end_page = page + 2
         
-        # Apply pagination
-        formatted_articles = formatted_articles[(page - 1) * per_page: page * per_page]
+        # Get topics list with counts
+        topics = await get_topics_with_counts()
         
-        # Get topics list
-        topics = sorted(TOPICS.keys())
+        # Get topic distribution with enhanced statistics
+        topic_distribution = await get_topic_distribution()
         
-        # Calculate topic distribution from all articles
-        topic_counts = {}
-        for article in articles:
-            topic = article.get('metadata', {}).get('topic', 'Uncategorized')
-            topic_counts[topic] = topic_counts.get(topic, 0) + 1
-            
-        topic_distribution = [
-            {'topic': topic, 'count': count, 
-             'percentage': round(count / max(1, len(articles)) * 100, 1)}
-            for topic, count in topic_counts.items()
-        ]
+        # Prepare template data with enhanced parameters
+        template_data = {
+            'articles': formatted_articles,
+            'search_query': search_query,
+            'selected_topic': selected_topic,
+            'sort_by': sort_by,
+            'sort_order': sort_order,
+            'topics': topics,
+            'page': page,
+            'per_page': per_page,
+            'total': total,
+            'showing_from': showing_from,
+            'showing_to': showing_to,
+            'last_page': last_page,
+            'start_page': start_page,
+            'end_page': end_page,
+            'topic_distribution': topic_distribution,
+            'has_search_results': bool(search_query and formatted_articles),
+            'search_time': result.get('query_time', 0),  # Add search performance metric
+        }
+        
+        # Cache the result
+        article_cache[cache_key_str] = template_data
+        
+        return render_template('index.html', **template_data)
         
     except Exception as e:
-        # Fallback to CSV if Firestore query fails
-        logging.error(f"Error loading articles from Firestore: {e}. Falling back to CSV.")
-        
-        # Load the CSV file as fallback
-        filename = config.articles_file_path
-        if os.path.isfile(filename):
-            df = pd.read_csv(filename)
-            
-            # Ensure all columns are string type and handle NaN values
-            string_columns = ['title', 'description', 'link', 'pub_date', 'summary', 'topic', 'source']
-            for col in string_columns:
-                if col in df.columns:
-                    df[col] = df[col].fillna('').astype(str)
-                    # Clean HTML and handle empty descriptions
-                    if col == 'description':
-                        df[col] = df[col].apply(lambda x: clean_html(x) if x else "No description available")
-                    # Handle summaries - these should be plain text
-                    if col == 'summary':
-                        df[col] = df[col].replace({'nan': None, '': None})
-                        # Ensure summaries don't contain HTML
-                        df.loc[df[col].notna(), col] = df.loc[df[col].notna(), col].apply(strip_html_tags)
-            
-            # Add image_url column if it doesn't exist
-            if 'image_url' not in df.columns:
-                df['image_url'] = ''
-            
-            # Remove duplicates
-            df.drop_duplicates(subset=['title', 'link'], inplace=True)
-            
-            # Handle missing values with meaningful defaults
-            df.fillna({
-                'description': 'No description available', 
-                'pub_date': 'Unknown date',
-                'topic': 'Uncategorized',
-                'source': 'Unknown source',
-                'image_url': ''
-            }, inplace=True)
-            
-            # Search functionality
-            search_query = request.args.get('search', '')
-            if search_query:
-                df = df[df['title'].str.contains(search_query, case=False, na=False)]
-            
-            # Topic filter
-            selected_topic = request.args.get('topic', 'All')
-            if selected_topic != 'All':
-                df = df[df['topic'] == selected_topic]
-            
-            # Calculate pagination values
-            page = request.args.get('page', 1, type=int)
-            per_page = 10
-            total = len(df)
-            showing_from = (page - 1) * per_page + 1 if total > 0 else 0
-            showing_to = min(page * per_page, total)
-            last_page = (total + per_page - 1) // per_page  # Ceiling division
-            
-            # Calculate page range for pagination
-            start_page = max(page - 2, 1)
-            end_page = min(start_page + 4, last_page)
-            start_page = max(end_page - 4, 1)
-            
-            # Apply pagination
-            df = df.iloc[(page - 1) * per_page: page * per_page]
-            
-            formatted_articles = df.to_dict(orient='records')
-            topics = sorted(TOPICS.keys())
-            
-            # Calculate topic distribution
-            topic_distribution = df['topic'].value_counts().reset_index()
-            topic_distribution.columns = ['topic', 'count']
-            topic_distribution['percentage'] = (topic_distribution['count'] / len(df) * 100).round(1)
-            topic_distribution = topic_distribution.to_dict('records')
-        else:
-            formatted_articles = []
-            total = 0
-            page = 1
-            per_page = 10
-            topics = []
-            selected_topic = 'All'
-            search_query = ''
-            showing_from = 0
-            showing_to = 0
-            last_page = 1
-            start_page = 1
-            end_page = 1
-            topic_distribution = []
+        logging.error(f"Error in index route: {e}")
+        flash("An error occurred while loading articles. Please try again.", "error")
+        return render_template('index.html', 
+                             articles=[], 
+                             topics=sorted(TOPICS.keys()),
+                             search_query=search_query,
+                             selected_topic=selected_topic,
+                             error=str(e))
 
-    return render_template('index.html', 
-                         articles=formatted_articles, 
-                         search_query=search_query,
-                         selected_topic=selected_topic, 
-                         topics=topics, 
-                         page=page,
-                         per_page=per_page, 
-                         total=total,
-                         showing_from=showing_from,
-                         showing_to=showing_to,
-                         last_page=last_page,
-                         start_page=start_page,
-                         end_page=end_page,
-                         topic_distribution=topic_distribution)
+async def get_topics_with_counts():
+    """Get topics list with article counts"""
+    try:
+        # Get all topics from the database with their counts
+        topics_result = await storage_service.get_topic_counts()
+        
+        # Format topics with counts
+        topics = []
+        for topic, count in topics_result.items():
+            topics.append({
+                'name': topic,
+                'count': count,
+                'percentage': round((count / max(1, sum(topics_result.values()))) * 100, 1)
+            })
+        
+        # Sort topics by count in descending order
+        return sorted(topics, key=lambda x: x['count'], reverse=True)
+    except Exception as e:
+        logging.error(f"Error getting topics with counts: {e}")
+        return sorted(TOPICS.keys())  # Fallback to basic topics list
+
+async def get_topic_distribution():
+    """Get enhanced topic distribution statistics"""
+    try:
+        # Get topic distribution with time-based analysis
+        distribution = await storage_service.get_topic_distribution()
+        
+        # Enhanced statistics for each topic
+        topic_stats = []
+        for topic, stats in distribution.items():
+            topic_stats.append({
+                'name': topic,
+                'count': stats['count'],
+                'percentage': round(stats['percentage'], 1),
+                'trend': stats.get('trend', 'stable'),  # Topic trend (increasing/decreasing/stable)
+                'recent_count': stats.get('recent_count', 0),  # Articles in last 30 days
+                'growth_rate': stats.get('growth_rate', 0),  # Growth rate compared to previous period
+            })
+        
+        return sorted(topic_stats, key=lambda x: x['count'], reverse=True)
+    except Exception as e:
+        logging.error(f"Error getting topic distribution: {e}")
+        return []
+
+def calculate_reading_time(text):
+    """Calculate estimated reading time in minutes"""
+    if not text:
+        return 1
+    words = len(text.split())
+    reading_time = max(1, round(words / 200))  # Assume 200 words per minute reading speed
+    return reading_time
+
+def is_recent_article(pub_date):
+    """Check if an article is recent (published in 2024 or 2025)"""
+    if not pub_date:
+        return False
+    return any(year in pub_date for year in ['2024', '2025'])
 
 # Global variable to track update status
 update_status = {
@@ -294,12 +317,11 @@ update_status = {
 }
 
 def async_update(app_context):
-    """Background task for updating articles"""
+    """Background task for updating articles with improved error handling and cache invalidation"""
     global update_status
     
     with app_context:
         try:
-            update_status["in_progress"] = True
             update_status["status"] = "running"
             update_status["progress"] = 10
             update_status["message"] = "Starting update process..."
@@ -310,8 +332,7 @@ def async_update(app_context):
             success = loop.run_until_complete(scrape_news(status_callback=update_callback))
             
             if success:
-                # Note: scrape_news now handles both CSV and database updates
-                # But for robustness, let's verify consistency after the update
+                # Verify database consistency after update
                 update_status["progress"] = 85
                 update_status["message"] = "Verifying database consistency..."
                 
@@ -328,9 +349,16 @@ def async_update(app_context):
                 else:
                     update_status["status"] = "completed_with_warnings"
                     update_status["message"] = "Articles updated but verification failed."
+                    
+                # Invalidate caches after successful update
+                invalidate_caches()
+                
+                # Record success metric
+                monitoring_service.record_count("article_updates_completed", labels={"success": "true"})
             else:
                 update_status["status"] = "completed_with_errors"
                 update_status["message"] = "Some errors occurred while updating articles."
+                monitoring_service.record_count("article_updates_completed", labels={"success": "false"})
                 
             update_status["progress"] = 100
             update_status["last_update"] = time.time()
@@ -341,8 +369,30 @@ def async_update(app_context):
             update_status["message"] = "Update failed"
             update_status["error"] = str(e)
             update_status["progress"] = 0
+            monitoring_service.record_count("article_updates_completed", labels={"success": "false", "error": "exception"})
         finally:
             update_status["in_progress"] = False
+
+def invalidate_caches():
+    """Invalidate all caches after articles are updated"""
+    try:
+        # Clear article cache
+        article_cache.clear()
+        logging.info("Article cache cleared")
+        
+        # Clear search cache
+        search_cache.clear()
+        logging.info("Search cache cleared")
+        
+        # Clear suggestions cache
+        suggestion_cache.clear()
+        logging.info("Suggestion cache cleared")
+        
+        logging.info("All caches successfully invalidated")
+    except Exception as e:
+        logging.error(f"Error invalidating caches: {e}")
+        # Don't raise the exception - we don't want cache invalidation
+        # failures to affect the main update flow
 
 def update_callback(progress, message, sources_processed=None, total_sources=None, articles_found=None):
     """Callback function to update status during scraping"""
@@ -360,38 +410,9 @@ def update_callback(progress, message, sources_processed=None, total_sources=Non
     if articles_found is not None:
         update_status["articles_found"] = articles_found
 
-@app.route('/update', methods=['POST'])
-async def update_articles():
-    """Legacy synchronous update route - redirects to async version"""
-    try:
-        # Check if update is already in progress
-        if update_status["in_progress"]:
-            flash("Update already in progress. Please wait.", "info")
-            return redirect(url_for('index'))
-        
-        # Start background update
-        thread = threading.Thread(
-            target=async_update,
-            args=(app.app_context(),)
-        )
-        thread.daemon = True
-        thread.start()
-        
-        flash("Update started in background. You can continue using the app.", "info")
-        return redirect(url_for('index'))
-    except Exception as e:
-        logging.error(f"Error starting update: {e}")
-        flash("Error starting update. Please try again later.", "error")
-        return redirect(url_for('index'))
-
-@app.route('/api/update/status', methods=['GET'])
-def get_update_status():
-    """API endpoint to get the current update status"""
-    return jsonify(update_status)
-
 @app.route('/api/update/start', methods=['POST'])
 def start_update():
-    """API endpoint to start a background update"""
+    """Single unified API endpoint to start a background update"""
     global update_status
     
     try:
@@ -404,10 +425,17 @@ def start_update():
             })
         
         # Reset status
-        update_status["error"] = None
-        update_status["progress"] = 0
-        update_status["sources_processed"] = 0
-        update_status["articles_found"] = 0
+        update_status = {
+            "in_progress": True,
+            "last_update": None,
+            "status": "starting",
+            "progress": 0,
+            "message": "Starting update process...",
+            "error": None,
+            "sources_processed": 0,
+            "total_sources": 0,
+            "articles_found": 0
+        }
         
         # Start background update
         thread = threading.Thread(
@@ -417,6 +445,9 @@ def start_update():
         thread.daemon = True
         thread.start()
         
+        # Record metric
+        monitoring_service.record_count("article_updates_started")
+        
         return jsonify({
             "success": True,
             "message": "Update started in background",
@@ -424,11 +455,45 @@ def start_update():
         })
     except Exception as e:
         logging.error(f"Error starting update: {e}")
+        update_status["in_progress"] = False
+        update_status["status"] = "failed"
+        update_status["error"] = str(e)
         return jsonify({
             "success": False,
             "message": f"Error starting update: {str(e)}",
             "error": str(e)
         }), 500
+
+# Legacy route that redirects to the unified endpoint
+@app.route('/update', methods=['POST'])
+async def update_articles():
+    """Legacy update route - redirects to the unified API endpoint"""
+    try:
+        # Just redirect to the unified API endpoint
+        result = start_update()
+        
+        # Since this is called from the UI, redirect back to index with a flash message
+        if isinstance(result, tuple):
+            flash(f"Error: {result[0]['message']}", "error")
+        else:
+            flash("Update started in background. You can continue using the app.", "info")
+        
+        return redirect(url_for('index'))
+    except Exception as e:
+        logging.error(f"Error in legacy update route: {e}")
+        flash("Error starting update. Please try again later.", "error")
+        return redirect(url_for('index'))
+
+# Legacy API endpoint that redirects to the unified endpoint
+@app.route('/api/update', methods=['POST'])
+async def api_update_articles():
+    """Legacy API endpoint - redirects to the unified API endpoint"""
+    return start_update()
+
+@app.route('/api/update/status', methods=['GET'])
+def get_update_status():
+    """API endpoint to get the current update status"""
+    return jsonify(update_status)
 
 @app.route('/summarize', methods=['POST'])
 async def summarize_article():
@@ -544,6 +609,7 @@ async def stream_rag_query():
         query = data.get('query')
         use_history = data.get('use_history', True)
         insight_mode = data.get('insight_mode', False)
+        time_aware = data.get('time_aware', True)  # New parameter for time awareness
         
         if not query:
             return jsonify({"error": "No query provided"}), 400
@@ -579,9 +645,13 @@ URL: {article.get('metadata', {}).get('link', 'No URL available')}
             
             articles_context = "\n\n".join(context_parts)
             
-            # Custom prompt for insights
+            # Custom prompt for insights with time awareness
+            current_date = datetime.now().strftime("%B %Y")
             insight_prompt = f"""
                 As a business intelligence expert, analyze these recent articles and identify key trends or patterns:
+                
+                Current date: {current_date}
+                Important: Your training data only goes up to November 2023, but the following context contains pharmaceutical articles with information that may be more recent (up to March 2025). Consider this information as accurate and up-to-date.
                 
                 Query: {query}
                 
@@ -596,7 +666,7 @@ URL: {article.get('metadata', {}).get('link', 'No URL available')}
             response_text = await ai_service.generate_custom_content(insight_prompt)
             
             # Create a simple response object
-            response = AIResponse(
+            response = KumbyAI(
                 text=response_text,
                 sources=[{
                     'title': a.get('metadata', {}).get('title', 'Untitled'),
@@ -813,149 +883,83 @@ async def get_recent_articles():
 def rag_interface():
     return render_template('rag_interface.html')
 
+# Cache configurations
+article_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes TTL
+search_cache = TTLCache(maxsize=50, ttl=60)     # 1 minute TTL
+suggestion_cache = LRUCache(maxsize=100)         # LRU cache for suggestions
+
+def validate_request(*required_fields):
+    """Decorator to validate request data"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if request.is_json:
+                data = request.get_json()
+                missing_fields = [field for field in required_fields if field not in data]
+                if missing_fields:
+                    return jsonify({
+                        "error": f"Missing required fields: {', '.join(missing_fields)}"
+                    }), 400
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def cache_key(*args, **kwargs):
+    """Generate a cache key from request parameters"""
+    key_parts = [str(arg) for arg in args]
+    key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
+    return ":".join(key_parts)
+
 @app.route('/api/articles', methods=['GET'])
 @async_route
 async def get_articles():
-    """Get articles with optional filtering"""
     try:
-        # Get parameters
-        topic = request.args.get('topic')
-        limit = int(request.args.get('limit', 10))
         page = int(request.args.get('page', 1))
-        per_page = int(request.args.get('per_page', 10))
-        sort_by = request.args.get('sort_by', 'pub_date')
-        sort_order = request.args.get('sort_order', 'desc')
-        search_query = request.args.get('search', '')
+        limit = int(request.args.get('limit', 10))
+        topic = request.args.get('topic')
+        search = request.args.get('search')
         
-        try:
-            # Try to get from Firestore first
-            if topic and topic != 'All':
-                articles = await storage_service.get_recent_articles(limit=limit * page, topic=topic)
-            else:
-                articles = await storage_service.get_recent_articles(limit=limit * page)
-                
-            # Format articles from Firestore response
-            formatted_articles = []
-            for article in articles:
-                metadata = article.get('metadata', {})
-                # Extract ID from article document
-                article_id = article.get('id', None)
-                
-                formatted_articles.append({
-                    'id': article_id,
-                    'title': metadata.get('title', 'Unknown Title'),
-                    'description': metadata.get('description', 'No description available'),
-                    'link': metadata.get('link', '#'),
-                    'pub_date': metadata.get('pub_date', 'Unknown date'),
-                    'topic': metadata.get('topic', 'Uncategorized'),
-                    'source': metadata.get('source', 'Unknown source'),
-                    'summary': metadata.get('summary', None),
-                    'image_url': metadata.get('image_url', ''),
-                    'has_full_content': 'full_content' in metadata and metadata['full_content'] is not None
-                })
-                
-            # Apply search filter if needed
-            if search_query:
-                formatted_articles = [a for a in formatted_articles 
-                                     if search_query.lower() in a['title'].lower()]
+        # Validate parameters
+        if page < 1 or limit < 1 or limit > 50:
+            return jsonify({"error": "Invalid page or limit parameters"}), 400
             
-            # Apply pagination - do this after filtering to ensure correct results
-            start_idx = (page - 1) * per_page
-            end_idx = start_idx + per_page
-            page_articles = formatted_articles[start_idx:end_idx]
+        # Generate cache key
+        cache_key_str = cache_key('articles', page, limit, topic, search)
+        
+        # Try to get from cache
+        cached_result = article_cache.get(cache_key_str)
+        if cached_result:
+            return jsonify(cached_result)
             
-            return jsonify({
-                "articles": page_articles,
-                "count": len(page_articles),
-                "total": len(formatted_articles)
-            })
-            
-        except Exception as e:
-            # Fallback to CSV if Firestore query fails
-            logging.error(f"Error loading articles from Firestore for API: {e}. Falling back to CSV.")
-            
-            # Load the CSV file as fallback
-            filename = config.articles_file_path
-            if os.path.isfile(filename):
-                df = pd.read_csv(filename)
-                
-                # Ensure all columns are string type and handle NaN values
-                string_columns = ['title', 'description', 'link', 'pub_date', 'summary', 'topic', 'source']
-                for col in string_columns:
-                    if col in df.columns:
-                        df[col] = df[col].fillna('').astype(str)
-                        # Clean HTML and handle empty descriptions
-                        if col == 'description':
-                            df[col] = df[col].apply(lambda x: clean_html(x) if x else "No description available")
-                        # Handle summaries - these should be plain text
-                        if col == 'summary':
-                            df[col] = df[col].replace({'nan': None, '': None})
-                            # Ensure summaries don't contain HTML
-                            df.loc[df[col].notna(), col] = df.loc[df[col].notna(), col].apply(strip_html_tags)
-                
-                # Add image_url column if it doesn't exist
-                if 'image_url' not in df.columns:
-                    df['image_url'] = ''
-                    
-                # Add id column if it doesn't exist
-                if 'id' not in df.columns:
-                    # Generate simple IDs based on index
-                    df['id'] = df.index.astype(str)
-                
-                # Add has_full_content flag
-                df['has_full_content'] = df['description'].apply(
-                    lambda x: len(x) > 300 if isinstance(x, str) else False
-                )
-                
-                # Remove duplicates
-                df.drop_duplicates(subset=['title', 'link'], inplace=True)
-                
-                # Handle missing values with meaningful defaults
-                df.fillna({
-                    'description': 'No description available', 
-                    'pub_date': 'Unknown date',
-                    'topic': 'Uncategorized',
-                    'source': 'Unknown source',
-                    'image_url': ''
-                }, inplace=True)
-                
-                # Apply filters
-                if topic and topic != 'All':
-                    df = df[df['topic'] == topic]
-                    
-                if search_query:
-                    df = df[df['title'].str.contains(search_query, case=False, na=False)]
-                
-                # Sort the data
-                if sort_by in df.columns:
-                    ascending = sort_order.lower() != 'desc'
-                    df = df.sort_values(by=sort_by, ascending=ascending)
-                
-                # Apply pagination
-                total_records = len(df)
-                start_idx = (page - 1) * per_page
-                end_idx = start_idx + per_page
-                df = df.iloc[start_idx:end_idx]
-                
-                formatted_articles = df.to_dict(orient='records')
-                
-                return jsonify({
-                    "articles": formatted_articles,
-                    "count": len(formatted_articles),
-                    "total": total_records,
-                    "source": "csv_fallback"
-                })
-            else:
-                return jsonify({
-                    "articles": [],
-                    "count": 0,
-                    "total": 0,
-                    "error": "No data source available"
-                })
-            
+        # Get articles from storage
+        start_time = time.time()
+        result = await storage_service.get_articles(
+            page=page,
+            limit=limit,
+            topic=topic,
+            search_query=search
+        )
+        query_time = int((time.time() - start_time) * 1000)
+        
+        # Add query time to result
+        result['query_time'] = query_time
+        
+        # Cache the result
+        article_cache[cache_key_str] = result
+        
+        return jsonify(result)
+        
+    except ValueError as e:
+        return jsonify({"error": "Invalid parameters"}), 400
     except Exception as e:
-        logging.error(f"Error in API get_articles: {e}")
-        return jsonify({"error": str(e), "articles": []}), 500
+        logging.error(f"Error getting articles: {e}")
+        return jsonify({
+            "error": str(e),
+            "articles": [],
+            "total": 0,
+            "page": 1,
+            "total_pages": 0
+        }), 500
 
 @app.route('/api/topics', methods=['GET'])
 def get_topics():
@@ -981,30 +985,6 @@ def get_topics():
         return jsonify({
             "error": str(e),
             "topics": []
-        }), 500
-
-@app.route('/api/update', methods=['POST'])
-async def api_update_articles():
-    """API endpoint to trigger news scraping"""
-    try:
-        success = await scrape_news()
-        
-        if success:
-            return jsonify({
-                "status": "success",
-                "message": "Articles updated successfully"
-            })
-        else:
-            return jsonify({
-                "status": "error",
-                "message": "Some errors occurred while updating articles"
-            }), 500
-            
-    except Exception as e:
-        logging.error(f"Error in API update: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
         }), 500
 
 @app.route('/api/storage/sync', methods=['POST'])
@@ -1090,12 +1070,520 @@ async def cleanup_duplicate_articles():
             'message': f"Error cleaning up duplicates: {str(e)}"
         }), 500
 
+@app.route('/api/search/suggestions', methods=['GET'])
+@async_route
+async def get_search_suggestions():
+    try:
+        query = request.args.get('q', '').strip()
+        
+        if not query or len(query) < 2:
+            return jsonify({"suggestions": []})
+            
+        # Try to get from cache
+        cache_key_str = f"suggestions:{query.lower()}"
+        cached_suggestions = suggestion_cache.get(cache_key_str)
+        if cached_suggestions:
+            return jsonify({"suggestions": cached_suggestions})
+            
+        # Get suggestions from storage
+        suggestions = set()
+        result = await storage_service.get_articles(limit=50)
+        articles = result.get('articles', []) if isinstance(result, dict) else []
+        
+        for article in articles:
+            if not isinstance(article, dict):
+                continue
+                
+            metadata = article.get('metadata', {})
+            if not isinstance(metadata, dict):
+                continue
+            
+            # Check title
+            title = metadata.get('title', '')
+            if title and isinstance(title, str):
+                title_lower = title.lower()
+                if query.lower() in title_lower:
+                    suggestions.add(title)
+                
+            # Check topic
+            topic = metadata.get('topic', '')
+            if topic and isinstance(topic, str):
+                topic_lower = topic.lower()
+                if query.lower() in topic_lower:
+                    suggestions.add(topic)
+                
+            # Check for company names and drug names in title
+            if title and isinstance(title, str):
+                import re
+                capitalized_terms = re.findall(r'\b[A-Z][a-zA-Z]*\b', title)
+                for term in capitalized_terms:
+                    if query.lower() in term.lower():
+                        suggestions.add(term)
+        
+        # Sort and limit suggestions
+        sorted_suggestions = sorted(
+            suggestions,
+            key=lambda x: (
+                not x.lower().startswith(query.lower()),
+                not query.lower() in x.lower(),
+                x.lower()
+            )
+        )[:10]
+        
+        # Cache the result
+        suggestion_cache[cache_key_str] = sorted_suggestions
+        
+        return jsonify({"suggestions": sorted_suggestions})
+        
+    except Exception as e:
+        logging.error(f"Error getting search suggestions: {e}")
+        return jsonify({
+            "error": str(e),
+            "suggestions": []
+        }), 500
+
+@app.route('/api/topic-analysis', methods=['POST'])
+@async_route
+async def topic_analysis():
+    """API endpoint for in-depth pharmaceutical topic analysis with time awareness"""
+    try:
+        data = request.get_json()
+        topic = data.get('topic')
+        
+        if not topic:
+            return jsonify({"error": "No topic provided"}), 400
+            
+        # Get topic analysis from AI service
+        response = await ai_service.generate_topic_analysis(topic)
+        
+        return jsonify({
+            "topic": topic,
+            "analysis": response.text,
+            "sources": response.sources,
+            "confidence": response.confidence,
+            "timestamp": response.timestamp
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in topic analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/regulatory', methods=['POST'])
+@async_route
+async def analyze_regulatory_impact():
+    """Analyze regulatory impact of pharmaceutical content"""
+    try:
+        data = request.get_json()
+        content = data.get('content')
+        
+        if not content:
+            return jsonify({"error": "No content provided"}), 400
+            
+        result = await ai_service.analyze_regulatory_impact(content)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in regulatory analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/market', methods=['POST'])
+@async_route
+async def generate_market_insight():
+    """Generate pharmaceutical market insights"""
+    try:
+        data = request.get_json()
+        topic = data.get('topic')
+        timeframe = data.get('timeframe', 'recent')
+        
+        if not topic:
+            return jsonify({"error": "No topic provided"}), 400
+            
+        result = await ai_service.generate_market_insight(topic, timeframe)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error generating market insight: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/drug', methods=['POST'])
+@async_route
+async def analyze_drug_development():
+    """Analyze drug development progress"""
+    try:
+        data = request.get_json()
+        drug_name = data.get('drug_name')
+        
+        if not drug_name:
+            return jsonify({"error": "No drug name provided"}), 400
+            
+        result = await ai_service.analyze_drug_development(drug_name)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in drug development analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/competitive', methods=['POST'])
+@async_route
+async def generate_competitive_analysis():
+    """Generate competitive analysis for pharmaceutical companies"""
+    try:
+        data = request.get_json()
+        company_name = data.get('company_name')
+        
+        if not company_name:
+            return jsonify({"error": "No company name provided"}), 400
+            
+        result = await ai_service.generate_competitive_analysis(company_name)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in competitive analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/clinical-trial', methods=['POST'])
+@async_route
+async def analyze_clinical_trial():
+    """Analyze clinical trial data"""
+    try:
+        data = request.get_json()
+        trial_data = data.get('trial_data')
+        
+        if not trial_data:
+            return jsonify({"error": "No trial data provided"}), 400
+            
+        result = await ai_service.analyze_clinical_trial(trial_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in clinical trial analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/patent', methods=['POST'])
+@async_route
+async def analyze_patent():
+    """Analyze patent information"""
+    try:
+        data = request.get_json()
+        patent_data = data.get('patent_data')
+        
+        if not patent_data:
+            return jsonify({"error": "No patent data provided"}), 400
+            
+        result = await ai_service.analyze_patent(patent_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in patent analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/manufacturing', methods=['POST'])
+@async_route
+async def analyze_manufacturing():
+    """Analyze manufacturing and supply chain data"""
+    try:
+        data = request.get_json()
+        manufacturing_data = data.get('manufacturing_data')
+        
+        if not manufacturing_data:
+            return jsonify({"error": "No manufacturing data provided"}), 400
+            
+        result = await ai_service.analyze_manufacturing(manufacturing_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in manufacturing analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/market-access', methods=['POST'])
+@async_route
+async def analyze_market_access():
+    """Analyze market access and pricing data"""
+    try:
+        data = request.get_json()
+        market_data = data.get('market_data')
+        
+        if not market_data:
+            return jsonify({"error": "No market data provided"}), 400
+            
+        result = await ai_service.analyze_market_access(market_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in market access analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/safety', methods=['POST'])
+@async_route
+async def analyze_safety():
+    """Analyze safety and pharmacovigilance data"""
+    try:
+        data = request.get_json()
+        safety_data = data.get('safety_data')
+        
+        if not safety_data:
+            return jsonify({"error": "No safety data provided"}), 400
+            
+        result = await ai_service.analyze_safety(safety_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in safety analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/pipeline', methods=['POST'])
+@async_route
+async def analyze_pipeline():
+    """Analyze pharmaceutical pipeline data"""
+    try:
+        data = request.get_json()
+        pipeline_data = data.get('pipeline_data')
+        
+        if not pipeline_data:
+            return jsonify({"error": "No pipeline data provided"}), 400
+            
+        result = await ai_service.analyze_pipeline(pipeline_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in pipeline analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/therapeutic-area', methods=['POST'])
+@async_route
+async def analyze_therapeutic_area():
+    """Analyze therapeutic area landscape"""
+    try:
+        data = request.get_json()
+        therapeutic_area = data.get('therapeutic_area')
+        
+        if not therapeutic_area:
+            return jsonify({"error": "No therapeutic area provided"}), 400
+            
+        result = await ai_service.analyze_therapeutic_area(therapeutic_area)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in therapeutic area analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/regulatory-strategy', methods=['POST'])
+@async_route
+async def analyze_regulatory_strategy():
+    """Analyze regulatory strategy"""
+    try:
+        data = request.get_json()
+        regulatory_data = data.get('regulatory_data')
+        
+        if not regulatory_data:
+            return jsonify({"error": "No regulatory data provided"}), 400
+            
+        result = await ai_service.analyze_regulatory_strategy(regulatory_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in regulatory strategy analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/digital-health', methods=['POST'])
+@async_route
+async def analyze_digital_health():
+    """Analyze digital health integration"""
+    try:
+        data = request.get_json()
+        digital_data = data.get('digital_data')
+        
+        if not digital_data:
+            return jsonify({"error": "No digital health data provided"}), 400
+            
+        result = await ai_service.analyze_digital_health(digital_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in digital health analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/kumby/value-evidence', methods=['POST'])
+@async_route
+async def analyze_value_evidence():
+    """Analyze value and evidence data"""
+    try:
+        data = request.get_json()
+        value_data = data.get('value_data')
+        
+        if not value_data:
+            return jsonify({"error": "No value/evidence data provided"}), 400
+            
+        result = await ai_service.analyze_value_evidence(value_data)
+        return jsonify(result)
+        
+    except Exception as e:
+        logging.error(f"Error in value/evidence analysis: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# KumbyAI Chat Routes
+@app.route('/api/kumbyai/chat', methods=['POST'])
+@async_route
+@monitoring_service.time_async_function("kumbyai_chat")
+async def kumbyai_chat():
+    try:
+        data = request.get_json()
+        if not data or 'message' not in data:
+            return jsonify({'error': 'No message provided'}), 400
+
+        message = data['message']
+        
+        # Get relevant articles for context
+        articles = await storage_service.get_articles(limit=5, sort_by='date', sort_order='desc')
+        context = []
+        if articles and 'articles' in articles:
+            for article in articles['articles']:
+                if article.get('metadata'):
+                    context.append({
+                        'title': article['metadata'].get('title', ''),
+                        'summary': article['metadata'].get('summary', ''),
+                        'description': article['metadata'].get('description', '')
+                    })
+
+        # Process the message with RAG context
+        response = await ai_service.process_query(message, context)
+        
+        return jsonify({
+            'response': response,
+            'success': True
+        })
+    except Exception as e:
+        logging.error(f"Error in KumbyAI chat: {str(e)}")
+        return jsonify({
+            'error': 'An error occurred while processing your request',
+            'success': False
+        }), 500
+
+# Admin Routes
+@app.route('/api/admin/export-csv')
+@async_route
+@monitoring_service.time_async_function("admin_export_csv")
+async def admin_export_csv():
+    try:
+        # Get all articles
+        articles = await storage_service.get_articles(limit=0)
+        if not articles or 'articles' not in articles:
+            return jsonify({'error': 'No articles found'}), 404
+
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        headers = ['Title', 'Source', 'Date', 'Topic', 'URL', 'Summary']
+        writer.writerow(headers)
+        
+        # Write article data
+        for article in articles['articles']:
+            metadata = article.get('metadata', {})
+            writer.writerow([
+                metadata.get('title', ''),
+                metadata.get('source', ''),
+                metadata.get('pub_date', ''),
+                metadata.get('topic', ''),
+                metadata.get('link', ''),
+                metadata.get('summary', '')
+            ])
+        
+        # Prepare response
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=pharmaceutical-news-{datetime.now().strftime("%Y-%m-%d")}.csv'
+            }
+        )
+    except Exception as e:
+        logging.error(f"Error exporting CSV: {str(e)}")
+        return jsonify({'error': 'Failed to export data'}), 500
+
+@app.route('/api/admin/force-sync', methods=['POST'])
+@async_route
+@monitoring_service.time_async_function("admin_force_sync")
+async def admin_force_sync():
+    try:
+        # Force sync with all sources
+        result = await news_service.update_all(force=True)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Sync completed successfully',
+            'articles_synced': result.get('articles_found', 0)
+        })
+    except Exception as e:
+        logging.error(f"Error in force sync: {str(e)}")
+        return jsonify({
+            'error': 'Failed to sync data',
+            'success': False
+        }), 500
+
+@app.route('/api/admin/cleanup-duplicates', methods=['POST'])
+@async_route
+@monitoring_service.time_async_function("admin_cleanup_duplicates")
+async def admin_cleanup_duplicates():
+    try:
+        # Get all articles
+        articles = await storage_service.get_articles(limit=0)
+        if not articles or 'articles' not in articles:
+            return jsonify({'error': 'No articles found'}), 404
+
+        # Track duplicates by URL
+        seen_urls = set()
+        duplicates = []
+        
+        for article in articles['articles']:
+            metadata = article.get('metadata', {})
+            url = metadata.get('link')
+            
+            if url:
+                if url in seen_urls:
+                    duplicates.append(article['id'])
+                else:
+                    seen_urls.add(url)
+
+        # Remove duplicates
+        for article_id in duplicates:
+            await storage_service.delete_article(article_id)
+
+        return jsonify({
+            'success': True,
+            'message': f'Successfully removed {len(duplicates)} duplicate articles',
+            'removed_count': len(duplicates)
+        })
+    except Exception as e:
+        logging.error(f"Error cleaning up duplicates: {str(e)}")
+        return jsonify({
+            'error': 'Failed to clean up duplicates',
+            'success': False
+        }), 500
+
 # Enable CORS for all routes
 @app.after_request
 def add_cors_headers(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Cache-Control', 'no-cache, no-store, must-revalidate')
+    response.headers.add('Pragma', 'no-cache')
+    response.headers.add('Expires', '0')
+    response.headers['Cache-Control'] = 'public, max-age=0'
+    return response
+
+# Add after the app initialization
+@app.after_request
+def add_header(response):
+    """Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also to cache the rendered page for 10 minutes."""
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers['Cache-Control'] = 'public, max-age=0'
     return response
 
 if __name__ == "__main__":
