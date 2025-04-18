@@ -9,15 +9,28 @@ import {
   Space, 
   message, 
   Statistic, 
-  Flex
+  Flex,
+  Descriptions,
+  Divider,
+  Alert
 } from 'antd';
 import { 
   SyncOutlined, 
   CloseOutlined, 
   CheckCircleOutlined, 
   WarningOutlined, 
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  ReloadOutlined,
+  BarChartOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons';
+import { 
+  getUpdateStatus, 
+  startUpdate,
+  getScrapingMetrics,
+  UpdateStatus as UpdateStatusType, 
+  ScrapingMetrics 
+} from '../services/api';
 
 const { Title, Text } = Typography;
 
@@ -26,63 +39,115 @@ interface UpdateStatusProps {
   onClose: () => void;
 }
 
-interface UpdateStatusData {
-  in_progress: boolean;
-  status: string;
-  progress: number;
-  message: string;
-  sources_processed: number;
-  total_sources: number;
-  articles_found: number;
-  last_update?: number;
-}
-
 export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
-  const [statusData, setStatusData] = useState<UpdateStatusData>({
-    in_progress: true,
-    status: 'in_progress',
+  const [statusData, setStatusData] = useState<UpdateStatusType>({
+    in_progress: false,
+    status: 'idle',
     progress: 0,
-    message: 'Initializing update...',
+    message: 'Ready to update',
     sources_processed: 0,
     total_sources: 0,
-    articles_found: 0
+    articles_found: 0,
+    last_update: null,
+    error: null
   });
+  const [metrics, setMetrics] = useState<ScrapingMetrics | null>(null);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState(2000); // Start with 2 seconds
+  const maxPollingInterval = 10000; // Max 10 seconds
 
   useEffect(() => {
     if (!visible) return;
 
     // Initial status check
     fetchUpdateStatus();
+    fetchScrapingMetrics();
 
-    // Set up polling interval
-    const intervalId = setInterval(fetchUpdateStatus, 2000);
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    // Dynamic polling function
+    const pollStatus = () => {
+      if (statusData.in_progress) {
+        fetchUpdateStatus();
+        
+        // Adjust polling interval based on progress
+        if (statusData.progress > 0) {
+          // As progress increases, increase polling interval to reduce server load
+          const newInterval = Math.min(
+            maxPollingInterval,
+            2000 + (statusData.progress / 100) * 8000
+          );
+          setPollingInterval(newInterval);
+        }
+      }
+    };
+
+    // Set up polling interval with dynamic interval
+    intervalId = setInterval(pollStatus, pollingInterval);
 
     // Cleanup function
     return () => {
-      clearInterval(intervalId);
+      if (intervalId) clearInterval(intervalId);
     };
-  }, [visible]);
+  }, [visible, statusData.in_progress, statusData.progress, pollingInterval]);
 
   const fetchUpdateStatus = async () => {
     try {
-      const response = await fetch('/api/update/status');
-      const data = await response.json();
+      const data = await getUpdateStatus();
       setStatusData(data);
 
-      // If update is complete, stop polling after showing the result for a few seconds
-      if (!data.in_progress && data.status !== 'idle') {
-        setTimeout(() => {
-          if (data.status === 'completed') {
-            message.success('Update completed successfully!');
-          } else if (data.status === 'failed') {
-            message.error('Update failed. Please try again.');
-          } else if (data.status.includes('warnings') || data.status.includes('errors')) {
-            message.warning('Update completed with some issues.');
-          }
-        }, 3000);
+      // If update is complete, fetch final metrics
+      if (data.in_progress === false && statusData.in_progress === true) {
+        fetchScrapingMetrics();
+        
+        // Show appropriate message based on status
+        if (data.status === 'completed') {
+          message.success('Update completed successfully!');
+        } else if (data.status === 'failed') {
+          message.error(`Update failed: ${data.error || 'Unknown error'}`);
+        } else if (data.status.includes('warnings') || data.status.includes('errors')) {
+          message.warning('Update completed with some issues.');
+        }
       }
     } catch (error) {
       console.error('Error fetching update status:', error);
+      message.error('Failed to fetch update status');
+    }
+  };
+
+  const fetchScrapingMetrics = async () => {
+    try {
+      const metricsData = await getScrapingMetrics();
+      setMetrics(metricsData);
+    } catch (error) {
+      console.error('Error fetching scraping metrics:', error);
+    }
+  };
+
+  const handleStartUpdate = async () => {
+    try {
+      setIsLoading(true);
+      const result = await startUpdate();
+      
+      if (result.success) {
+        message.success('Update process started');
+        setStatusData(result.status);
+      } else {
+        message.error(result.message || 'Failed to start update');
+      }
+    } catch (error) {
+      console.error('Error starting update:', error);
+      message.error('Failed to start update process');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleMetrics = () => {
+    setShowMetrics(!showMetrics);
+    if (!showMetrics && !metrics) {
+      fetchScrapingMetrics();
     }
   };
 
@@ -103,7 +168,7 @@ export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
       case 'completed_with_errors':
         return <WarningOutlined />;
       default:
-        return <SyncOutlined />;
+        return <InfoCircleOutlined />;
     }
   };
 
@@ -134,9 +199,18 @@ export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
       case 'completed_with_warnings':
       case 'completed_with_errors':
         return 'Update Completed with Warnings';
+      case 'idle':
+        return 'Ready to Update';
       default:
-        return 'Updating News';
+        return 'Update Status';
     }
+  };
+
+  const formatLastUpdate = () => {
+    if (!statusData.last_update) return 'Never';
+    
+    const date = new Date(statusData.last_update * 1000);
+    return date.toLocaleString();
   };
 
   return (
@@ -153,13 +227,42 @@ export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
             {getStatusIcon()} {getStatusTitle()}
           </Title>
         </Space>
-        <Button 
-          type="text" 
-          icon={<CloseOutlined />} 
-          onClick={onClose}
-          aria-label="Close"
-        />
+        <Space>
+          {!statusData.in_progress && (
+            <Button 
+              type="primary" 
+              icon={<ReloadOutlined />} 
+              onClick={handleStartUpdate}
+              loading={isLoading}
+              disabled={statusData.in_progress}
+            >
+              Start Update
+            </Button>
+          )}
+          <Button 
+            type="text" 
+            icon={<BarChartOutlined />} 
+            onClick={toggleMetrics}
+            aria-label="Toggle metrics"
+          />
+          <Button 
+            type="text" 
+            icon={<CloseOutlined />} 
+            onClick={onClose}
+            aria-label="Close"
+          />
+        </Space>
       </Flex>
+
+      {statusData.error && (
+        <Alert 
+          message="Error" 
+          description={statusData.error}
+          type="error" 
+          style={{ marginTop: 12 }}
+          showIcon
+        />
+      )}
 
       <Text type="secondary" style={{ display: 'block', margin: '12px 0' }}>
         {statusData.message}
@@ -188,7 +291,29 @@ export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
           value={statusData.articles_found}
           valueStyle={{ fontSize: 14 }}
         />
+        <Statistic 
+          title="Last Update" 
+          value={formatLastUpdate()}
+          valueStyle={{ fontSize: 14 }}
+        />
       </Flex>
+
+      {showMetrics && metrics && (
+        <>
+          <Divider style={{ margin: '16px 0' }} />
+          <Title level={5}>Last Update Metrics</Title>
+          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }} bordered>
+            <Descriptions.Item label="Duration">{metrics.duration_seconds} seconds</Descriptions.Item>
+            <Descriptions.Item label="Feeds">{metrics.total_feeds}</Descriptions.Item>
+            <Descriptions.Item label="Success Rate">{Math.round((metrics.successful_feeds / metrics.total_feeds) * 100)}%</Descriptions.Item>
+            <Descriptions.Item label="Articles">{metrics.total_articles}</Descriptions.Item>
+            <Descriptions.Item label="Matched">{metrics.matched_articles}</Descriptions.Item>
+            <Descriptions.Item label="Rate Limits">{metrics.rate_limits}</Descriptions.Item>
+            <Descriptions.Item label="Cache Hit Rate">{metrics.cache_hit_rate}</Descriptions.Item>
+            <Descriptions.Item label="Summary Success">{metrics.summary_success_rate}</Descriptions.Item>
+          </Descriptions>
+        </>
+      )}
     </Card>
   );
 } 

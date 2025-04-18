@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Site Maintenance{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-content">
+        <h1>Site Maintenance</h1>
+        <div class="error-message">
+            <div class="maintenance-icon">
+                <i class="fas fa-tools fa-4x"></i>
+            </div>
+            <p>We're currently performing scheduled maintenance.</p>
+            <p>Please check back in a few minutes.</p>
+            <div class="estimated-time">
+                {% if config.maintenance_end_time %}
+                <p>Estimated completion time: {{ config.maintenance_end_time }}</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="error-actions">
+            <button onclick="window.location.reload()" class="btn btn-primary">Check Again</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.error-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 2rem;
+}
+
+.error-content {
+    text-align: center;
+    max-width: 600px;
+    padding: 2rem;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.error-message {
+    margin: 2rem 0;
+    color: #666;
+}
+
+.maintenance-icon {
+    color: #007bff;
+    margin-bottom: 2rem;
+    animation: spin 4s linear infinite;
+}
+
+.estimated-time {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.error-actions {
+    margin-top: 2rem;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+</style>
+{% endblock %} 

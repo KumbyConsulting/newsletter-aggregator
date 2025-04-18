@@ -1,0 +1,631 @@
+/* Base Variables */
+:root {
+    --primary-color: #00405e;
+    --secondary-color: #7f9360;
+    --accent-color: #f9e15e;
+    --background-color: #f1f2e7;
+    --text-primary: #2d3748;
+    --text-secondary: #4a5568;
+    --border-color: rgba(0, 64, 94, 0.1);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px rgba(0, 64, 94, 0.15);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --transition-base: all 0.2s ease;
+}
+
+/* Article Grid */
+.articles-grid {
+    display: grid;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+/* Article Card */
+.article-card {
+    background: white;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-base);
+    border: 1px solid var(--border-color);
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.article-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+}
+
+.article-card__image {
+    height: 200px;
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.article-card__image-placeholder {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+}
+
+.article-card__topic {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 1;
+}
+
+.article-card__content {
+    padding: 1.5rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.article-card__title {
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    line-height: 1.4;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.article-card__description {
+    color: var(--text-secondary);
+    line-height: 1.6;
+    font-size: 0.95rem;
+}
+
+.article-card__footer {
+    margin-top: auto;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Topic Badge */
+.topic-badge {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--primary-color);
+    padding: 0.35rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    backdrop-filter: blur(4px);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Buttons */
+.btn-custom {
+    background: var(--primary-color);
+    color: white;
+    transition: var(--transition-base);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-custom:hover {
+    background: var(--secondary-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.action-btn {
+    padding: 0.5rem;
+    border-radius: 0.375rem;
+    transition: var(--transition-base);
+    color: var(--text-secondary);
+}
+
+.action-btn:hover {
+    color: var(--primary-color);
+    background-color: rgba(0, 64, 94, 0.05);
+}
+
+/* Loading Indicator */
+#loadingIndicator {
+    margin: 2rem 0;
+}
+
+.loading-spinner {
+    position: relative;
+    width: 3rem;
+    height: 3rem;
+}
+
+.loading-spinner::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--border-color);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Back to Top Button */
+#backToTop {
+    opacity: 0;
+    visibility: hidden;
+    transition: var(--transition-base);
+    z-index: 50;
+}
+
+#backToTop.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+#backToTop:hover {
+    transform: translateY(-4px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .articles-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .article-card__image {
+        height: 180px;
+    }
+    
+    .article-card__content {
+        padding: 1.25rem;
+    }
+    
+    .article-card__title {
+        font-size: 1.125rem;
+    }
+}
+
+/* Article Content Toggle */
+.article-full-content {
+    transition: max-height 0.3s ease-in-out;
+    overflow: hidden;
+}
+
+.article-full-content.hidden {
+    max-height: 0;
+}
+
+/* Error Toast */
+.error-toast {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    background-color: #e53e3e;
+    color: white;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    box-shadow: var(--shadow-lg);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Loading More Animation */
+.loading-more {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 2rem;
+    color: var(--text-secondary);
+}
+
+.loading-more__spinner {
+    margin-right: 0.75rem;
+}
+
+/* Smooth Transitions */
+.article-card {
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Search Container Styles */
+.search-container {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 64, 94, 0.1);
+    border: 1px solid rgba(0, 64, 94, 0.1);
+}
+
+/* Chart Styles */
+#chartView {
+    height: 400px;
+    margin-top: 1rem;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .article-card__image {
+        height: 150px;
+    }
+    
+    .article-card__content {
+        padding: 1rem;
+    }
+    
+    .search-container {
+        padding: 1rem;
+    }
+    
+    #chartView {
+        height: 300px;
+    }
+}
+
+/* Company Branding */
+.company-name {
+    color: var(--primary-color);
+    font-weight: bold;
+    font-size: 1.5rem;
+}
+
+.company-tagline {
+    color: var(--secondary-color);
+    font-size: 1rem;
+}
+
+/* Chart Toggle Button */
+.chart-toggle-btn {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    transition: all 0.2s;
+}
+
+.chart-toggle-btn:hover {
+    background: var(--secondary-color);
+    transform: translateY(-1px);
+}
+
+/* Table Styles */
+.table-auto th {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.table-auto tr:hover {
+    background-color: var(--background-color);
+}
+
+/* Search Input Focus */
+input:focus, select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(0, 64, 94, 0.1);
+}
+
+/* Search Form Styles */
+.search-form {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 64, 94, 0.1);
+}
+
+/* Search Input Container */
+.search-input-container {
+    position: relative;
+}
+
+/* Search Suggestions */
+#searchSuggestions {
+    max-height: 200px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-color) #f1f2e7;
+}
+
+#searchSuggestions button {
+    transition: all 0.2s;
+}
+
+#searchSuggestions button:hover,
+#searchSuggestions button:focus {
+    background-color: rgba(0, 64, 94, 0.05);
+}
+
+/* Sort Order Button */
+#sortOrderBtn {
+    transition: all 0.2s;
+}
+
+#sortOrderBtn:hover {
+    background-color: var(--background-color);
+    color: var(--primary-color);
+}
+
+/* Active Filters */
+.active-filter {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+    margin-right: 0.5rem;
+    margin-bottom: 0.5rem;
+    transition: all 0.2s;
+}
+
+.active-filter--search {
+    background-color: rgba(0, 64, 94, 0.1);
+    color: var(--primary-color);
+}
+
+.active-filter--topic {
+    background-color: rgba(127, 147, 96, 0.1);
+    color: var(--secondary-color);
+}
+
+.active-filter__remove {
+    margin-left: 0.5rem;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.active-filter__remove:hover {
+    opacity: 1;
+}
+
+/* Search Stats */
+.search-stats {
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+/* Loading Indicator */
+.search-loading {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* Clear Search Button */
+#clearSearch {
+    transition: all 0.2s;
+}
+
+#clearSearch:hover {
+    color: var(--primary-color);
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+    .search-form {
+        padding: 1rem;
+    }
+    
+    .active-filter {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+    }
+    
+    #searchSuggestions {
+        max-height: 150px;
+    }
+}
+
+/* Search Input Focus Ring */
+.search-input:focus {
+    box-shadow: 0 0 0 2px rgba(0, 64, 94, 0.2);
+    border-color: var(--primary-color);
+}
+
+/* Sort Controls */
+.sort-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.sort-select {
+    flex: 1;
+    min-width: 0;
+}
+
+/* Search Form Grid Layout */
+.search-form-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+/* KumbyAI Chat Button */
+.kumbyai-chat-button {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--primary-color);
+    color: white;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0, 64, 94, 0.2);
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.kumbyai-chat-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 15px rgba(0, 64, 94, 0.3);
+}
+
+.kumbyai-chat-button i {
+    font-size: 24px;
+    transition: transform 0.3s ease;
+}
+
+.kumbyai-chat-button:hover i {
+    transform: rotate(15deg);
+}
+
+.kumbyai-chat-tooltip {
+    position: absolute;
+    right: 75px;
+    background: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0, 64, 94, 0.15);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.kumbyai-chat-button:hover .kumbyai-chat-tooltip {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* KumbyAI Chat Modal */
+.kumbyai-chat-modal {
+    position: fixed;
+    bottom: 90px;
+    right: 2rem;
+    width: 400px;
+    height: 600px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 64, 94, 0.2);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 999;
+    transform: translateY(20px);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.kumbyai-chat-modal.active {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+}
+
+.kumbyai-chat-header {
+    background: var(--primary-color);
+    color: white;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.kumbyai-chat-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+}
+
+.kumbyai-chat-header h3 i {
+    margin-right: 8px;
+}
+
+.kumbyai-chat-close {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.kumbyai-chat-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.kumbyai-chat-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem;
+}
+
+.kumbyai-chat-input {
+    padding: 1rem;
+    border-top: 1px solid rgba(0, 64, 94, 0.1);
+    display: flex;
+    gap: 8px;
+}
+
+.kumbyai-chat-input textarea {
+    flex: 1;
+    border: 1px solid rgba(0, 64, 94, 0.2);
+    border-radius: 6px;
+    padding: 8px;
+    resize: none;
+    min-height: 40px;
+    max-height: 120px;
+}
+
+.kumbyai-chat-input button {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.kumbyai-chat-input button:hover {
+    background: var(--secondary-color);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .kumbyai-chat-modal {
+        width: calc(100% - 2rem);
+        height: calc(100% - 100px);
+        right: 1rem;
+        left: 1rem;
+    }
+} 

@@ -1,237 +1,311 @@
 'use client';
 
-import React from 'react';
-import { useState } from 'react';
-import Link from 'next/link';
-import { 
-  Layout, 
-  Menu, 
-  Button, 
-  Space, 
-  Typography, 
-  Drawer, 
-  Divider, 
-  Tooltip
-} from 'antd';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Layout, Menu, Button, Dropdown, Avatar, Space, Badge, Typography, Drawer } from 'antd';
 import type { MenuProps } from 'antd';
 import { 
   MenuOutlined, 
-  CloseOutlined, 
-  SyncOutlined, 
+  HomeOutlined, 
   SearchOutlined, 
-  BellOutlined, 
+  BellOutlined,
   UserOutlined,
-  AppstoreOutlined,
-  GlobalOutlined,
-  ReadOutlined,
+  FileTextOutlined,
+  TagOutlined,
   InfoCircleOutlined,
-  HomeOutlined
+  BulbOutlined,
+  SyncOutlined
 } from '@ant-design/icons';
-import ThemeToggle from './ui/ThemeToggle';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import './Header.css';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
+
+type MenuItem = Required<MenuProps>['items'][number];
 
 interface HeaderProps {
   onUpdateClick?: () => void;
 }
 
-type MenuItem = Required<MenuProps>['items'][number];
-
-export default function Header({ onUpdateClick }: HeaderProps) {
+export default function Header({ onUpdateClick }: HeaderProps = {}) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [current, setCurrent] = useState('');
+  const [screenWidth, setScreenWidth] = useState(1200); // Default to desktop
+  const pathname = usePathname();
 
-  // Define menu items for desktop and mobile
-  const menuItems: MenuItem[] = [
+  // Update current based on pathname
+  useEffect(() => {
+    if (pathname) {
+      const path = pathname.split('/')[1] || 'home';
+      setCurrent(path);
+    }
+  }, [pathname]);
+
+  // Handle resize for responsive layout
+  useEffect(() => {
+    // Set initial width
+    if (typeof window !== 'undefined') {
+      setScreenWidth(window.innerWidth);
+    }
+
+    const handleResize = () => {
+      setScreenWidth(window.innerWidth);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize);
+      return () => window.removeEventListener('resize', handleResize);
+    }
+  }, []);
+
+  const isMobile = screenWidth < 768;
+
+  // Define menu items 
+  const menuItems = useMemo<MenuItem[]>(() => [
     {
-      key: 'dashboard',
+      key: 'home',
       icon: <HomeOutlined />,
-      label: <Link href="/">Dashboard</Link>,
+      label: <Link href="/">Home</Link>,
     },
     {
       key: 'topics',
-      icon: <AppstoreOutlined />,
+      icon: <TagOutlined />,
       label: <Link href="/topics">Topics</Link>,
     },
     {
       key: 'sources',
-      icon: <GlobalOutlined />,
+      icon: <FileTextOutlined />,
       label: <Link href="/sources">Sources</Link>,
     },
     {
-      key: 'knowledge',
-      icon: <ReadOutlined />,
-      label: <Link href="/knowledge-base">Knowledge Base</Link>,
+      key: 'rag',
+      icon: <BulbOutlined />,
+      label: <Link href="/rag">AI Insights</Link>,
     },
     {
       key: 'about',
       icon: <InfoCircleOutlined />,
       label: <Link href="/about">About</Link>,
-    }
-  ];
+    },
+  ], []);
 
   // Mobile menu items with the update option
-  const mobileMenuItems: MenuItem[] = [
+  const mobileMenuItems = useMemo<MenuItem[]>(() => [
+    ...menuItems,
+    ...(onUpdateClick ? [{
+      key: 'update',
+      icon: <SyncOutlined />,
+      label: <a onClick={() => { 
+        setIsMobileMenuOpen(false);
+        onUpdateClick();
+      }}>Update Articles</a>,
+    }] : []),
+  ], [menuItems, onUpdateClick]);
+
+  const userMenuItems = useMemo<MenuProps['items']>(() => [
     {
-      key: 'dashboard',
-      icon: <HomeOutlined />,
-      label: <Link href="/" onClick={() => setIsMobileMenuOpen(false)}>Dashboard</Link>,
+      key: 'profile',
+      label: 'Profile',
     },
     {
-      key: 'topics',
-      icon: <AppstoreOutlined />,
-      label: <Link href="/topics" onClick={() => setIsMobileMenuOpen(false)}>Topics</Link>,
+      key: 'settings',
+      label: 'Settings',
     },
     {
-      key: 'sources',
-      icon: <GlobalOutlined />,
-      label: <Link href="/sources" onClick={() => setIsMobileMenuOpen(false)}>Sources</Link>,
-    },
-    {
-      key: 'knowledge',
-      icon: <ReadOutlined />,
-      label: <Link href="/knowledge-base" onClick={() => setIsMobileMenuOpen(false)}>Knowledge Base</Link>,
-    },
-    {
-      key: 'about',
-      icon: <InfoCircleOutlined />,
-      label: <Link href="/about" onClick={() => setIsMobileMenuOpen(false)}>About</Link>,
+      key: 'admin',
+      label: 'Admin Panel',
     },
     {
       type: 'divider',
-    } as MenuItem,
-    {
-      key: 'update',
-      icon: <SyncOutlined />,
-      label: 'Update Feeds',
-      onClick: () => {
-        if (onUpdateClick) onUpdateClick();
-        setIsMobileMenuOpen(false);
-      },
     },
-  ];
+    {
+      key: 'logout',
+      label: 'Logout',
+    },
+  ], []);
+
+  // Memoize processed mobile menu items
+  const processedMobileMenuItems = useMemo(() => {
+    return mobileMenuItems.map(item => ({
+      ...item,
+      style: {
+        borderRadius: '0.5rem',
+        margin: '4px 0',
+        transition: 'var(--transition-base, all 0.2s ease)',
+      }
+    }));
+  }, [mobileMenuItems]);
 
   return (
-    <AntHeader style={{ 
-      position: 'sticky', 
-      top: 0, 
-      zIndex: 50, 
-      padding: 0, 
-      background: 'rgba(255, 255, 255, 0.8)',
-      backdropFilter: 'blur(5px)',
-      borderBottom: '1px solid #f0f0f0'
-    }} className="dark:bg-gray-900/80 dark:border-gray-800">
-      <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '64px' }}>
-          {/* Logo and main navigation */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ marginRight: '24px' }}>
-              <Link href="/" style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ 
-                  fontSize: '24px', 
-                  fontWeight: 'bold', 
-                  background: 'linear-gradient(to right, var(--primary-color), var(--primary-light))', 
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  marginRight: '4px'
-                }}>
-                  Kumby
-                </span>
-                <span style={{ 
-                  fontSize: '24px', 
-                  fontWeight: 300, 
-                  color: 'rgba(0, 0, 0, 0.65)'
-                }} className="dark:text-gray-300">
-                  Newsboard
-                </span>
-              </Link>
-            </div>
-            
-            {/* Desktop Navigation */}
-            <div className="hidden md:block">
-              <Menu 
-                mode="horizontal" 
-                style={{ 
-                  background: 'transparent', 
-                  borderBottom: 'none'
-                }}
-                defaultSelectedKeys={['dashboard']}
-                items={menuItems}
-              />
-            </div>
+    <AntHeader className="kumby-header" role="banner" aria-label="Site header">
+      <div className="header-container">
+        {/* Logo and Navigation */}
+        <div className="header-left">
+          <div className="logo-wrapper">
+            <Link href="/" className="logo-link" aria-label="Kumby Consulting - Home">
+              <div className="kumby-logo" aria-hidden="true">
+                K
+              </div>
+              {!isMobile && (
+                <Text className="brand-text">
+                  Kumby Consulting
+                </Text>
+              )}
+            </Link>
           </div>
           
-          {/* Action Buttons - Desktop */}
-          <div className="hidden md:flex md:items-center">
-            <Space size="middle">
-              <Tooltip title="Search">
-                <Button 
-                  type="text" 
-                  shape="circle" 
-                  icon={<SearchOutlined />} 
-                  style={{ fontSize: '16px' }}
-                />
-              </Tooltip>
-              
-              <Tooltip title="Notifications">
-                <Button 
-                  type="text" 
-                  shape="circle" 
-                  icon={<BellOutlined />} 
-                  style={{ fontSize: '16px' }}
-                />
-              </Tooltip>
-              
-              <ThemeToggle />
-              
-              <Button 
-                type="primary"
-                icon={<SyncOutlined />}
-                onClick={onUpdateClick}
-              >
-                Update Feeds
-              </Button>
-              
-              <Tooltip title="User Profile">
-                <Button 
-                  type="primary" 
-                  shape="circle" 
-                  icon={<UserOutlined />}
-                  style={{ background: 'var(--accent-green)', borderColor: 'var(--accent-green)' }}
-                />
-              </Tooltip>
-            </Space>
-          </div>
-          
-          {/* Mobile Menu Toggle */}
-          <div className="md:hidden flex items-center">
-            <ThemeToggle />
-            
-            <Button
-              type="text"
-              icon={isMobileMenuOpen ? <CloseOutlined /> : <MenuOutlined />}
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              style={{ marginLeft: '8px' }}
+          {/* Desktop Navigation */}
+          {!isMobile && (
+            <Menu
+              mode="horizontal"
+              selectedKeys={[current]}
+              items={menuItems}
+              theme="dark"
+              className="desktop-menu"
+              role="navigation"
+              aria-label="Main navigation"
             />
-          </div>
+          )}
+        </div>
+        
+        {/* Right Side Actions */}
+        <div className="header-right">
+          <Space size={16}>
+            {/* Update Button */}
+            {!isMobile && onUpdateClick && (
+              <Button 
+                type="primary" 
+                icon={<SyncOutlined />} 
+                onClick={onUpdateClick}
+                className="btn-custom"
+                aria-label="Update articles"
+              >
+                Update
+              </Button>
+            )}
+            
+            {/* Desktop Actions */}
+            {!isMobile && (
+              <>
+                <Button 
+                  type="text"
+                  icon={<SearchOutlined />}
+                  className="action-btn"
+                  aria-label="Search"
+                />
+                
+                <Badge count={3} size="small" color="var(--primary-color, #00405e)">
+                  <Button 
+                    type="text" 
+                    icon={<BellOutlined />}
+                    className="action-btn"
+                    aria-label="Notifications"
+                  />
+                </Badge>
+                
+                <Dropdown
+                  menu={{ items: userMenuItems }}
+                  trigger={['click']}
+                  placement="bottomRight"
+                >
+                  <Button
+                    type="text"
+                    className="action-btn"
+                    aria-label="User menu"
+                    icon={
+                      <Avatar 
+                        size="small" 
+                        icon={<UserOutlined />} 
+                        style={{ backgroundColor: 'var(--primary-color, #00405e)' }} 
+                      />
+                    }
+                  />
+                </Dropdown>
+              </>
+            )}
+            
+            {/* Mobile Menu Toggle */}
+            {isMobile && (
+              <Button 
+                type="text" 
+                icon={<MenuOutlined />} 
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="action-btn"
+                aria-label="Open menu"
+                aria-expanded={isMobileMenuOpen}
+              />
+            )}
+          </Space>
         </div>
       </div>
-
-      {/* Mobile Menu Drawer */}
+      
+      {/* Mobile Drawer Menu */}
       <Drawer
-        title="Menu"
+        title={
+          <div className="drawer-header">
+            <div className="kumby-logo" aria-hidden="true">K</div>
+            <Text className="brand-text">
+              Kumby Consulting
+            </Text>
+          </div>
+        }
         placement="right"
+        closable={true}
         onClose={() => setIsMobileMenuOpen(false)}
         open={isMobileMenuOpen}
-        styles={{ body: { padding: 0 } }}
         width={280}
+        styles={{
+          header: { 
+            borderBottom: '1px solid var(--border-color, rgba(0, 64, 94, 0.1))',
+            padding: '16px'
+          },
+          body: { padding: 0 },
+          mask: { 
+            background: 'rgba(0, 0, 0, 0.5)', 
+            backdropFilter: 'blur(4px)' 
+          }
+        }}
+        className="kumby-drawer"
+        aria-label="Mobile navigation menu"
       >
         <Menu 
           mode="vertical" 
-          style={{ border: 'none' }}
-          defaultSelectedKeys={['dashboard']}
-          items={mobileMenuItems}
+          selectedKeys={[current]}
+          items={processedMobileMenuItems}
+          theme="light"
+          className="mobile-menu"
+          role="navigation"
         />
+        <div className="mobile-menu-actions">
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Button 
+              icon={<SearchOutlined style={{ marginRight: '8px', fontSize: '16px' }} />} 
+              block
+              className="btn-secondary"
+              aria-label="Search"
+            >
+              Search
+            </Button>
+            <Button 
+              icon={<BellOutlined style={{ marginRight: '8px', fontSize: '16px' }} />} 
+              block
+              className="btn-secondary"
+              aria-label="Notifications"
+            >
+              Notifications
+              <Badge count={5} style={{ marginLeft: 8 }} color="var(--primary-color, #00405e)" />
+            </Button>
+            <Button 
+              icon={<UserOutlined style={{ marginRight: '8px', fontSize: '16px' }} />}
+              block
+              className="btn-secondary"
+              aria-label="Account settings"
+            >
+              Account
+            </Button>
+          </Space>
+        </div>
       </Drawer>
     </AntHeader>
   );

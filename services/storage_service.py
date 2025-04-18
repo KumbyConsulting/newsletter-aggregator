@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import time
 import json
@@ -8,10 +8,13 @@ import os
 import asyncio
 import re
 import calendar
+import pandas as pd
+from unittest.mock import MagicMock
 
 # Google Cloud imports
 from google.cloud import storage
 from google.cloud import firestore
+from google.auth.exceptions import DefaultCredentialsError
 
 from .config_service import ConfigService
 
@@ -22,19 +25,95 @@ class StorageException(Exception):
 class StorageService:
     """Simplified storage service using Firestore as the primary backend"""
     
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls):
+        """Implement singleton pattern"""
+        if cls._instance is None:
+            cls._instance = super(StorageService, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self):
         """Initialize storage service with proper error handling"""
-        try:
-            config = ConfigService.get_instance()
-            self.db = firestore.Client()
-            self.articles_collection = self.db.collection('articles')
-            self.backup_bucket = None
+        # Skip initialization if already initialized
+        if self._initialized:
+            return
             
-            if config.use_gcs:
-                self.storage_client = storage.Client()
-                self.backup_bucket = self.storage_client.bucket(config.gcs_bucket_name)
+        try:
+            # Use the singleton pattern directly since ConfigService is already a singleton
+            self.config = ConfigService()
+            
+            # Check if storage_backend attribute exists, otherwise use default
+            storage_backend = 'chromadb'  # Default value
+            if hasattr(self.config, 'storage_backend'):
+                storage_backend = self.config.storage_backend
+            else:
+                logging.warning("ConfigService has no 'storage_backend' attribute, using 'chromadb' as default")
+            
+            # Initialize Firestore client only if it's configured as the storage backend
+            if storage_backend == 'firestore':
+                try:
+                    # Attempt to initialize Firestore client
+                    self.db = firestore.Client()
+                    self.articles_collection = self.db.collection('articles')
+                    logging.info("Firestore client initialized successfully.")
+                    # Verify connection by attempting a simple read (optional but recommended)
+                    # self.db.collection('__health_check__').limit(1).get() 
+                    # logging.info("Firestore connection verified.")
+                except (DefaultCredentialsError, Exception) as e:
+                    logging.warning(f"Failed to initialize Firestore client: {e}. Falling back to '{self.config.storage_backend}' backend.")
+                    # Fallback: Change backend setting for this instance and use mock Firestore
+                    storage_backend = 'chromadb' # Change the local variable for subsequent logic
+                    self.config.storage_backend = 'chromadb' # Change the config instance's setting
+                    
+                    from unittest.mock import MagicMock
+                    self.db = MagicMock()
+                    self.articles_collection = self.db.collection('articles')
+                    logging.warning(f"Using '{storage_backend}' as storage backend due to Firestore initialization failure.")
+                    # If in production and fallback occurs, maybe raise a specific alert/error?
+                    # if self.config.is_production:
+                    #     logging.error("Firestore fallback occurred in production environment!")
+            
+            # If storage_backend is not firestore initially or after fallback
+            if storage_backend != 'firestore':
+                # Use mock for Firestore when using another storage backend
+                from unittest.mock import MagicMock
+                if not hasattr(self, 'db'): # Ensure db is initialized if fallback didn't run
+                    self.db = MagicMock()
+                if not hasattr(self, 'articles_collection'): # Ensure collection is initialized
+                     self.articles_collection = self.db.collection('articles')
+                logging.info(f"Using {storage_backend} as primary storage backend. Mocking Firestore client.")
+            
+            # Initialize GCS if enabled
+            self.backup_bucket = None
+            self.storage_client = None
+            
+            use_gcs_backup = False
+            gcs_bucket_name = None
+            
+            # Check if GCS backup attributes exist
+            if hasattr(self.config, 'use_gcs_backup'):
+                use_gcs_backup = self.config.use_gcs_backup
+            else:
+                logging.warning("ConfigService has no 'use_gcs_backup' attribute, using False as default")
+                
+            if hasattr(self.config, 'gcs_bucket_name'):
+                gcs_bucket_name = self.config.gcs_bucket_name
+            
+            if use_gcs_backup and gcs_bucket_name:
+                try:
+                    self.storage_client = storage.Client()
+                    self.backup_bucket = self.storage_client.bucket(gcs_bucket_name)
+                    logging.info(f"Connected to GCS bucket: {gcs_bucket_name}")
+                except Exception as e:
+                    logging.warning(f"Failed to initialize GCS: {e}. Continuing without GCS backup.")
+                    # Only raise in production
+                    if hasattr(self.config, 'is_production') and self.config.is_production:
+                        raise
                 
             logging.info("StorageService initialized successfully")
+            self._initialized = True
         except Exception as e:
             logging.error(f"Failed to initialize StorageService: {e}")
             raise StorageException(f"Storage initialization failed: {str(e)}")
@@ -325,8 +404,17 @@ class StorageService:
             logging.error(f"Error calculating similarity: {e}")
             return 0.0
     
-    async def query_articles(self, query: str, n_results: int = 5) -> List[Dict]:
-        """Query articles using Firestore with improved matching for vague queries"""
+    async def query_articles(self, query: str, n_results: int = 5, exclude_ids: List[str] = None) -> List[Dict]:
+        """Query articles using Firestore with improved matching for vague queries
+        
+        Args:
+            query: The search query string
+            n_results: Maximum number of results to return
+            exclude_ids: List of article IDs to exclude from results
+            
+        Returns:
+            List of matching articles
+        """
         try:
             # Simple keyword search implementation
             query_terms = query.lower().split()
@@ -341,6 +429,10 @@ class StorageService:
             
             results = []
             for doc in docs:
+                # Skip if article ID is in exclude list
+                if exclude_ids and doc.id in exclude_ids:
+                    continue
+                    
                 data = doc.to_dict()
                 title = data.get('title', '').lower()
                 topic = data.get('topic', '').lower()
@@ -622,8 +714,6 @@ class StorageService:
         Returns:
             Dict with statistics about the operation
         """
-        import pandas as pd
-        
         stats = {
             "total_csv": 0,
             "already_in_db": 0,
@@ -737,8 +827,6 @@ class StorageService:
         Returns:
             Dict with statistics about the operation
         """
-        import pandas as pd
-        
         stats = {
             "total_exported": 0,
             "success": False
@@ -898,113 +986,82 @@ class StorageService:
             return {}
 
     def _parse_date(self, date_value) -> datetime:
-        """Parse date from various formats into a datetime object"""
-        if date_value is None:
+        """Parse date from various formats to datetime object"""
+        try:
+            if not date_value or date_value == 'Unknown date' or pd.isna(date_value):
+                return datetime.now()
+            
+            if isinstance(date_value, datetime):
+                return self._ensure_naive_datetime(date_value)
+            
+            if isinstance(date_value, (int, float)):
+                if pd.isna(date_value):  # Handle NaN
+                    return datetime.now()
+                return datetime.fromtimestamp(date_value)
+        
+            # Define timezone mappings
+            tzinfos = {
+                'EST': -18000,  # UTC-5
+                'EDT': -14400,  # UTC-4
+                'CST': -21600,  # UTC-6
+                'CDT': -18000,  # UTC-5
+                'MST': -25200,  # UTC-7
+                'MDT': -21600,  # UTC-6
+                'PST': -28800,  # UTC-8
+                'PDT': -25200,  # UTC-7
+            }
+            
+            # Try different date formats
+            date_formats = [
+                '%Y-%m-%d %H:%M:%S',
+                '%Y-%m-%d %H:%M:%S.%f',
+                '%Y-%m-%dT%H:%M:%S',
+                '%Y-%m-%dT%H:%M:%S.%f',
+                '%Y-%m-%dT%H:%M:%SZ',
+                '%Y-%m-%d',
+                '%d/%m/%Y %H:%M:%S',
+                '%d/%m/%Y',
+                '%b %d, %Y %H:%M:%S',
+                '%B %d, %Y %H:%M:%S',
+                '%a, %d %b %Y %H:%M:%S %Z',  # RFC 2822 format
+                '%A, %d %B %Y %H:%M:%S %Z',
+            ]
+            
+            # First try parsing with standard formats
+            for fmt in date_formats:
+                try:
+                    parsed_date = datetime.strptime(str(date_value).strip(), fmt)
+                    return self._ensure_naive_datetime(parsed_date)
+                except ValueError:
+                    continue
+                
+            try:
+                # Try parsing with dateutil as a fallback, with timezone info
+                from dateutil import parser
+                parsed_date = parser.parse(str(date_value), tzinfos=tzinfos)
+                return self._ensure_naive_datetime(parsed_date)
+            except Exception as e:
+                logging.debug(f"dateutil parser failed for '{date_value}': {e}")
+                
+            # If all parsing attempts fail, return current time
+            logging.warning(f"Failed to parse date '{date_value}': Unknown string format")
             return datetime.now()
             
-        # If it's already a datetime
-        if isinstance(date_value, datetime):
-            return date_value.replace(tzinfo=None)
-            
-        # If it's a float/int timestamp
-        if isinstance(date_value, (float, int)):
-            try:
-                return datetime.fromtimestamp(date_value)
-            except (ValueError, OSError, TypeError):
-                return datetime.now()
-                
-        # If it's a string
-        if isinstance(date_value, str):
-            if not date_value or date_value.lower() == 'unknown date':
-                return datetime.now()
-                
-            try:
-                # Handle common RSS/RFC formats with timezones
-                rfc_patterns = [
-                    # GMT format: "Sun, 02 Mar 2025 23:56:00 GMT"
-                    r'(\w+), (\d{2}) (\w+) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT',
-                    # UTC offset format: "Tue, 01 Apr 2025 15:07:40 +0000"
-                    r'(\w+), (\d{2}) (\w+) (\d{4}) (\d{2}):(\d{2}):(\d{2}) [+-]\d{4}',
-                    # EST/EDT format: "Mon, 3 Mar 2025 00:00:00 EST"
-                    r'(\w+), (\d+) (\w+) (\d{4}) (\d{2}):(\d{2}):(\d{2}) (EST|EDT)'
-                ]
-                
-                for pattern in rfc_patterns:
-                    match = re.match(pattern, date_value)
-                    if match:
-                        groups = match.groups()
-                        weekday, day, month, year, hour, minute, second = groups[:7]
-                        # Convert month name to number
-                        month_num = list(calendar.month_abbr).index(month[:3].title())
-                        # Create datetime object
-                        dt = datetime(int(year), month_num, int(day), 
-                                    int(hour), int(minute), int(second))
-                        
-                        # Handle timezone adjustments
-                        if len(groups) > 7:
-                            tz = groups[7]
-                            if tz == 'EST':
-                                dt = dt + timedelta(hours=5)  # EST is UTC-5
-                            elif tz == 'EDT':
-                                dt = dt + timedelta(hours=4)  # EDT is UTC-4
-                        else:
-                            # Check if there's a timezone offset in the original string
-                            tz_match = re.search(r'([+-])(\d{2})(\d{2})$', date_value)
-                            if tz_match:
-                                sign, tz_hours, tz_minutes = tz_match.groups()
-                                offset = int(tz_hours) * 60 + int(tz_minutes)
-                                if sign == '-':
-                                    dt = dt + timedelta(minutes=offset)
-                                else:
-                                    dt = dt - timedelta(minutes=offset)
-                        
-                        return dt
-                        
-                # Try ISO format
-                if 'T' in date_value:
-                    # Handle timezone
-                    if date_value.endswith('Z'):
-                        date_value = date_value.replace('Z', '+00:00')
-                    dt = datetime.fromisoformat(date_value)
-                    return dt.replace(tzinfo=None)
-                    
-                # Try email.utils parser for RFC format
-                try:
-                    from email.utils import parsedate_to_datetime
-                    dt = parsedate_to_datetime(date_value)
-                    if dt:
-                        return dt.replace(tzinfo=None)
-                except Exception:
-                    pass
-                    
-                # Try other common formats
-                formats = [
-                    '%Y-%m-%d',
-                    '%Y/%m/%d',
-                    '%d-%m-%Y',
-                    '%d/%m/%Y',
-                    '%b %d, %Y',
-                    '%B %d, %Y',
-                    '%Y-%m-%d %H:%M:%S',
-                    '%Y/%m/%d %H:%M:%S',
-                    '%a, %d %b %Y %H:%M:%S',
-                    '%Y-%m-%dT%H:%M:%S',
-                    '%Y-%m-%d %H:%M:%S.%f',
-                    # Add explicit timezone formats
-                    '%a, %d %b %Y %H:%M:%S GMT',
-                    '%a, %d %b %Y %H:%M:%S +0000'
-                ]
-                
-                for fmt in formats:
-                    try:
-                        return datetime.strptime(date_value, fmt)
-                    except ValueError:
-                        continue
-                        
-            except Exception as e:
-                logging.warning(f"Error parsing date '{date_value}': {e}")
-                
-        return datetime.now()
+        except Exception as e:
+            logging.warning(f"Error parsing date '{date_value}': {e}")
+            return datetime.now()
+
+    def _ensure_naive_datetime(self, dt):
+        """Ensure datetime is naive (no timezone) by converting to UTC and removing tzinfo"""
+        if dt is None:
+            return datetime.now()
+        try:
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
+        except Exception as e:
+            logging.warning(f"Error converting timezone: {e}")
+            return datetime.now()
 
     def _format_date(self, dt: datetime) -> str:
         """Format datetime to consistent string format"""
@@ -1022,80 +1079,146 @@ class StorageService:
             logging.warning(f"Error formatting date: {e}")
             return datetime.now().strftime('%b %d, %Y %H:%M')
 
-    async def get_topic_distribution(self) -> List[Dict]:
+    async def get_topic_distribution(self) -> Dict:
         """Get enhanced topic distribution statistics"""
         try:
-            # Get all articles
-            docs = self.articles_collection.stream()
-            topic_stats = {}
-            total_articles = 0
-            
-            # Get current time for recent article calculation
-            current_time = datetime.now()
-            thirty_days_ago = current_time - timedelta(days=30)
-            
-            for doc in docs:
-                data = doc.to_dict()
-                topic = data.get('topic', 'Uncategorized')
-                total_articles += 1
+            # Check if we're using Firestore
+            if self.config.storage_backend == 'firestore':
+                # Get all articles from Firestore
+                docs = self.articles_collection.stream()
+                topic_stats = {}
+                total_articles = 0
                 
-                # Initialize topic stats if not exists
-                if topic not in topic_stats:
-                    topic_stats[topic] = {
-                        'count': 0,
-                        'recent_count': 0,
-                        'trend': 'stable',
-                        'growth_rate': 0
-                    }
+                # Get current time for recent article calculation - ensure naive datetime
+                current_time = self._ensure_naive_datetime(datetime.now())
+                thirty_days_ago = current_time - timedelta(days=30)
                 
-                topic_stats[topic]['count'] += 1
+                for doc in docs:
+                    data = doc.to_dict()
+                    topic = data.get('topic', 'Uncategorized')
+                    total_articles += 1
+                    
+                    # Initialize topic stats if not exists
+                    if topic not in topic_stats:
+                        topic_stats[topic] = {
+                            'count': 0,
+                            'recent_count': 0,
+                            'trend': 'stable',
+                            'growth_rate': 0
+                        }
+                    
+                    topic_stats[topic]['count'] += 1
+                    
+                    # Check if article is recent - ensure naive datetime for comparison
+                    try:
+                        pub_date = self._ensure_naive_datetime(self._parse_date(data.get('pub_date')))
+                        if pub_date > thirty_days_ago:
+                            topic_stats[topic]['recent_count'] += 1
+                    except Exception as e:
+                        logging.warning(f"Error processing date for topic distribution: {e}")
+                        continue
                 
-                # Check if article is recent
+                # Calculate percentages and trends
+                for topic, stats in topic_stats.items():
+                    stats['percentage'] = (stats['count'] / total_articles) * 100 if total_articles > 0 else 0
+                    
+                    # Calculate growth rate
+                    if stats['count'] > 0:
+                        recent_ratio = stats['recent_count'] / stats['count']
+                        if recent_ratio > 0.5:
+                            stats['trend'] = 'up'
+                            stats['growth_rate'] = recent_ratio * 100
+                        elif recent_ratio > 0.2:
+                            stats['trend'] = 'stable'
+                            stats['growth_rate'] = recent_ratio * 100
+                        else:
+                            stats['trend'] = 'down'
+                            stats['growth_rate'] = recent_ratio * 100
+                
+                return topic_stats
+            else:
+                # Handle ChromaDB or other non-Firestore backends
+                filename = self.config.settings.ARTICLES_FILE_PATH
+                
+                # If file doesn't exist, return empty stats
+                if not os.path.isfile(filename):
+                    logging.warning(f"Articles file not found: {filename}")
+                    return {}
+                    
                 try:
-                    pub_date = self._parse_date(data.get('pub_date'))
-                    if pub_date > thirty_days_ago:
-                        topic_stats[topic]['recent_count'] += 1
+                    # Use pandas to read the CSV
+                    import pandas as pd
+                    df = pd.read_csv(filename, quotechar='"', escapechar='\\')
+                    
+                    # Check if 'topic' column exists
+                    if 'topic' not in df.columns:
+                        logging.error(f"No 'topic' column found in CSV file: {filename}")
+                        return {}
+                    
+                    # Get current time for recent article calculation
+                    current_time = datetime.now()
+                    thirty_days_ago = current_time - timedelta(days=30)
+                    
+                    # Calculate topic distribution
+                    topic_stats = {}
+                    total_articles = len(df)
+                    
+                    # Group by topic and count
+                    topic_counts = df['topic'].value_counts().reset_index()
+                    topic_counts.columns = ['topic', 'count']
+                    
+                    # Get recent articles
+                    # Handle different date formats
+                    try:
+                        df['pub_date_obj'] = pd.to_datetime(df['pub_date'], errors='coerce')
+                        recent_df = df[df['pub_date_obj'] > pd.Timestamp(thirty_days_ago)]
+                        recent_counts = recent_df['topic'].value_counts().to_dict()
+                    except Exception as date_err:
+                        logging.warning(f"Error parsing dates: {date_err}. Using default recent counts.")
+                        recent_counts = {}
+                    
+                    # Create topic stats
+                    for _, row in topic_counts.iterrows():
+                        topic = row['topic']
+                        if pd.isna(topic) or topic == '':
+                            continue
+                            
+                        count = row['count']
+                        recent_count = recent_counts.get(topic, 0)
+                        
+                        # Calculate percentage and trends
+                        percentage = (count / total_articles) * 100 if total_articles > 0 else 0
+                        
+                        # Calculate growth rate and trend
+                        if count > 0:
+                            recent_ratio = recent_count / count
+                            if recent_ratio > 0.5:
+                                trend = 'up'
+                            elif recent_ratio > 0.2:
+                                trend = 'stable'
+                            else:
+                                trend = 'down'
+                            growth_rate = recent_ratio * 100
+                        else:
+                            trend = 'stable'
+                            growth_rate = 0
+                            
+                        topic_stats[topic] = {
+                            'count': int(count),
+                            'percentage': percentage,
+                            'recent_count': int(recent_count),
+                            'trend': trend,
+                            'growth_rate': growth_rate
+                        }
+                    
+                    return topic_stats
                 except Exception as e:
-                    logging.warning(f"Error processing date for topic distribution: {e}")
-                    continue
-            
-            # Calculate percentages and trends
-            for topic, stats in topic_stats.items():
-                stats['percentage'] = (stats['count'] / total_articles) * 100 if total_articles > 0 else 0
-                
-                # Calculate growth rate
-                if stats['count'] > 0:
-                    recent_ratio = stats['recent_count'] / stats['count']
-                    if recent_ratio > 0.5:
-                        stats['trend'] = 'increasing'
-                        stats['growth_rate'] = recent_ratio * 100
-                    elif recent_ratio > 0.2:
-                        stats['trend'] = 'stable'
-                        stats['growth_rate'] = recent_ratio * 100
-                    else:
-                        stats['trend'] = 'decreasing'
-                        stats['growth_rate'] = recent_ratio * 100
-            
-            return topic_stats
+                    logging.error(f"Error reading articles file: {e}")
+                    return {}
             
         except Exception as e:
             logging.error(f"Error getting topic distribution: {e}")
             return {}
-
-    def _ensure_naive_datetime(self, dt):
-        """Convert a datetime to naive (no timezone) if it isn't already"""
-        if dt is None:
-            return datetime.now()
-        if isinstance(dt, str):
-            try:
-                if dt.endswith('Z'):
-                    dt = dt.replace('Z', '+00:00')
-                dt = datetime.fromisoformat(dt)
-            except ValueError:
-                return datetime.now()
-        if hasattr(dt, 'tzinfo') and dt.tzinfo is not None:
-            return dt.replace(tzinfo=None)
-        return dt
 
     async def get_articles(self, page: int = 1, limit: int = 10, topic: str = None, search_query: str = None, sort_by: str = 'pub_date', sort_order: str = 'desc') -> List[Dict]:
         """Get articles with pagination, topic filtering, search functionality, and sorting"""
@@ -1198,3 +1321,418 @@ class StorageService:
                 'total_pages': 0,
                 'query_time': 0
             }
+
+    async def get_article(self, article_id: str) -> Optional[Dict]:
+        """Get a single article by ID
+        
+        Args:
+            article_id: The ID of the article to retrieve
+            
+        Returns:
+            Dict containing the article data if found, None otherwise
+        """
+        try:
+            # Get the document reference
+            doc_ref = self.articles_collection.document(article_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                logging.warning(f"Article {article_id} not found")
+                return None
+                
+            # Get the data and add the ID
+            data = doc.to_dict()
+            
+            # Format the response to match the structure used elsewhere
+            return {
+                'id': doc.id,
+                'document': data.get('document', ''),
+                'metadata': {
+                    'title': data.get('title', ''),
+                    'link': data.get('link', ''),
+                    'pub_date': data.get('pub_date', ''),
+                    'topic': data.get('topic', ''),
+                    'source': data.get('source', ''),
+                    'description': data.get('description', ''),
+                    'summary': data.get('summary', '')
+                }
+            }
+            
+        except Exception as e:
+            logging.error(f"Error retrieving article {article_id}: {e}")
+            return None
+
+    async def update_article_metadata(self, article_id: str, metadata: Dict) -> bool:
+        """Update article metadata fields
+        
+        Args:
+            article_id: ID of the article to update
+            metadata: Dictionary of metadata fields to update
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            doc_ref = self.articles_collection.document(article_id)
+            doc = doc_ref.get()
+            
+            if not doc.exists:
+                logging.warning(f"Cannot update metadata for non-existent article {article_id}")
+                return False
+                
+            # Update metadata fields
+            doc_ref.update(metadata)
+            logging.info(f"Updated metadata for article {article_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Error updating article metadata: {e}")
+            return False
+    
+    async def find_articles_by_url(self, url: str) -> List[Dict]:
+        """Find articles by URL
+        
+        Args:
+            url: URL to search for
+            
+        Returns:
+            List[Dict]: List of matching articles
+        """
+        try:
+            # Query articles with matching URL
+            docs = self.articles_collection.where('link', '==', url).stream()
+            articles = []
+            
+            for doc in docs:
+                data = doc.to_dict()
+                articles.append({
+                    'id': doc.id,
+                    'metadata': {
+                        'title': data.get('title', ''),
+                        'link': data.get('link', ''),
+                        'pub_date': data.get('pub_date', ''),
+                        'published_date': data.get('pub_date', '')
+                    }
+                })
+            
+            return articles
+        except Exception as e:
+            logging.error(f"Error finding articles by URL: {e}")
+            return []
+
+    async def get_all_articles(self) -> List[Dict]:
+        """Get all articles from the database without pagination
+        
+        Returns:
+            List[Dict]: List of all articles with their complete data
+        """
+        try:
+            # Get all documents from the articles collection
+            docs = self.articles_collection.stream()
+            articles = []
+
+            for doc in docs:
+                data = doc.to_dict()
+                # Parse the publication date
+                pub_date = self._parse_date(data.get('pub_date'))
+                
+                articles.append({
+                    'id': doc.id,
+                    'document': data.get('document', ''),
+                    'metadata': {
+                        'title': data.get('title', 'Unknown Title'),
+                        'description': data.get('description', 'No description available'),
+                        'link': data.get('link', '#'),
+                        'pub_date': self._format_date(pub_date),
+                        'topic': data.get('topic', 'Uncategorized'),
+                        'source': data.get('source', 'Unknown source'),
+                        'summary': data.get('summary', None),
+                        'image_url': data.get('image_url', ''),
+                        'has_full_content': bool(data.get('document', '')),
+                        'reading_time': data.get('reading_time', 0)
+                    }
+                })
+
+            return articles
+            
+        except Exception as e:
+            logging.error(f"Error getting all articles: {e}")
+            return []
+
+    async def enhanced_search(self, query: str, search_type: str = 'auto', **kwargs) -> List[Dict]:
+        """Enhanced search with multiple strategies based on query type
+        
+        Args:
+            query: Search query string
+            search_type: One of 'auto', 'exact', 'fuzzy', 'semantic'
+            **kwargs: Additional search parameters
+        
+        Returns:
+            List[Dict]: Search results with relevance scores
+        """
+        try:
+            # Analyze query to determine best search strategy if auto
+            if search_type == 'auto':
+                search_type = self._determine_search_strategy(query)
+
+            if search_type == 'exact':
+                return await self._exact_field_search(query, **kwargs)
+            elif search_type == 'fuzzy':
+                return await self._enhanced_fuzzy_search(query, **kwargs)
+            else:  # semantic
+                return await self._semantic_search(query, **kwargs)
+        except Exception as e:
+            logging.error(f"Error in enhanced search: {e}")
+            return []
+
+    def _determine_search_strategy(self, query: str) -> str:
+        """Determine the best search strategy based on query characteristics"""
+        # Check for exact phrase queries (quoted strings)
+        if '"' in query or "'" in query:
+            return 'exact'
+            
+        # Check for special operators
+        if any(op in query for op in ['AND', 'OR', 'NOT']):
+            return 'exact'
+            
+        # Check query length and complexity
+        words = query.split()
+        if len(words) == 1 and len(query) <= 3:
+            return 'exact'  # Short, single-word queries
+        elif len(words) > 3:
+            return 'semantic'  # Longer, natural language queries
+        else:
+            return 'fuzzy'  # Default to fuzzy for medium complexity
+
+    async def _exact_field_search(self, query: str, fields: List[str] = None, **kwargs) -> List[Dict]:
+        """Perform exact field matching with index optimization"""
+        try:
+            if not fields:
+                fields = ['title', 'topic', 'source']  # Default searchable fields
+                
+            # Remove quotes if present
+            clean_query = query.strip('"\'').lower()
+            
+            # Start with base query
+            base_query = self.articles_collection
+            
+            # Apply field filters
+            results = []
+            for field in fields:
+                # Use proper index-based query
+                docs = base_query.where(field, '==', clean_query).stream()
+                
+                for doc in docs:
+                    data = doc.to_dict()
+                    results.append({
+                        'id': doc.id,
+                        'document': data.get('document', ''),
+                        'metadata': self._format_article_metadata(data),
+                        'match_type': 'exact',
+                        'matched_field': field,
+                        'score': 1.0  # Exact matches get perfect score
+                    })
+                    
+            return results
+            
+        except Exception as e:
+            logging.error(f"Error in exact field search: {e}")
+            return []
+
+    async def _enhanced_fuzzy_search(self, query: str, threshold: float = 0.6, **kwargs) -> List[Dict]:
+        """Improved fuzzy search with better scoring and matching"""
+        try:
+            # Normalize query
+            query_terms = self._normalize_text(query)
+            
+            # Get all articles for fuzzy matching
+            docs = self.articles_collection.stream()
+            results = []
+            
+            for doc in docs:
+                data = doc.to_dict()
+                # Calculate fuzzy match scores for different fields
+                title_score = self._fuzzy_match_score(
+                    query_terms,
+                    self._normalize_text(data.get('title', ''))
+                )
+                topic_score = self._fuzzy_match_score(
+                    query_terms,
+                    self._normalize_text(data.get('topic', ''))
+                )
+                desc_score = self._fuzzy_match_score(
+                    query_terms,
+                    self._normalize_text(data.get('description', ''))
+                )
+                
+                # Weighted scoring
+                total_score = (
+                    title_score * 0.5 +    # Title matches are most important
+                    topic_score * 0.3 +    # Topic matches are second
+                    desc_score * 0.2       # Description matches are third
+                )
+                
+                if total_score >= threshold:
+                    results.append({
+                        'id': doc.id,
+                        'document': data.get('document', ''),
+                        'metadata': self._format_article_metadata(data),
+                        'match_type': 'fuzzy',
+                        'score': total_score
+                    })
+            
+            # Sort by score
+            results.sort(key=lambda x: x['score'], reverse=True)
+            return results
+            
+        except Exception as e:
+            logging.error(f"Error in fuzzy search: {e}")
+            return []
+
+    def _normalize_text(self, text: str) -> List[str]:
+        """Normalize text for fuzzy matching"""
+        # Convert to lowercase and split into words
+        words = str(text).lower().split()
+        # Remove common stop words and punctuation
+        stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to'}
+        return [word.strip('.,!?()[]{}') for word in words if word not in stop_words]
+
+    def _fuzzy_match_score(self, query_terms: List[str], target_terms: List[str]) -> float:
+        """Calculate fuzzy match score between query and target terms"""
+        if not query_terms or not target_terms:
+            return 0.0
+            
+        scores = []
+        for q_term in query_terms:
+            term_scores = []
+            for t_term in target_terms:
+                # Calculate Levenshtein distance
+                distance = self._levenshtein_distance(q_term, t_term)
+                max_len = max(len(q_term), len(t_term))
+                similarity = 1 - (distance / max_len)
+                term_scores.append(similarity)
+            
+            # Use best match for this query term
+            scores.append(max(term_scores) if term_scores else 0)
+            
+        # Average the scores
+        return sum(scores) / len(scores)
+
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        """Calculate the Levenshtein distance between two strings"""
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+            
+        if len(s2) == 0:
+            return len(s1)
+            
+        previous_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+            
+        return previous_row[-1]
+
+    def _format_article_metadata(self, data: Dict) -> Dict:
+        """Format article metadata consistently"""
+        return {
+            'title': data.get('title', 'Unknown Title'),
+            'description': data.get('description', 'No description available'),
+            'link': data.get('link', '#'),
+            'pub_date': self._format_date(self._parse_date(data.get('pub_date'))),
+            'topic': data.get('topic', 'Uncategorized'),
+            'source': data.get('source', 'Unknown source'),
+            'summary': data.get('summary', None),
+            'image_url': data.get('image_url', ''),
+            'has_full_content': bool(data.get('document', '')),
+            'reading_time': data.get('reading_time', 0)
+        }
+
+    async def _semantic_search(self, query: str, **kwargs) -> List[Dict]:
+        """Placeholder for future semantic search implementation"""
+        logging.warning("Semantic search not yet implemented")
+        return []
+
+    async def check_articles_exist(self, article_ids: List[str]) -> Dict[str, bool]:
+        """
+        Check if a list of article IDs exist in the Firestore collection.
+
+        Args:
+            article_ids: A list of article document IDs to check.
+
+        Returns:
+            A dictionary mapping each article ID to a boolean (True if exists, False otherwise).
+        """
+        if not article_ids:
+            return {}
+
+        results = {article_id: False for article_id in article_ids}
+        try:
+            # Firestore allows fetching multiple documents by ID efficiently
+            doc_refs = [self.articles_collection.document(id) for id in article_ids]
+            
+            # Use get_all to fetch documents in batches (handles potential large lists)
+            # Note: get_all might not be directly available on the client, depends on library version.
+            # If get_all is not available, we might need to fetch in batches manually.
+            # Let's assume get_all exists for now based on common patterns.
+            # If it fails, we'll need to adjust.
+            docs = []
+            # Firestore client library usually requires get_all to be called within a transaction or batch
+            # Let's try fetching directly first, might need adjustment
+            
+            # Let's use a simple loop for now, can optimize later if needed.
+            for doc_ref in doc_refs:
+                # Remove await, doc_ref.get() is synchronous
+                doc = doc_ref.get()
+                if doc.exists:
+                    docs.append(doc)
+
+            for doc in docs:
+                if doc.exists:
+                    results[doc.id] = True
+                    
+            return results
+        except Exception as e:
+            logging.error(f"Error checking article existence: {e}", exc_info=True)
+            # On error, return the initial dict (all False) or raise an exception
+            # Returning False might be safer for the frontend's current logic
+            return results
+
+    async def get_rag_history(self, limit: int = 10) -> List[Dict]:
+        """
+        Get recent RAG query history
+        
+        Args:
+            limit: Maximum number of history items to return
+            
+        Returns:
+            List of history items (most recent first)
+        """
+        try:
+            # Check if we have a history collection
+            if not hasattr(self, 'db') or isinstance(self.db, MagicMock):
+                logging.warning("get_rag_history called but no Firestore DB available")
+                return []
+                
+            # Query the rag_history collection
+            history_collection = self.db.collection('rag_history')
+            query = history_collection.order_by('timestamp', direction='DESCENDING').limit(limit)
+            
+            # Get results
+            docs = query.get()
+            
+            history = []
+            for doc in docs:
+                history_item = doc.to_dict()
+                history_item['id'] = doc.id
+                history.append(history_item)
+                
+            return history
+            
+        except Exception as e:
+            logging.error(f"Error getting RAG history: {e}")
+            return []

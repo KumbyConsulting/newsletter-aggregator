@@ -1,379 +1,398 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+// This component can likely be a Server Component now, as data is passed via props.
+// Remove 'use client' if no client-side hooks (useState, useEffect) or event handlers are needed directly here.
+
 import { 
   Typography, 
   Row, 
   Col, 
-  Skeleton, 
-  Alert, 
   Empty, 
-  Button, 
-  Space, 
-  Tag, 
-  Spin, 
-  Divider,
-  Card,
-  Pagination,
+  Space,
   Grid,
-  message,
-  notification,
-  Badge
+  Spin,
+  Result,
+  ConfigProvider,
+  Alert
 } from 'antd';
-import { 
-  SearchOutlined, 
-  ReloadOutlined, 
-  ExclamationCircleOutlined,
-  LeftOutlined,
-  RightOutlined,
-  LoadingOutlined,
-  SyncOutlined,
-  NotificationOutlined
-} from '@ant-design/icons';
-import ArticleCard, { ArticleCardSkeleton } from './ArticleCard';
-import { getArticles, Article, getUpdateStatus } from '../services/api';
+import { Article } from '@/types';
+import { ArticleCard, ArticleCardSkeleton } from './ArticleCard';
+import { SearchOutlined, InboxOutlined, SyncOutlined } from '@ant-design/icons';
+import useSyncArticles from '../hooks/useSyncArticles';
+import { useEffect } from 'react';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
 
-interface ArticlesGridProps {
-  searchQuery?: string;
-  selectedTopic?: string;
-}
-
-export default function ArticlesGrid({ searchQuery = '', selectedTopic = 'All' }: ArticlesGridProps) {
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(9);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalArticles, setTotalArticles] = useState(0);
-  const [topics, setTopics] = useState<string[]>([]);
-  const [isPolling, setIsPolling] = useState(false);
-  const [newArticlesAvailable, setNewArticlesAvailable] = useState(false);
-  const [lastUpdateTime, setLastUpdateTime] = useState<number | null>(null);
-  const pollingInterval = useRef<NodeJS.Timeout | null>(null);
-  const screens = useBreakpoint();
-
-  // Fetch articles when search query, topic, or page changes
+// Add a new component to inject the styles
+const ArticlesGridStyles = () => {
   useEffect(() => {
-    fetchArticles();
-  }, [searchQuery, selectedTopic, currentPage, pageSize]);
-
-  // Setup polling for new articles
-  useEffect(() => {
-    startPolling();
+    // Only inject the styles once
+    if (!document.getElementById('articles-grid-styles')) {
+      const styleElement = document.createElement('style');
+      styleElement.id = 'articles-grid-styles';
+      styleElement.innerHTML = styles;
+      document.head.appendChild(styleElement);
+    }
     
+    // Clean up on unmount
     return () => {
-      if (pollingInterval.current) {
-        clearInterval(pollingInterval.current);
+      const styleElement = document.getElementById('articles-grid-styles');
+      if (styleElement) {
+        styleElement.remove();
       }
     };
-  }, [lastUpdateTime]);
+  }, []);
+  
+  return null;
+};
 
-  const startPolling = () => {
-    if (pollingInterval.current) {
-      clearInterval(pollingInterval.current);
+interface ArticlesGridProps {
+  articles: Article[];
+  loading?: boolean;
+  error?: string;
+  emptyMessage?: string;
+  syncWithBackend?: boolean;
+}
+
+export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
+  articles,
+  loading = false,
+  error,
+  emptyMessage = 'No articles found',
+  syncWithBackend = true
+}) => {
+  const screens = useBreakpoint();
+  
+  useEffect(() => {
+    console.log(`ArticlesGrid received ${articles.length} articles, loading: ${loading}`);
+    if (articles.length > 0) {
+      console.log('First article:', articles[0].id, articles[0].metadata.title);
     }
-    
-    setIsPolling(true);
-    pollingInterval.current = setInterval(checkForNewArticles, 30000); // Poll every 30 seconds
+  }, [articles, loading]);
+  
+  // Only use the sync hook if syncWithBackend is true and we have articles
+  // This prevents unnecessary API calls when there are no articles
+  const { 
+    articles: syncedArticles, 
+    isSyncing, 
+    invalidCount, 
+    hasSyncedArticles 
+  } = syncWithBackend && articles && articles.length > 0 
+    ? useSyncArticles(articles) 
+    : { 
+      articles: articles, 
+      isSyncing: false, 
+      invalidCount: 0, 
+      hasSyncedArticles: articles && articles.length > 0 
+    };
+
+  // CRITICAL FIX: Ensure we always have articles to display even if sync fails
+  const displayArticles = syncedArticles && syncedArticles.length > 0 
+    ? syncedArticles 
+    : articles;
+
+  // Calculate columns based on screen size
+  const getSpan = () => {
+    if (screens.xxl) return 6;     // 4 columns on xxl screens
+    if (screens.xl) return 8;      // 3 columns on xl screens
+    if (screens.lg) return 8;      // 3 columns on large screens
+    if (screens.md) return 12;     // 2 columns on medium screens
+    if (screens.sm) return 12;     // 2 columns on small screens
+    return 24;                     // 1 column on extra small screens
   };
 
-  const stopPolling = () => {
-    if (pollingInterval.current) {
-      clearInterval(pollingInterval.current);
-      pollingInterval.current = null;
-    }
-    setIsPolling(false);
-  };
-
-  const checkForNewArticles = async () => {
-    try {
-      // Check update status to see if there are new articles
-      const status = await getUpdateStatus();
-      
-      // If we have a completed update that's newer than our last fetch
-      if (status.last_update && (!lastUpdateTime || status.last_update > lastUpdateTime)) {
-        setNewArticlesAvailable(true);
-        // Show notification
-        notification.info({
-          message: 'New Articles Available',
-          description: 'Refresh to see the latest articles.',
-          btn: (
-            <Button type="primary" size="small" onClick={refreshArticles}>
-              Refresh Now
-            </Button>
-          ),
-          duration: 0, // Don't auto-dismiss
-        });
-      }
-    } catch (error) {
-      console.error('Error checking for updates:', error);
-    }
-  };
-
-  const refreshArticles = () => {
-    setNewArticlesAvailable(false);
-    // Close any open notifications
-    notification.destroy();
-    // Reset to first page and fetch
-    setCurrentPage(1);
-    fetchArticles(true);
-  };
-
-  const fetchArticles = async (isRefresh = false) => {
-    try {
-      setLoading(true);
-      
-      if (isRefresh) {
-        message.loading('Refreshing articles...', 0.5);
-      }
-      
-      console.log('Fetching articles, page:', currentPage, 'size:', pageSize, 'topic:', selectedTopic);
-      
-      const data = await getArticles(
-        currentPage,
-        pageSize,
-        searchQuery,
-        selectedTopic,
-        'pub_date',
-        'desc'
-      );
-      
-      console.log('Articles data received:', data);
-      
-      setArticles(data.articles);
-      setTotalPages(data.total_pages);
-      setTotalArticles(data.total);
-      setTopics(Array.isArray(data.topics) ? data.topics : []);
-      setError(null);
-      
-      // Update last update time to track future updates
-      const status = await getUpdateStatus();
-      if (status.last_update) {
-        setLastUpdateTime(status.last_update);
-      }
-      
-      if (isRefresh) {
-        message.success('Articles refreshed successfully!');
-      }
-    } catch (err) {
-      console.error('Error fetching articles:', err);
-      setError(`Error loading articles: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle page change
-  const handlePageChange = (page: number, size?: number) => {
-    setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (size && size !== pageSize) {
-      setPageSize(size);
-    }
-  };
-
-  // Loading state - show skeleton cards
-  if (loading && articles.length === 0) {
+  // Show loading state with skeleton cards
+  if (loading || isSyncing) {
     return (
-      <Row gutter={[24, 24]}>
-        {[...Array(pageSize)].map((_, i) => (
-          <Col xs={24} md={12} lg={8} key={i}>
-            <ArticleCardSkeleton />
-          </Col>
-        ))}
-      </Row>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <Alert
-        message="Error"
-        description={error}
-        type="error"
-        showIcon
-        action={
-          <Button type="primary" onClick={refreshArticles}>
-            Try Again
-          </Button>
-        }
-      />
-    );
-  }
-
-  // No articles found
-  if (articles.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={
-          <Space direction="vertical" align="center">
-            <Title level={4}>No articles found</Title>
-            <Paragraph type="secondary">
-              {selectedTopic !== 'All' || searchQuery ? 
-                "Try adjusting your search or filter to find what you're looking for." :
-                "No articles are currently available. Try running the article update process."}
-            </Paragraph>
-          </Space>
-        }
-      >
-        <Space>
-          {(selectedTopic !== 'All' || searchQuery) && (
-            <Button 
-              type="primary" 
-              onClick={() => window.location.href = '/'} 
-              icon={<SearchOutlined />}
-            >
-              Clear Filters
-            </Button>
-          )}
-          <Button 
-            onClick={refreshArticles} 
-            icon={<ReloadOutlined />}
-          >
-            Refresh
-          </Button>
-        </Space>
-      </Empty>
-    );
-  }
-
-  return (
-    <div className="articles-grid">
-      {/* Header with info */}
-      <div style={{ marginBottom: 24 }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <Space align="center">
-              <Title level={2} style={{ margin: 0 }}>
-                {selectedTopic !== 'All' ? selectedTopic : 'Latest'} Articles
-              </Title>
-              {newArticlesAvailable && (
-                <Badge dot>
-                  <Button 
-                    type="primary" 
-                    icon={<SyncOutlined />} 
-                    onClick={refreshArticles}
-                    shape="round"
-                    size="small"
-                  >
-                    New Articles Available
-                  </Button>
-                </Badge>
-              )}
-            </Space>
-          </Col>
-          <Col>
-            <Space>
-              <Button 
-                icon={<ReloadOutlined spin={isPolling} />}
-                onClick={isPolling ? stopPolling : startPolling}
-                type={isPolling ? "default" : "primary"}
-              >
-                {isPolling ? "Auto Refresh On" : "Auto Refresh Off"}
-              </Button>
-              <Text type="secondary">
-                Showing {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalArticles)} of {totalArticles} articles
-              </Text>
-            </Space>
-          </Col>
-        </Row>
-        
-        {/* Active Filters Display */}
-        {(selectedTopic !== 'All' || searchQuery) && (
-          <Space style={{ marginTop: 12 }} wrap>
-            {selectedTopic !== 'All' && (
-              <Tag color="blue" closable onClose={() => window.location.href = '/'}>
-                Topic: {selectedTopic}
-              </Tag>
-            )}
-            
-            {searchQuery && (
-              <Tag color="blue" closable onClose={() => window.location.href = '/'}>
-                Search: {searchQuery}
-              </Tag>
-            )}
-          </Space>
+      <div className="articles-grid-loading">
+        {isSyncing && !loading && (
+          <Alert
+            message="Syncing articles with database..."
+            description="Ensuring all displayed articles exist in the database."
+            type="info"
+            showIcon
+            icon={<SyncOutlined spin />}
+            style={{ marginBottom: 16 }}
+          />
         )}
-
-        {lastUpdateTime && (
-          <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-            Last updated: {new Date(lastUpdateTime * 1000).toLocaleString()}
-          </Text>
-        )}
-
-        <Divider style={{ margin: '16px 0' }} />
-      </div>
-      
-      {/* Articles Grid with loading overlay */}
-      <div style={{ position: 'relative' }}>
-        {loading && articles.length > 0 && (
-          <div style={{ 
-            position: 'absolute', 
-            zIndex: 1, 
-            width: '100%', 
-            height: '100%', 
-            display: 'flex', 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            background: 'rgba(255, 255, 255, 0.7)' 
-          }}>
-            <Spin 
-              indicator={<LoadingOutlined style={{ fontSize: 24 }} spin />} 
-              tip="Loading articles..."
-              size="large"
-            />
-          </div>
-        )}
-        
-        <Row gutter={[24, 24]}>
-          {articles.map((article) => (
-            <Col xs={24} md={12} lg={8} key={article.id || Math.random().toString()}>
-              <ArticleCard
-                id={article.id}
-                title={article.title}
-                description={article.description}
-                link={article.link}
-                pub_date={article.pub_date}
-                source={article.source}
-                topic={article.topic}
-                summary={article.summary}
-                image_url={article.image_url}
-                metadata={article.metadata}
-              />
+        <Row gutter={[24, 24]} className="fade-in-up">
+          {[...Array(6)].map((_, index) => (
+            <Col key={index} span={getSpan()} style={{ animationDelay: `${0.05 * index}s` }}>
+              <ArticleCardSkeleton />
             </Col>
           ))}
         </Row>
       </div>
-      
-      {/* Pagination */}
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 32 }}>
-        <Pagination
-          current={currentPage}
-          total={totalArticles}
-          pageSize={pageSize}
-          onChange={handlePageChange}
-          showSizeChanger
-          pageSizeOptions={['9', '18', '36', '72']}
-          responsive
-          showTotal={(total, range) => `${range[0]}-${range[1]} of ${total} articles`}
-          itemRender={(page, type, originalElement) => {
-            if (type === 'prev') {
-              return <Button type="text" icon={<LeftOutlined />}>Previous</Button>;
-            }
-            if (type === 'next') {
-              return <Button type="text" icon={<RightOutlined />}>Next</Button>;
-            }
-            return originalElement;
-          }}
-          disabled={loading}
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <Result
+        status="error"
+        title="Failed to load articles"
+        subTitle={error}
+        className="articles-grid-error"
+      />
+    );
+  }
+
+  // Show sync warning if invalid articles were detected
+  const showSyncWarning = syncWithBackend && invalidCount > 0;
+  
+  // Show empty state
+  if (!hasSyncedArticles && !displayArticles.length) {
+    console.log('No articles to display');
+    return (
+      <ConfigProvider
+        theme={{
+          components: {
+            Empty: {
+              colorTextDisabled: 'rgba(0, 0, 0, 0.25)',
+            },
+          },
+        }}
+      >
+        {showSyncWarning && (
+          <Alert
+            message="Some articles were filtered out"
+            description={`${invalidCount} articles were removed because they no longer exist in the database.`}
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        )}
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={
+            <Space direction="vertical" align="center" size="large">
+              <div className="empty-icon">
+                <InboxOutlined style={{ fontSize: 48, color: '#1890ff' }} />
+              </div>
+              <Space direction="vertical" align="center" size="small">
+                <Title level={5} style={{ margin: 0 }}>{emptyMessage}</Title>
+                <Paragraph type="secondary" style={{ margin: 0, textAlign: 'center' }}>
+                  Try adjusting your search criteria or filters
+                </Paragraph>
+              </Space>
+            </Space>
+          }
+          className="articles-grid-empty"
         />
-      </div>
+      </ConfigProvider>
+    );
+  }
+
+  // Show articles grid with sync warning if needed
+  console.log(`Rendering ${displayArticles.length} articles grid`);
+  return (
+    <div className="articles-grid">
+      <ArticlesGridStyles />
+      {showSyncWarning && (
+        <Alert
+          message="Some articles were filtered out"
+          description={`${invalidCount} articles were removed because they no longer exist in the database.`}
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      <Row gutter={[24, 24]} className="fade-in-up">
+        {displayArticles.map((article, index) => (
+          <Col key={article.id} span={getSpan()} style={{ animationDelay: `${0.05 * index}s` }}>
+            <ArticleCard article={article} />
+          </Col>
+        ))}
+      </Row>
     </div>
   );
-} 
+};
+
+// Add styles to your global CSS or a separate module
+const styles = `
+.articles-grid {
+  min-height: 200px;
+  padding: 12px 0;
+}
+
+.articles-grid .ant-row {
+  margin: -16px -16px;
+}
+
+.articles-grid .ant-col {
+  padding: 16px 16px;
+}
+
+.articles-grid-loading {
+  min-height: 400px;
+  padding: 32px 0;
+  background: #fafafa;
+  border-radius: 12px;
+}
+
+.articles-grid-error {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-light, #fafafa);
+  border-radius: 12px;
+  margin: 24px 0;
+  padding: 32px;
+}
+
+.articles-grid-empty {
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: var(--background-light, #fafafa);
+  border-radius: 12px;
+  margin: 24px 0;
+  text-align: center;
+}
+
+.empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: var(--background-lighter, #f0f2f5);
+  margin-bottom: 24px;
+  color: var(--primary-color, #1890ff);
+}
+
+.empty-icon .anticon {
+  font-size: 40px;
+}
+
+.articles-grid-empty .ant-typography {
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.articles-grid-empty h5.ant-typography {
+  font-size: 1.25rem;
+  margin-bottom: 12px;
+  color: var(--heading-color, #262626);
+}
+
+.articles-grid-empty .ant-typography.ant-typography-secondary {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+/* Animation for grid items */
+.fade-in-up .ant-col {
+  animation: fadeInUp 0.5s ease;
+  animation-fill-mode: both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Topic badge styling */
+.topic-badge {
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+/* Article Card Image Container */
+.article-image-container {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+  background-color: #f5f5f5;
+}
+
+.article-image-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 40%);
+  pointer-events: none;
+}
+
+.article-image {
+  transition: transform 0.5s ease;
+}
+
+.article-card:hover .article-image {
+  transform: scale(1.05);
+}
+
+/* Card Styling */
+.article-card {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  height: 100%;
+}
+
+.article-card:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+.article-title {
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .articles-grid .ant-row {
+    margin: -12px -12px;
+  }
+
+  .articles-grid .ant-col {
+    padding: 12px 12px;
+  }
+
+  .articles-grid-empty {
+    padding: 32px 16px;
+  }
+
+  .empty-icon {
+    width: 72px;
+    height: 72px;
+  }
+
+  .empty-icon .anticon {
+    font-size: 32px;
+  }
+
+  .article-image-container {
+    height: 180px;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .articles-grid-empty,
+  .articles-grid-error,
+  .articles-grid-loading {
+    background: #ffffff;
+    border: 2px solid #000000;
+  }
+}
+`; 

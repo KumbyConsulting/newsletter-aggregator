@@ -2,7 +2,34 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Header from '../components/Header';
+import { 
+  Layout, 
+  Typography, 
+  Card, 
+  Row, 
+  Col, 
+  Spin, 
+  Alert, 
+  Empty, 
+  Space, 
+  Tag, 
+  Button, 
+  Statistic, 
+  Skeleton, 
+  Tooltip, 
+  Divider 
+} from 'antd';
+import {
+  LinkOutlined,
+  FileTextOutlined,
+  GlobalOutlined,
+  ReloadOutlined,
+  InfoCircleOutlined
+} from '@ant-design/icons';
+import { getSources } from '@/app/services/api';
+
+const { Content } = Layout;
+const { Title, Text, Paragraph } = Typography;
 
 interface SourceData {
   name: string;
@@ -17,154 +44,243 @@ export default function SourcesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchSources = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch('/api/sources');
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch sources');
-        }
-        
-        const data = await response.json();
-        setSources(data.sources || []);
+  const fetchSources = async () => {
+    try {
+      setLoading(true);
+      const response = await getSources();
+      
+      if (response && response.sources) {
+        setSources(response.sources || []);
         setError(null);
-      } catch (error) {
-        console.error('Error fetching sources:', error);
-        setError('Failed to load sources. Please try again later.');
-      } finally {
-        setLoading(false);
+      } else {
+        throw new Error('Invalid response format');
       }
-    };
+    } catch (error) {
+      console.error('Error fetching sources:', error);
+      setError('Failed to load sources. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchSources();
   }, []);
 
   // Source descriptions (in a real app, these would come from the API)
   const sourceDescriptions: Record<string, string> = {
-    'TechCrunch': 'Reporting on the business of technology, startups, venture capital funding, and Silicon Valley.',
-    'Wired': 'In-depth coverage of current and future trends in technology and how they are shaping business, entertainment, and culture.',
-    'The Verge': 'Covering the intersection of technology, science, art, and culture.',
-    'Ars Technica': 'Serving the technologist for more than a decade with deep technical analysis of technology trends.',
-    'Hacker News': 'A social news website focusing on computer science and entrepreneurship.',
-    'MIT Technology Review': 'Independent media company founded at MIT, covering emerging technologies and their impact.',
-    'BBC News': 'Breaking news, features, analysis and debate from the UK and around the world.',
-    'CNN': 'Breaking news, latest news and videos from the US and around the world.',
-    'The New York Times': 'Breaking news, multimedia, reviews & opinion on Washington, business, sports, movies, travel, books, jobs, education, real estate, cars & more.',
+    'Pharmaceutical Technology': 'Reporting on the pharmaceutical industry, including manufacturing technology, drug development, and market trends.',
+    'FiercePharma': 'Daily updates on pharmaceutical industry news, market developments, and regulatory changes in the pharma sector.',
+    'FDA News': 'Official news and announcements from the U.S. Food and Drug Administration regarding drug approvals and regulations.',
+    'BioPharmaDive': 'In-depth analysis and news coverage of the biopharmaceutical industry and healthcare sector.',
+    'DrugDiscoveryToday': 'Scientific journal covering research articles and news on drug discovery, development, and evaluation.',
+    'PharmaTimes': 'News, insights, and analysis on the pharmaceutical and healthcare industries in the UK and globally.',
+    'European Pharmaceutical Review': 'Coverage of European pharmaceutical regulations, developments, and industry news.',
+    'PharmaManufacturing': 'Information on pharmaceutical manufacturing processes, technology, and regulatory compliance.',
+    
+    // Medical Journals
+    'The Lancet': 'One of the world\'s oldest and most prestigious medical journals publishing original research and reviews.',
+    'New England Journal of Medicine': 'Leading medical journal publishing research, reviews, and editorials on medical science and practice.',
+    'JAMA': 'Peer-reviewed medical journal published by the American Medical Association covering all aspects of medical science.',
+    'Nature Biotechnology': 'Research and news coverage on biotechnology, including pharmaceutical applications and innovations.',
+    'British Medical Journal': 'Leading general medical journal covering clinical research, medical education, and global health policy.',
+    'The Lancet Oncology': 'Specialized journal publishing high-quality research, reviews, and other articles in oncology.',
+    'Science Translational Medicine': 'Publication focused on translational research to advance human health and medicine.',
+    'Nature Medicine': 'Peer-reviewed journal publishing research on all aspects of medicine with an emphasis on understanding disease pathogenesis.',
+    'Cell': 'Leading biomedical journal covering cellular and molecular biology, developmental biology, and beyond.',
+    
+    // Regulatory News
+    'EMA News': 'Official news from the European Medicines Agency on drug approvals and regulatory updates in Europe.',
+    'WHO News': 'Global health updates and pharmaceutical-related news from the World Health Organization.',
+    'CDC': 'Public health information and updates from the U.S. Centers for Disease Control and Prevention.',
+    
+    // NewsAPI Integration
+    'NewsAPI_Pharma': 'Aggregated pharmaceutical news from various sources via NewsAPI.',
+    'NewsAPI_BioTech': 'Latest biotechnology news and developments from multiple sources via NewsAPI.',
+    'NewsAPI_Clinical': 'Updates on clinical trials and research from various news outlets via NewsAPI.',
+    'NewsAPI_Drug': 'Coverage of drug development news from multiple sources via NewsAPI.',
   };
 
+  // Group sources by category
+  const categorizeSource = (sourceName: string): string => {
+    const lowerName = sourceName.toLowerCase();
+    if (lowerName.includes('fda') || lowerName.includes('ema') || lowerName.includes('regulatory')) {
+      return 'Regulatory';
+    } else if (lowerName.includes('clinical') || lowerName.includes('trial')) {
+      return 'Clinical Trials';
+    } else if (lowerName.includes('journal') || lowerName.includes('lancet') || lowerName.includes('medicine') || lowerName.includes('cell')) {
+      return 'Medical Journals';
+    } else if (lowerName.includes('newsapi')) {
+      return 'NewsAPI Integration';
+    } else {
+      return 'Industry News';
+    }
+  };
+
+  // Group sources into categories
+  const getGroupedSources = () => {
+    const groups: Record<string, SourceData[]> = {};
+    
+    sources.forEach(source => {
+      const category = categorizeSource(source.name);
+      if (!groups[category]) {
+        groups[category] = [];
+      }
+      groups[category].push(source);
+    });
+    
+    return groups;
+  };
+
+  // Render source cards
+  const renderSourceCard = (source: SourceData) => {
+    const description = source.description || sourceDescriptions[source.name] || `News source for various topics.`;
+    
+    return (
+      <Card 
+        hoverable 
+        className="source-card"
+        actions={[
+          <Link href={`/?source=${encodeURIComponent(source.name)}`} key="view">
+            <Space>
+              <FileTextOutlined />
+              View articles
+            </Space>
+          </Link>,
+          <a 
+            href={source.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            key="website"
+          >
+            <Space>
+              <LinkOutlined />
+              Visit website
+            </Space>
+          </a>
+        ]}
+      >
+        <Card.Meta
+          avatar={
+            source.logo_url ? (
+              <img 
+                src={source.logo_url} 
+                alt={`${source.name} logo`} 
+                className="source-logo"
+                style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: '50%', background: '#f5f5f5', padding: 4 }}
+              />
+            ) : (
+              <div style={{ width: 40, height: 40, borderRadius: '50%', background: '#1890ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <GlobalOutlined style={{ color: 'white', fontSize: 20 }} />
+              </div>
+            )
+          }
+          title={source.name}
+          description={
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Paragraph ellipsis={{ rows: 2 }} style={{ marginBottom: 8 }}>
+                {description}
+              </Paragraph>
+              <Statistic 
+                value={source.count} 
+                suffix="articles" 
+                valueStyle={{ fontSize: 16 }} 
+              />
+            </Space>
+          }
+        />
+      </Card>
+    );
+  };
+
+  // Group sources into categories for display
+  const groupedSources = getGroupedSources();
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">
-          News Sources
-        </h1>
-        
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white p-6 rounded-lg shadow animate-pulse">
-                <div className="flex items-center mb-4">
-                  <div className="h-10 w-10 bg-gray-200 rounded-full mr-3"></div>
-                  <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-                </div>
-                <div className="h-4 bg-gray-200 rounded mb-2 w-full"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2 w-5/6"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-              </div>
-            ))}
+    <Layout className="layout">
+      <Content className="site-layout-content" style={{ padding: '0 50px' }}>
+        <div className="container" style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
+            <Title level={2}>
+              News Sources
+            </Title>
+            <Button 
+              icon={<ReloadOutlined />} 
+              onClick={fetchSources}
+              loading={loading}
+              type="primary"
+            >
+              Refresh
+            </Button>
           </div>
-        ) : error ? (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        ) : sources.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <h3 className="mt-2 text-lg font-medium text-gray-900">No sources found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              We couldn't find any sources. Please check back later.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sources.map((source) => (
-              <div 
-                key={source.name}
-                className="bg-white p-6 rounded-lg shadow"
-              >
-                <div className="flex items-center mb-4">
-                  {source.logo_url ? (
-                    <img 
-                      src={source.logo_url} 
-                      alt={`${source.name} logo`} 
-                      className="h-10 w-10 object-contain rounded-full mr-3 bg-gray-100 p-1"
-                    />
-                  ) : (
-                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center mr-3">
-                      <span className="text-blue-800 font-bold">
-                        {source.name.charAt(0)}
-                      </span>
+          
+          <Paragraph style={{ marginBottom: 24 }}>
+            Browse all available news sources grouped by category. Click on a source to view its articles or visit its website.
+          </Paragraph>
+
+          {error && (
+            <Alert
+              message="Error Loading Sources"
+              description={error}
+              type="error"
+              showIcon
+              style={{ marginBottom: 24 }}
+            />
+          )}
+          
+          {loading ? (
+            <Row gutter={[24, 24]}>
+              {[...Array(9)].map((_, i) => (
+                <Col key={i} xs={24} md={12} lg={8}>
+                  <Card>
+                    <Skeleton active avatar paragraph={{ rows: 2 }} />
+                    <div style={{ marginTop: 16 }}>
+                      <Skeleton.Button active size="small" style={{ width: 100, marginRight: 16 }} />
+                      <Skeleton.Button active size="small" style={{ width: 100 }} />
                     </div>
-                  )}
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    {source.name}
-                  </h2>
-                </div>
-                
-                <p className="text-gray-600 mb-4">
-                  {source.description || sourceDescriptions[source.name] || `News source for various topics.`}
-                </p>
-                
-                <div className="flex justify-between items-center">
-                  <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                    {source.count} articles
-                  </span>
-                  
-                  <div className="flex space-x-2">
-                    <Link 
-                      href={`/?source=${encodeURIComponent(source.name)}`}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                    >
-                      View articles
-                    </Link>
-                    <a 
-                      href={source.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-gray-500 hover:text-gray-700 text-sm font-medium"
-                    >
-                      Visit website
-                    </a>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          ) : sources.length === 0 ? (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={
+                <span>
+                  No sources found. Please check the connection to the backend service.
+                </span>
+              }
+            >
+              <Button type="primary" onClick={fetchSources}>Try Again</Button>
+            </Empty>
+          ) : (
+            <>
+              {Object.entries(groupedSources).map(([category, categorySources]) => (
+                <div key={category} style={{ marginBottom: 32 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+                    <Title level={3} style={{ margin: 0 }}>{category}</Title>
+                    <Tag color="blue" style={{ marginLeft: 8 }}>{categorySources.length}</Tag>
                   </div>
+                  
+                  <Row gutter={[24, 24]}>
+                    {categorySources.map((source) => (
+                      <Col key={source.name} xs={24} md={12} lg={8}>
+                        {renderSourceCard(source)}
+                      </Col>
+                    ))}
+                  </Row>
+                  
+                  <Divider style={{ marginTop: 32, marginBottom: 32 }} />
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-      
-      <footer className="bg-white border-t border-gray-200 py-8 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-gray-500 text-sm text-center">
-            © {new Date().getFullYear()} Newsletter Aggregator. All rights reserved.
-          </p>
+              ))}
+            </>
+          )}
         </div>
-      </footer>
-    </div>
+      </Content>
+      
+      <Layout.Footer style={{ textAlign: 'center', background: '#f0f2f5', marginTop: 24 }}>
+        <Text type="secondary">© {new Date().getFullYear()} Newsletter Aggregator. All rights reserved.</Text>
+      </Layout.Footer>
+    </Layout>
   );
 } 

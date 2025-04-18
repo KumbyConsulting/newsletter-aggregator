@@ -123,4 +123,30 @@ class MonitoringService:
                 
                 return result
             return wrapper
-        return decorator 
+        return decorator
+    
+    def record_request_duration(self, endpoint, duration, status_code):
+        """Record duration of a request by endpoint"""
+        # Log the request duration
+        logging.debug(f"Request to {endpoint} took {duration:.3f}s (status: {status_code})")
+        
+        # Record using cloud monitoring if enabled
+        if self.client:
+            try:
+                labels = {
+                    "endpoint": endpoint,
+                    "status": str(status_code)
+                }
+                
+                # Record as latency
+                self.record_latency(f"endpoint_{endpoint}", duration)
+                
+                # Also record request count by status code
+                status_category = str(status_code)[0] + "xx"  # Convert e.g. 404 to "4xx"
+                self.record_count("requests", 1, {
+                    "endpoint": endpoint,
+                    "status": status_category
+                })
+                
+            except Exception as e:
+                logging.error(f"Failed to record request duration: {e}") 

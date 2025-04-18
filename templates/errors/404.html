@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}404 Not Found{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-content">
+        <h1>404 Not Found</h1>
+        <div class="error-message">
+            <p>{{ error }}</p>
+            <p>The page you're looking for doesn't exist or has been moved.</p>
+        </div>
+        <div class="error-actions">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Return to Home</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.error-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 60vh;
+    padding: 2rem;
+}
+
+.error-content {
+    text-align: center;
+    max-width: 600px;
+    padding: 2rem;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.error-message {
+    margin: 2rem 0;
+    color: #666;
+}
+
+.error-actions {
+    margin-top: 2rem;
+}
+</style>
+{% endblock %} 

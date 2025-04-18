@@ -1,0 +1,5 @@
+Collecting redis
+  Using cached redis-5.2.1-py3-none-any.whl.metadata (9.1 kB)
+Using cached redis-5.2.1-py3-none-any.whl (261 kB)
+Installing collected packages: redis
+Successfully installed redis-5.2.1

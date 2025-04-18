@@ -2,128 +2,260 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Header from '../components/Header';
+import { getTopicStats, TopicStats } from '@/app/services/api';
+import {
+  Card,
+  Row,
+  Col,
+  Typography,
+  Statistic,
+  Tag,
+  Space,
+  Spin,
+  Alert,
+  Empty,
+  Tooltip,
+  Button
+} from 'antd';
+import {
+  RiseOutlined,
+  FallOutlined,
+  MinusOutlined,
+  FileProtectOutlined,
+  ExperimentOutlined,
+  MedicineBoxOutlined,
+  SafetyCertificateOutlined,
+  FundOutlined,
+  ApiOutlined,
+  TeamOutlined,
+  RocketOutlined,
+  ReloadOutlined
+} from '@ant-design/icons';
 
-interface TopicData {
-  name: string;
+const { Title, Text } = Typography;
+
+interface TopicDisplayData {
+  topic: string;
   count: number;
-  description?: string;
+  description: string;
+  percentage: number;
+  trend?: 'up' | 'down' | 'stable';
+  growth_rate?: number;
+  recent_count?: number;
+  icon: any;
 }
 
+// Pharmaceutical-specific topic descriptions and icons
+const topicMetadata: Record<string, { description: string; icon: any }> = {
+  'Regulatory': {
+    description: 'FDA approvals, regulatory changes, and compliance updates in the pharmaceutical industry.',
+    icon: <FileProtectOutlined />
+  },
+  'Clinical Trials': {
+    description: 'Updates on clinical trials, research outcomes, and patient studies.',
+    icon: <ExperimentOutlined />
+  },
+  'Drug Development': {
+    description: 'New drug developments, pipeline updates, and therapeutic advancements.',
+    icon: <MedicineBoxOutlined />
+  },
+  'Safety': {
+    description: 'Drug safety updates, adverse events, and pharmacovigilance information.',
+    icon: <SafetyCertificateOutlined />
+  },
+  'Market Access': {
+    description: 'Market trends, pricing strategies, and commercial insights.',
+    icon: <FundOutlined />
+  },
+  'Manufacturing': {
+    description: 'Manufacturing processes, quality control, and supply chain updates.',
+    icon: <ApiOutlined />
+  },
+  'Business': {
+    description: 'Mergers, acquisitions, partnerships, and industry business developments.',
+    icon: <TeamOutlined />
+  },
+  'Innovation': {
+    description: 'Digital health, AI in pharma, and innovative therapeutic approaches.',
+    icon: <RocketOutlined />
+  }
+};
+
+// Create fallback data when backend is unavailable
+const getFallbackTopics = (): TopicDisplayData[] => {
+  return Object.entries(topicMetadata).map(([topic, metadata]) => ({
+    topic,
+    count: 0,
+    percentage: 0,
+    description: metadata.description,
+    icon: metadata.icon,
+    trend: 'stable',
+    growth_rate: 0,
+    recent_count: 0
+  }));
+};
+
 export default function TopicsPage() {
-  const [topics, setTopics] = useState<TopicData[]>([]);
+  const [topics, setTopics] = useState<TopicDisplayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
+
+  const fetchTopics = async () => {
+    try {
+      setLoading(true);
+      const apiResponse = await getTopicStats();
+      
+      const displayTopics: TopicDisplayData[] = (apiResponse.topics || []).map((apiTopic: TopicStats) => {
+        const metadata = topicMetadata[apiTopic.topic] || {
+          description: `Articles related to ${apiTopic.topic}`,
+          icon: <FileProtectOutlined />
+        };
+        return {
+          topic: apiTopic.topic,
+          count: apiTopic.count,
+          percentage: apiTopic.percentage,
+          description: metadata.description,
+          icon: metadata.icon,
+          trend: apiTopic.trend || 'stable',
+          growth_rate: apiTopic.growth_rate,
+          recent_count: apiTopic.recent_count
+        };
+      });
+      
+      if (displayTopics.length === 0) {
+        setUsingFallback(true);
+        setTopics(getFallbackTopics());
+      } else {
+        setUsingFallback(false);
+        setTopics(displayTopics);
+      }
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching topics:', err);
+      setError(`Failed to load topics from server. ${err instanceof Error ? err.message : 'Please try again later.'}`);
+      setUsingFallback(true);
+      setTopics(getFallbackTopics());
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchTopics = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch('/api/topics/stats');
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch topics');
-        }
-        
-        const data = await response.json();
-        setTopics(data.topics || []);
-        setError(null);
-      } catch (error) {
-        console.error('Error fetching topics:', error);
-        setError('Failed to load topics. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchTopics();
   }, []);
 
-  // Topic descriptions (in a real app, these would come from the API)
-  const topicDescriptions: Record<string, string> = {
-    Technology: 'Latest news and updates from the tech world, including software, hardware, and digital trends.',
-    Business: 'Business news, market trends, entrepreneurship, and corporate developments.',
-    Science: 'Scientific discoveries, research breakthroughs, and advancements across various scientific fields.',
-    Health: 'Health news, medical research, wellness tips, and healthcare developments.',
-    Politics: 'Political news, policy updates, government affairs, and international relations.',
-    Entertainment: 'News from the entertainment industry, including movies, music, celebrities, and media.',
-    Sports: 'Sports news, game results, athlete updates, and sporting events coverage.',
-    Environment: 'Environmental news, climate change updates, conservation efforts, and sustainability initiatives.',
+  const renderTrendIndicator = (trend?: string, growth_rate?: number) => {
+    if (!trend || trend === 'stable') return <MinusOutlined style={{ color: '#666' }} />;
+    if (trend === 'up') return <RiseOutlined style={{ color: '#52c41a' }} />;
+    return <FallOutlined style={{ color: '#f5222d' }} />;
+  };
+
+  const renderTopicCard = (topic: TopicDisplayData) => {
+    return (
+      <Card 
+        hoverable 
+        className="h-full flex flex-col"
+        styles={{ body: { flexGrow: 1 } }}
+        actions={[
+          <Link href={`/?topic=${encodeURIComponent(topic.topic)}`} key="view">
+            View Articles
+          </Link>
+        ]}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="small">
+          <Space align="center">
+            {topic.icon}
+            <Title level={4} style={{ margin: 0 }}>{topic.topic}</Title>
+          </Space>
+          
+          <Row gutter={16}>
+            <Col span={12}>
+              <Statistic 
+                title="Articles" 
+                value={topic.count} 
+                suffix={
+                  <Tooltip title={`${topic.percentage !== undefined ? topic.percentage.toFixed(1) : 'N/A'}% of total articles`}> 
+                    <Tag color="blue">{topic.percentage !== undefined ? topic.percentage.toFixed(1) : 'N/A'}%</Tag> 
+                  </Tooltip>
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <Statistic
+                title="Trend"
+                value={topic.growth_rate !== undefined ? `${(topic.growth_rate).toFixed(1)}%` : 'N/A'}
+                prefix={renderTrendIndicator(topic.trend, topic.growth_rate)} 
+                valueStyle={{ color: topic.trend === 'up' ? '#52c41a' : topic.trend === 'down' ? '#f5222d' : '#666' }}
+              />
+            </Col>
+          </Row>
+          
+          <Text type="secondary" style={{ minHeight: '3em' }}>
+            {topic.description}
+          </Text>
+          
+          {topic.recent_count !== undefined && topic.recent_count > 0 && (
+            <Tag color="green">
+              {topic.recent_count} new articles this month
+            </Tag>
+          )}
+        </Space>
+      </Card>
+    );
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
+    <div className="container" style={{ maxWidth: 1200, margin: '0 auto', padding: '0px 16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>
+          Pharmaceutical Topics Overview
+        </Title>
+        <Button 
+          icon={<ReloadOutlined />} 
+          onClick={fetchTopics}
+          loading={loading}
+          type="primary"
+        >
+          Refresh
+        </Button>
+      </div>
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">
-          Browse by Topic
-        </h1>
-        
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white p-6 rounded-lg shadow animate-pulse">
-                <div className="h-7 bg-gray-200 rounded w-1/3 mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2 w-full"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2 w-5/6"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-              </div>
-            ))}
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        ) : topics.length === 0 ? (
-          <div className="text-center py-12">
-            <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-            </svg>
-            <h3 className="mt-2 text-lg font-medium text-gray-900">No topics found</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              We couldn't find any topics. Please check back later.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {topics.map((topic) => (
-              <Link 
-                href={`/?topic=${encodeURIComponent(topic.name)}`} 
-                key={topic.name}
-                className="bg-white p-6 rounded-lg shadow hover:shadow-md transition-shadow"
-              >
-                <h2 className="text-xl font-semibold text-gray-900 mb-2 flex items-center justify-between">
-                  {topic.name}
-                  <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
-                    {topic.count} articles
-                  </span>
-                </h2>
-                <p className="text-gray-600">
-                  {topic.description || topicDescriptions[topic.name] || `Articles related to ${topic.name}`}
-                </p>
-              </Link>
-            ))}
-          </div>
-        )}
-      </main>
+      {usingFallback && !loading && (
+        <Alert
+          message="Using Fallback Data" 
+          description="The backend service is not responding. Showing default topic categories instead of actual data. Google Cloud Platform integration is not enabled."
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
       
-      <footer className="bg-white border-t border-gray-200 py-8 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <p className="text-gray-500 text-sm text-center">
-            © {new Date().getFullYear()} Newsletter Aggregator. All rights reserved.
-          </p>
+      {error && !usingFallback && (
+        <Alert
+          message="Error"
+          description={error}
+          type="error"
+          showIcon
+          style={{ marginBottom: 16 }}
+        />
+      )}
+      
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '48px' }}>
+          <Spin size="large" />
         </div>
-      </footer>
+      ) : topics.length === 0 ? (
+        <Empty description="No topics found. Try updating the feed." />
+      ) : (
+        <Row gutter={[24, 24]}>
+          {topics.map((topic, index) => (
+            <Col xs={24} sm={12} lg={8} key={`${topic.topic}-${index}`}>
+              {renderTopicCard(topic)}
+            </Col>
+          ))}
+        </Row>
+      )}
     </div>
   );
-} 
+}

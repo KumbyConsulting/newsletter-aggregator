@@ -1,22 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kumby Consulting Newsletter Frontend
+
+This is the frontend application for the Kumby Consulting Newsletter Aggregator, built with Next.js and React.
 
 ## Getting Started
 
-First, run the development server:
+First, set up your environment:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Install dependencies
+npm install
+```
+
+Then, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Connecting to the Backend
+
+By default, the frontend connects to a Flask backend running at `http://localhost:5000`. You can configure this in two ways:
+
+1. Edit the `.env` file and change the `API_URL` value:
+```
+API_URL=http://your-backend-url
+```
+
+2. Or set an environment variable when starting the app:
+```bash
+API_URL=http://your-backend-url npm run dev
+```
+
+The application proxies all requests to `/api/*` endpoints to the configured backend URL.
+
+## Features
+
+- Real-time update status monitoring
+- Article filtering and search
+- Topic distribution visualization
+- AI-powered insights
+- Mobile-responsive design
+
+## Building for Production
+
+To create an optimized production build:
+
+```bash
+npm run build
+```
+
+Then start the production server:
+
+```bash
+npm start
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `API_URL` | Backend API URL | `http://localhost:5000` |
+| `NEXT_PUBLIC_ENABLE_INSIGHTS` | Enable AI insights feature | `true` |
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

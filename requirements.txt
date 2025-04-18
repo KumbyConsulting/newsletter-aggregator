@@ -7,6 +7,7 @@ pandas==2.1.4
 numpy>=1.26.0  # Adding numpy since pandas usually requires it
 requests==2.31.0
 python-dotenv==1.0.0
+python-dateutil>=2.8.2  # For robust date parsing
 
 # Web scraping
 beautifulsoup4==4.12.2
@@ -33,6 +34,9 @@ google-cloud-logging==3.8.0
 google-cloud-monitoring==2.15.1
 google-cloud-secret-manager==2.16.4
 vertexai>=1.71.1
+grpcio==1.59.3
+grpcio-tools==1.59.3
+grpcio-status==1.59.3
 
 # Development/Debug tools
 flask-debugtoolbar>=0.13.1

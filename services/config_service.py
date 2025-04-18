@@ -4,9 +4,14 @@ import logging
 import time
 from threading import Lock
 from typing import Dict, Any, Optional, List
-from pydantic import  validator
+from pydantic import validator, Field
 from pydantic_settings import BaseSettings
 from google.auth.exceptions import DefaultCredentialsError
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load environment variables
+load_dotenv()
 
 class ConfigException(Exception):
     """Custom exception for configuration errors"""
@@ -19,10 +24,15 @@ class ConfigSettings(BaseSettings):
     
     # Optional fields with defaults
     CHROMA_PERSIST_DIR: str = "chroma_db"
-    RATE_LIMIT_DELAY: int = 1
+    RATE_LIMIT_DELAY: float = 1.0  # Changed to float based on later usage
     FLASK_ENV: str = "production"
     CACHE_FILE_PATH: str = "summary_cache.json"
     ARTICLES_FILE_PATH: str = "news_alerts.csv"
+    
+    # Maintenance mode settings
+    MAINTENANCE_MODE: bool = False
+    MAINTENANCE_END_TIME: Optional[str] = None
+    MAINTENANCE_MESSAGE: Optional[str] = None
     
     # Google Cloud settings
     GCP_PROJECT_ID: Optional[str] = None
@@ -31,8 +41,42 @@ class ConfigSettings(BaseSettings):
     USE_GCS_BACKUP: bool = False
     USE_VERTEX_AI: bool = False
     USE_CLOUD_LOGGING: bool = False
-    STORAGE_BACKEND: str = "chromadb"  # Options: chromadb, firestore
+    STORAGE_BACKEND: str = "firestore"  # Default to Firestore
     
+    # New fields based on os.getenv usage in ConfigService
+    DEBUG: bool = False
+    # ENVIRONMENT: str = "development" # Redundant with FLASK_ENV? Using FLASK_ENV
+    PORT: int = 5000
+    HOST: str = "0.0.0.0"
+    # GOOGLE_API_KEY: Optional[str] = None # Handled by GEMINI_API_KEY
+    # CACHE_FILE: Optional[str] = None # Handled by CACHE_FILE_PATH
+    AI_MODEL_TYPE: str = "gemini_direct"
+    AI_TIMEOUT: int = 30
+    FINE_TUNED_MODEL_NAME: Optional[str] = None
+    EMBEDDING_MODEL: str = "models/embedding-001"
+    DEFAULT_OUTPUT_FORMAT: str = "default"
+    ALLOWED_OUTPUT_FORMATS: List[str] = ['default', 'json', 'table', 'bullets']
+    DATABASE_URI: str = "sqlite:///news_aggregator.db"
+    ARTICLES_PER_PAGE: int = 20
+    # RATE_LIMIT_DELAY handled above
+    LOG_LEVEL: str = "INFO"
+    LOG_FORMAT: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # USE_CLOUD_LOGGING handled above
+    # GCP_PROJECT_ID handled above
+    RSS_FEEDS_JSON: str = "feeds.json"
+    FEED_UPDATE_INTERVAL: int = 3600
+    # MAINTENANCE_MODE handled above
+    # USE_GCS_BACKUP handled above
+    # GCS_BUCKET_NAME handled above
+
+    # Cache specific settings (if not defined elsewhere)
+    CACHE_TTL: int = 3600
+    CACHE_MAX_SIZE: int = 1000
+
+    # Rate limit specific settings (if not defined elsewhere)
+    RATE_LIMIT_DEFAULT_CALLS: int = 10
+    RATE_LIMIT_DEFAULT_PERIOD: float = 1.0
+
     @validator('GEMINI_API_KEY')
     def validate_api_key(cls, v: str, values: Dict[str, Any]) -> str:
         # Skip validation if using Vertex AI
@@ -44,236 +88,217 @@ class ConfigSettings(BaseSettings):
         if not v or v == "AI_PLACEHOLDER_FOR_VERTEX_AI":
             raise ValueError("GEMINI_API_KEY is required when not using Vertex AI")
         return v
+        
+    @validator('ALLOWED_OUTPUT_FORMATS', pre=True, always=True)
+    def parse_allowed_formats(cls, v):
+        if isinstance(v, str):
+            return [fmt.strip() for fmt in v.split(',')]
+        return v
 
     class Config:
         env_file = ".env"
         env_file_encoding = 'utf-8'
-        extra = "allow"  # Allow extra fields in case we need to add more later
+        extra = "ignore"  # Ignore extra fields from .env
 
 
 class ConfigService:
+    """Service for managing application configuration using Pydantic settings."""
+    
     _instance = None
     _lock = Lock()
     
-    @classmethod
-    def get_instance(cls):
-        """Get singleton instance with thread safety"""
+    def __new__(cls, *args, **kwargs):
         with cls._lock:
             if cls._instance is None:
-                cls._instance = ConfigService()
-            return cls._instance
-    
-    def __new__(cls):
-        """Create singleton instance with thread safety"""
-        with cls._lock:
-            if not hasattr(cls, '_instance') or cls._instance is None:
-                cls._instance = super(ConfigService, cls).__new__(cls)
+                cls._instance = super().__new__(cls)
                 cls._instance._initialized = False
-            return cls._instance
-    
+        return cls._instance
+
     def __init__(self):
-        """Initialize configuration with enhanced error handling"""
-        with self._lock:
-            if not hasattr(self, '_initialized') or not self._initialized:
-                try:
-                    self._initialize()
-                    self._initialized = True
-                    logging.info("ConfigService initialized successfully")
-                except Exception as e:
-                    logging.error(f"Failed to initialize ConfigService: {e}")
-                    raise ConfigException(f"Configuration initialization failed: {str(e)}")
-    
-    def _initialize(self):
-        """Initialize configuration with proper error handling"""
+        """Initialize config service using ConfigSettings."""
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+            
         try:
-            # Load configuration from environment variables
             self.settings = ConfigSettings()
+        except ValueError as e:
+            logging.error(f"Configuration validation error: {e}")
+            raise ConfigException(f"Configuration error: {e}") from e
             
-            # Initialize basic attributes
-            self.use_vertex_ai = self.settings.USE_VERTEX_AI
-            self.gemini_api_key = self.settings.GEMINI_API_KEY
-            self.flask_secret_key = self.settings.FLASK_SECRET_KEY
-            self.storage_backend = self.settings.STORAGE_BACKEND
-            self.use_cloud_logging = self.settings.USE_CLOUD_LOGGING
-            
-            # Load secrets from GCP if configured
-            if self.settings.GCP_PROJECT_ID:
-                self._load_secrets_from_gcp()
-            
-            # Set up file paths with validation
-            self._setup_file_paths()
-            
-            # Set up Google Cloud configuration
-            self._setup_gcp_config()
-            
-            # Validate the configuration
-            if not self.validate_configuration():
-                raise ConfigException("Configuration validation failed")
-                
-        except Exception as e:
-            logging.error(f"Error initializing configuration: {e}")
-            raise ConfigException(f"Configuration initialization failed: {str(e)}")
-    
-    def _setup_file_paths(self):
-        """Set up file paths with validation"""
-        try:
-            self.chroma_persist_dir = self.settings.CHROMA_PERSIST_DIR
-            self.cache_file_path = self.settings.CACHE_FILE_PATH
-            self.articles_file_path = self.settings.ARTICLES_FILE_PATH
-            
-            # Validate paths
-            for path in [self.chroma_persist_dir, self.cache_file_path, self.articles_file_path]:
-                if not path:
-                    raise ConfigException(f"Invalid file path: {path}")
-                    
-        except Exception as e:
-            logging.error(f"Error setting up file paths: {e}")
-            raise ConfigException(f"File path setup failed: {str(e)}")
-    
-    def _setup_gcp_config(self):
-        """Set up Google Cloud configuration with validation"""
-        try:
-            self.gcp_project_id = self.settings.GCP_PROJECT_ID
-            self.gcp_region = self.settings.GCP_REGION
-            self.gcs_bucket_name = self.settings.GCS_BUCKET_NAME
-            self.use_gcs = self.settings.USE_GCS_BACKUP
-            
-            # Check if Vertex AI should be used
-            if self.settings.USE_VERTEX_AI:
-                self._setup_vertex_ai()
-                
-        except Exception as e:
-            logging.error(f"Error setting up GCP configuration: {e}")
-            raise ConfigException(f"GCP configuration setup failed: {str(e)}")
-    
-    def _setup_vertex_ai(self):
-        """Set up Vertex AI with proper validation"""
-        try:
-            if not self.gcp_project_id:
-                raise ConfigException("GCP_PROJECT_ID is required for Vertex AI")
-                
-            # Try to get default credentials
-            from google.auth import default
-            try:
-                credentials, project = default()
-                
-                # Check if we're running on GCP
-                import requests
-                try:
-                    response = requests.get(
-                        'http://metadata.google.internal/computeMetadata/v1/instance/id',
-                        headers={'Metadata-Flavor': 'Google'},
-                        timeout=1
-                    )
-                    is_on_gcp = response.status_code == 200
-                except requests.exceptions.RequestException:
-                    is_on_gcp = False
-                    
-                if is_on_gcp:
-                    self.use_vertex_ai = True
-                    logging.info("Running on GCP with service account, enabling Vertex AI")
-                else:
-                    # Local development - check credentials
-                    from google.cloud import storage
-                    client = storage.Client()
-                    list(client.list_buckets(max_results=1))
-                    self.use_vertex_ai = True
-                    logging.info("Found valid Google Cloud credentials, enabling Vertex AI")
-                    
-            except Exception as e:
-                logging.warning(f"Google Cloud authentication failed, disabling Vertex AI: {e}")
-                self.use_vertex_ai = False
-                
-        except Exception as e:
-            logging.error(f"Error setting up Vertex AI: {e}")
-            self.use_vertex_ai = False
-    
-    def _load_secrets_from_gcp(self):
-        """Load secrets from Google Secret Manager with proper error handling"""
-        try:
-            if not self.is_production:
-                return
-                
-            from google.cloud import secretmanager_v1
-            client = secretmanager_v1.SecretManagerServiceClient()
-            
-            # Load GEMINI_API_KEY if needed
-            if self.settings.GEMINI_API_KEY == "AI_PLACEHOLDER_FOR_VERTEX_AI" and not self.settings.USE_VERTEX_AI:
-                try:
-                    name = f"projects/{self.settings.GCP_PROJECT_ID}/secrets/GEMINI_API_KEY/versions/latest"
-                    response = client.access_secret_version(request={"name": name})
-                    self.settings.GEMINI_API_KEY = response.payload.data.decode("UTF-8")
-                    logging.info("Loaded GEMINI_API_KEY from Secret Manager")
-                except Exception as e:
-                    logging.warning(f"Failed to load GEMINI_API_KEY from Secret Manager: {e}")
-                    
-        except ImportError:
-            logging.warning("google-cloud-secret-manager not installed, skipping secret loading")
-        except Exception as e:
-            logging.warning(f"Error loading secrets from GCP: {e}")
+        # Attributes derived from settings for convenience or compatibility
+        self.debug = self.settings.DEBUG
+        self.environment = self.settings.FLASK_ENV # Use FLASK_ENV
+        self.app_port = self.settings.PORT
+        self.app_host = self.settings.HOST
+        
+        self.gemini_api_key = self.settings.GEMINI_API_KEY
+        self.cache_file_path = self.settings.CACHE_FILE_PATH
+        self.flask_secret_key = self.settings.FLASK_SECRET_KEY
+        
+        self.ai_model_type = self.settings.AI_MODEL_TYPE
+        self.ai_timeout = self.settings.AI_TIMEOUT
+        self.use_vertex_ai = self.settings.USE_VERTEX_AI
+        
+        self.fine_tuned_model_name = self.settings.FINE_TUNED_MODEL_NAME
+        self.embedding_model = self.settings.EMBEDDING_MODEL
+        
+        self.default_output_format = self.settings.DEFAULT_OUTPUT_FORMAT
+        self.allowed_output_formats = self.settings.ALLOWED_OUTPUT_FORMATS
+        
+        self.db_uri = self.settings.DATABASE_URI
+        self.articles_per_page = self.settings.ARTICLES_PER_PAGE
+        
+        self.storage_backend = self.settings.STORAGE_BACKEND
+        
+        self.rate_limit_delay = self.settings.RATE_LIMIT_DELAY
+        
+        self.log_level = self.settings.LOG_LEVEL
+        self.log_format = self.settings.LOG_FORMAT
+        self.use_cloud_logging = self.settings.USE_CLOUD_LOGGING
+        self.gcp_project_id = self.settings.GCP_PROJECT_ID
+        
+        self.rss_feeds_json = self.settings.RSS_FEEDS_JSON
+        self.feed_update_interval = self.settings.FEED_UPDATE_INTERVAL
+        
+        self.is_maintenance_mode = self.settings.MAINTENANCE_MODE
+        
+        self.use_gcs_backup = self.settings.USE_GCS_BACKUP
+        self.gcs_bucket_name = self.settings.GCS_BUCKET_NAME
+        
+        # Setup logging using loaded settings
+        self._setup_logging()
+        self._initialized = True
+        
+    def _setup_logging(self):
+        """Setup logging configuration."""
+        log_level = getattr(logging, self.settings.LOG_LEVEL.upper(), logging.INFO)
+        # TODO: Integrate with Google Cloud Logging if self.settings.USE_CLOUD_LOGGING is True
+        logging.basicConfig(level=log_level, format=self.settings.LOG_FORMAT)
+        
+    @property
+    def is_production(self):
+        """Check if environment is production."""
+        return self.settings.FLASK_ENV.lower() == 'production'
     
     @property
-    def is_production(self) -> bool:
-        """Check if running in production mode"""
-        return self.settings.FLASK_ENV == "production"
+    def is_development(self):
+        """Check if environment is development."""
+        return self.settings.FLASK_ENV.lower() == 'development'
     
     @property
-    def is_gcp_enabled(self) -> bool:
-        """Check if GCP integration is enabled"""
+    def is_test(self):
+        """Check if environment is test."""
+        return self.settings.FLASK_ENV.lower() == 'test'
+    
+    @property
+    def is_gcp_enabled(self):
+        """Check if GCP integration is enabled (based on project ID)"""
         return bool(self.settings.GCP_PROJECT_ID)
     
-    def validate_configuration(self) -> bool:
-        """Validate configuration with enhanced error handling"""
+    def validate_output_format(self, format_type: str) -> str:
+        """
+        Validate the requested output format, returning a valid format type.
+        
+        Args:
+            format_type: The requested output format type
+            
+        Returns:
+            A valid output format type (defaulting to the default format if invalid)
+        """
+        if not format_type or format_type not in self.settings.ALLOWED_OUTPUT_FORMATS:
+            logging.warning(f"Invalid output format '{format_type}' requested. Defaulting to '{self.settings.DEFAULT_OUTPUT_FORMAT}'.")
+            return self.settings.DEFAULT_OUTPUT_FORMAT
+        return format_type
+        
+    def get_model_config(self) -> dict:
+        """
+        Get configuration for the AI model based on current settings.
+        
+        Returns:
+            Dictionary with model configuration parameters
+        """
+        config = {
+            'model_type': self.settings.AI_MODEL_TYPE,
+            'timeout': self.settings.AI_TIMEOUT
+        }
+        
+        # Add specific configurations based on model type
+        if self.settings.AI_MODEL_TYPE == 'gemini_direct':
+            config['api_key'] = self.settings.GEMINI_API_KEY
+        elif self.settings.AI_MODEL_TYPE == 'gemini_fine_tuned':
+            config['api_key'] = self.settings.GEMINI_API_KEY
+            config['model_name'] = self.settings.FINE_TUNED_MODEL_NAME or 'gemini-pro' # Consider adding default model name to ConfigSettings
+            config['embedding_model'] = self.settings.EMBEDDING_MODEL
+        elif self.settings.AI_MODEL_TYPE == 'vertex_ai':
+            # Vertex AI specific configuration needs to be added
+            # This might involve checking for Application Default Credentials (ADC)
+            config['project_id'] = self.settings.GCP_PROJECT_ID
+            config['location'] = self.settings.GCP_REGION
+            # Potentially remove api_key or handle differently for Vertex
+            pass 
+            
+        return config
+        
+    def get_cache_config(self) -> dict:
+        """
+        Get configuration for the cache service using ConfigSettings.
+        
+        Returns:
+            Dictionary with cache configuration parameters
+        """
+        return {
+            'ttl': self.settings.CACHE_TTL,
+            'max_size': self.settings.CACHE_MAX_SIZE,
+            'cache_file_path': self.settings.CACHE_FILE_PATH # Pass the path too
+        }
+        
+    def get_rate_limit_config(self) -> dict:
+        """
+        Get configuration for rate limiting using ConfigSettings.
+        
+        Returns:
+            Dictionary with rate limit configuration parameters
+        """
+        return {
+            'default_calls': self.settings.RATE_LIMIT_DEFAULT_CALLS,
+            'default_period': self.settings.RATE_LIMIT_DEFAULT_PERIOD,
+            'delay': self.settings.RATE_LIMIT_DELAY
+        }
+
+    def get_source_urls(self) -> dict:
+        """
+        Get a dictionary of source names to their URLs.
+        
+        Returns:
+            dict: Dictionary mapping source names to their URLs
+        """
         try:
-            # Validate secrets
-            if not self.flask_secret_key or self.flask_secret_key == "dev-secret-key-placeholder":
-                if self.is_production:
-                    logging.error("FLASK_SECRET_KEY is required in production")
-                    return False
-                else:
-                    logging.warning("Using default FLASK_SECRET_KEY in development")
+            # Check if we have source URLs in config
+            if hasattr(self, 'config') and 'source_urls' in self.config:
+                return self.config['source_urls']
             
-            # Validate Vertex AI configuration
-            if self.use_vertex_ai:
-                try:
-                    from google.auth import default
-                    credentials, project = default()
-                except Exception as e:
-                    logging.error(f"Vertex AI is enabled but credentials are missing: {e}")
-                    return False
-            else:
-                # Validate Gemini API key
-                if not self.gemini_api_key or self.gemini_api_key == "AI_PLACEHOLDER_FOR_VERTEX_AI":
-                    logging.error("GEMINI_API_KEY is required when not using Vertex AI")
-                    return False
-            
-            # Validate storage backend
-            if self.storage_backend not in ["chromadb", "firestore"]:
-                logging.error(f"Invalid STORAGE_BACKEND: {self.storage_backend}")
-                return False
-                
-            # Validate Firestore configuration
-            if self.storage_backend == "firestore" and not self.gcp_project_id:
-                logging.error("GCP_PROJECT_ID is required when using Firestore backend")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            logging.error(f"Error validating configuration: {e}")
-            return False
-    
-    def get_vertex_ai_config(self) -> Dict[str, Any]:
-        """Get Vertex AI configuration with validation"""
-        try:
-            if not self.use_vertex_ai:
-                raise ConfigException("Vertex AI is not enabled")
-                
+            # Default URLs for common sources
             return {
-                "project_id": self.gcp_project_id,
-                "region": self.gcp_region,
-                "use_vertex_ai": self.use_vertex_ai
+                'Pharmaceutical Technology': 'https://www.pharmaceutical-technology.com/',
+                'FiercePharma': 'https://www.fiercepharma.com/',
+                'FDA News': 'https://www.fda.gov/news-events',
+                'BioPharmaDive': 'https://www.biopharmadive.com/',
+                'DrugDiscoveryToday': 'https://www.drugdiscoverytoday.com/',
+                'PharmaTimes': 'https://www.pharmatimes.com/',
+                'European Pharmaceutical Review': 'https://www.europeanpharmaceuticalreview.com/',
+                'PharmaManufacturing': 'https://www.pharmamanufacturing.com/',
+                'The Lancet': 'https://www.thelancet.com/',
+                'New England Journal of Medicine': 'https://www.nejm.org/',
+                'JAMA': 'https://jamanetwork.com/',
+                'Nature Biotechnology': 'https://www.nature.com/nbt/',
+                'British Medical Journal': 'https://www.bmj.com/',
+                'EMA News': 'https://www.ema.europa.eu/en/news-events',
+                'WHO News': 'https://www.who.int/news-room',
+                'CDC': 'https://www.cdc.gov/media/index.html',
             }
         except Exception as e:
-            logging.error(f"Error getting Vertex AI config: {e}")
-            raise ConfigException(f"Failed to get Vertex AI config: {str(e)}")
+            logging.error(f"Error getting source URLs: {e}")
+            return {}
+
+# Singleton instance (optional, consider dependency injection)
+# config_service = ConfigService()

@@ -1,152 +1,236 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { 
   Input, 
   Card, 
   Tag, 
   Space, 
   Typography, 
-  Button, 
-  Skeleton, 
-  Flex
+  Select,
+  Row,
+  Col,
+  Grid
 } from 'antd';
 import { 
   SearchOutlined, 
-  CloseOutlined 
+  ArrowUpOutlined,
+  ArrowDownOutlined,
+  CalendarOutlined,
+  FontSizeOutlined,
+  GlobalOutlined,
+  TagsOutlined
 } from '@ant-design/icons';
+import { TopicStat } from '@/types'; // Import TopicStat type
+import debounce from 'lodash.debounce'; // Need to install lodash.debounce
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 const { Search } = Input;
+const { Option } = Select;
+const { useBreakpoint } = Grid;
 
-interface TopicData {
-  topic: string;
-  count: number;
-  percentage?: number;
-}
+// Define available sort options
+const sortOptions = [
+  { value: 'pub_date', label: 'Date', icon: <CalendarOutlined /> },
+  { value: 'title', label: 'Title', icon: <FontSizeOutlined /> },
+  { value: 'source', label: 'Source', icon: <GlobalOutlined /> },
+  { value: 'topic', label: 'Topic', icon: <TagsOutlined /> },
+];
 
 interface FilterBarProps {
-  onSearch: (query: string) => void;
+  // Receive current filter/sort values from parent Server Component
+  currentTopic: string;
+  currentSearch: string;
+  currentSortBy: string;
+  currentSortOrder: 'asc' | 'desc';
+  topics: TopicStat[]; // Receive topics fetched by parent
   onTopicChange: (topic: string) => void;
-  selectedTopic: string;
+  onSortChange: (value: string) => void;
 }
 
-export default function FilterBar({ onSearch, onTopicChange, selectedTopic = 'All' }: FilterBarProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [topics, setTopics] = useState<(TopicData | string)[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export default function FilterBar({
+  currentTopic = 'All',
+  currentSearch = '',
+  currentSortBy = 'pub_date',
+  currentSortOrder = 'desc',
+  topics = [],
+  onTopicChange,
+  onSortChange
+}: FilterBarProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const screens = useBreakpoint();
 
-  // Fetch available topics on component mount
+  // Use local state for controlled search input to allow debouncing
+  const [localSearch, setLocalSearch] = useState(currentSearch);
+
+  // Update local search if the URL search param changes externally
   useEffect(() => {
-    const fetchTopics = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/topics');
-        
-        if (!response.ok) {
-          throw new Error('Failed to fetch topics');
-        }
-        
-        const data = await response.json();
-        setTopics(['All', ...data.topics]);
-      } catch (error) {
-        console.error('Error fetching topics:', error);
-      } finally {
-        setIsLoading(false);
+    setLocalSearch(currentSearch);
+  }, [currentSearch]);
+
+  // Function to update URL query parameters
+  const updateQueryParams = useCallback((newParams: Record<string, string>) => {
+    const current = new URLSearchParams(Array.from(searchParams.entries()));
+
+    // Update or remove parameters
+    Object.entries(newParams).forEach(([key, value]) => {
+      if (value) {
+        current.set(key, value);
+      } else {
+        current.delete(key);
       }
-    };
+    });
 
-    fetchTopics();
-  }, []);
+    // Reset page to 1 when filters/sort change
+    current.set('page', '1');
 
-  // Handle search submission
-  const handleSearch = (value: string) => {
-    onSearch(value);
+    const query = current.toString();
+    // Use router.push for navigation, triggering Server Component refetch
+    router.push(`${pathname}?${query}`);
+  }, [searchParams, router, pathname]);
+
+  // Debounced function for search updates
+  const debouncedSearchUpdate = useCallback(
+    debounce((value: string) => {
+      updateQueryParams({ search: value });
+    }, 500), // 500ms debounce delay
+    [updateQueryParams]
+  );
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLocalSearch(value);
+    debouncedSearchUpdate(value);
   };
 
   // Handle topic selection
   const handleTopicChange = (topic: string) => {
-    onTopicChange(topic);
+    onTopicChange(topic === 'All' ? '' : topic);
   };
 
-  // Helper function to get topic name
-  const getTopicName = (topic: TopicData | string): string => {
-    if (typeof topic === 'string') {
-      return topic;
-    }
-    return topic.topic;
+  // Handle sort field change
+  const handleSortByChange = (value: string) => {
+    onSortChange(value);
   };
+
+  // Handle sort order change
+  const handleSortOrderChange = (value: 'asc' | 'desc') => {
+    updateQueryParams({ sort_order: value });
+  };
+
+  // Determine layout based on screen size
+  const isMobile = !screens.md;
 
   return (
     <Card style={{ marginBottom: 24 }}>
-      <Flex vertical gap="middle">
-        <Flex wrap="wrap" justify="space-between" align="center" gap={16}>
-          {/* Search form */}
+      <Row gutter={[16, 16]} align="middle">
+        {/* Search Input */}
+        <Col xs={24} md={10} lg={8}>
           <Search
             placeholder="Search articles..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onSearch={handleSearch}
-            style={{ maxWidth: '100%', flex: 1 }}
+            value={localSearch} // Use local state for input value
+            onChange={handleSearchChange} // Use debounced handler
             allowClear
+            prefix={<SearchOutlined />}
           />
+        </Col>
 
-          {/* Topic filter */}
-          <Space wrap>
-            {isLoading ? (
-              <Skeleton.Button active={true} size="small" block={false} shape="round" />
-            ) : (
-              topics.map((topic) => {
-                const topicName = getTopicName(topic);
-                return (
+        {/* Sort Controls */}
+        <Col xs={24} sm={12} md={7} lg={6}>
+          <Select
+            value={currentSortBy}
+            onChange={handleSortByChange}
+            style={{ width: '100%' }}
+            aria-label="Sort by"
+          >
+            {sortOptions.map(option => (
+              <Option key={option.value} value={option.value}>
+                <Space size="small">
+                  {option.icon}
+                  {option.label}
+                </Space>
+              </Option>
+            ))}
+          </Select>
+        </Col>
+        <Col xs={24} sm={12} md={3} lg={2}>
+          <Select
+            value={currentSortOrder}
+            onChange={handleSortOrderChange}
+            style={{ width: '100%' }}
+            aria-label="Sort order"
+          >
+            <Option value="desc">
+              <Space size="small"><ArrowDownOutlined /> Desc</Space>
+            </Option>
+            <Option value="asc">
+              <Space size="small"><ArrowUpOutlined /> Asc</Space>
+            </Option>
+          </Select>
+        </Col>
+
+        {/* Topic Filter Tags (shown below on mobile) */}
+        {!isMobile && (
+           <Col md={24} lg={8} style={{ textAlign: 'right' }}>
+             <Space wrap size={[8, 8]} style={{ justifyContent: 'flex-end'}}>
+               <Tag
+                  key="All"
+                  color={currentTopic === 'All' ? 'blue' : 'default'}
+                  style={{ cursor: 'pointer', margin: '2px' }}
+                  onClick={() => handleTopicChange('All')}
+                >
+                  All Topics
+                </Tag>
+                {topics.map((topicStat) => (
                   <Tag
-                    key={topicName}
-                    color={selectedTopic === topicName ? 'blue' : 'default'}
-                    style={{ 
-                      cursor: 'pointer', 
-                      padding: '4px 12px',
-                      fontSize: '14px' 
-                    }}
-                    onClick={() => handleTopicChange(topicName)}
+                    key={topicStat.topic}
+                    color={currentTopic === topicStat.topic ? 'blue' : 'default'}
+                    style={{ cursor: 'pointer', margin: '2px' }}
+                    onClick={() => handleTopicChange(topicStat.topic)}
                   >
-                    {topicName}
+                    {topicStat.topic} ({topicStat.count})
                   </Tag>
-                );
-              })
-            )}
-          </Space>
-        </Flex>
-
-        {/* Active filters display */}
-        {(selectedTopic !== 'All' || searchQuery) && (
-          <Flex align="center">
-            <Text type="secondary" style={{ marginRight: 8 }}>Active filters:</Text>
-            <Space wrap>
-              {selectedTopic !== 'All' && (
-                <Tag 
-                  color="blue"
-                  closable
-                  onClose={() => handleTopicChange('All')}
-                >
-                  Topic: {selectedTopic}
-                </Tag>
-              )}
-              {searchQuery && (
-                <Tag 
-                  color="blue"
-                  closable
-                  onClose={() => {
-                    setSearchQuery('');
-                    onSearch('');
-                  }}
-                >
-                  Search: {searchQuery}
-                </Tag>
-              )}
-            </Space>
-          </Flex>
+                ))}
+              </Space>
+           </Col>
         )}
-      </Flex>
+      </Row>
+
+      {/* Topic Filter Tags (Mobile Layout) */}
+      {isMobile && (
+        <Row gutter={[8, 8]} style={{ marginTop: 16 }}>
+          <Col span={24}>
+            <Space wrap size={[8, 8]}>
+               <Tag
+                  key="All-mobile"
+                  color={currentTopic === 'All' ? 'blue' : 'default'}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleTopicChange('All')}
+                >
+                  All Topics
+                </Tag>
+              {topics.map((topicStat) => (
+                <Tag
+                  key={`${topicStat.topic}-mobile`}
+                  color={currentTopic === topicStat.topic ? 'blue' : 'default'}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleTopicChange(topicStat.topic)}
+                >
+                  {topicStat.topic} ({topicStat.count})
+                </Tag>
+              ))}
+            </Space>
+          </Col>
+        </Row>
+      )}
+
+      {/* Active filters display (Optional - might be redundant if controls reflect state) */}
+      {/* ... could add a display for active filters if needed ... */}
+
     </Card>
   );
 } 

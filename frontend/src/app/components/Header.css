@@ -1,0 +1,237 @@
+/* Header Custom Styles */
+.kumby-header {
+  background-color: var(--primary-color, #00405e);
+  box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 64, 94, 0.15));
+  border-bottom: 1px solid var(--border-color, rgba(0, 64, 94, 0.1));
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  width: 100%;
+  height: 64px;
+  padding: 0 16px;
+}
+
+/* Header Layout */
+.header-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  height: 100%;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+/* Logo Styles */
+.logo-wrapper {
+  margin-right: 24px;
+}
+
+.logo-link {
+  display: flex;
+  align-items: center;
+}
+
+.kumby-logo {
+  width: 40px;
+  height: 40px;
+  background-color: var(--primary-color, #00405e);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  color: white;
+  font-weight: bold;
+  font-size: 20px;
+  transition: transform 0.3s ease;
+}
+
+.kumby-logo:hover {
+  transform: scale(1.05);
+}
+
+.brand-text {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  margin-left: 8px !important;
+  color: white !important;
+}
+
+/* Mobile Menu Actions */
+.mobile-menu-actions {
+  padding: 16px;
+  border-top: 1px solid var(--border-color, rgba(0, 64, 94, 0.1));
+  margin-top: 24px;
+}
+
+/* Drawer Header */
+.drawer-header {
+  display: flex;
+  align-items: center;
+}
+
+/* Button Styles */
+.btn-custom {
+  background: var(--primary-color, #00405e) !important;
+  color: white !important;
+  transition: var(--transition-base, all 0.2s ease) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  border-radius: 0.5rem !important;
+  border-color: var(--primary-color, #00405e) !important;
+  font-weight: 600 !important;
+}
+
+.btn-custom:hover {
+  background: var(--secondary-color, #7f9360) !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.1)) !important;
+  border-color: var(--secondary-color, #7f9360) !important;
+}
+
+.btn-secondary {
+  background-color: white !important;
+  color: var(--primary-color, #00405e) !important;
+  border: 1px solid var(--border-color, rgba(0, 64, 94, 0.1)) !important;
+  transition: var(--transition-base, all 0.2s ease) !important;
+  font-weight: 600 !important;
+}
+
+.btn-secondary:hover {
+  background-color: var(--background-color, #f1f2e7) !important;
+  color: var(--primary-color, #00405e) !important;
+  transform: translateY(-1px);
+}
+
+/* Action Button Styles */
+.action-btn {
+  color: white !important;
+  transition: var(--transition-base, all 0.2s ease) !important;
+}
+
+.action-btn:hover {
+  color: rgba(255, 255, 255, 0.85) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Menu Styles - Dark Theme */
+.desktop-menu {
+  min-width: 500px;
+  border-bottom: none !important;
+  background-color: transparent !important;
+  color: white !important;
+}
+
+.desktop-menu .ant-menu-item a {
+  color: white !important;
+  font-weight: 600 !important;
+}
+
+.desktop-menu .ant-menu-item:hover a {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.desktop-menu .ant-menu-item-selected a {
+  color: white !important;
+  font-weight: 700 !important;
+}
+
+.desktop-menu .ant-menu-item-selected {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.desktop-menu .ant-menu-item-selected::after {
+  border-bottom-color: white !important;
+}
+
+/* Mobile Menu */
+.mobile-menu {
+  border: none !important;
+  padding: 16px !important;
+  background: transparent !important;
+}
+
+.mobile-menu .ant-menu-item {
+  border-radius: 0.5rem !important;
+  margin: 4px 0 !important;
+}
+
+.mobile-menu .ant-menu-item:hover {
+  background-color: var(--background-color, #f1f2e7) !important;
+}
+
+.mobile-menu .ant-menu-item-selected {
+  background-color: var(--primary-color, #00405e) !important;
+  color: white !important;
+  font-weight: 600 !important;
+}
+
+/* Mobile menu item text */
+.mobile-menu .ant-menu-item a {
+  color: var(--text-primary, #2d3748) !important;
+  font-weight: 600 !important;
+}
+
+.mobile-menu .ant-menu-item-selected a {
+  color: white !important;
+}
+
+/* Drawer Animation */
+.kumby-drawer .ant-drawer-content-wrapper {
+  transition: transform 0.3s cubic-bezier(0.78, 0.14, 0.15, 0.86);
+}
+
+.kumby-drawer .ant-drawer-content {
+  background-color: var(--card-background, white);
+}
+
+.kumby-drawer .ant-drawer-header {
+  background-color: var(--card-background, white);
+  border-bottom: 1px solid var(--border-color, rgba(0, 64, 94, 0.1));
+}
+
+.kumby-drawer .ant-drawer-title {
+  color: var(--text-primary, #2d3748) !important;
+  font-weight: 700 !important;
+}
+
+.kumby-drawer .ant-drawer-body {
+  padding: 0;
+}
+
+/* Badge styling */
+.ant-badge-count {
+  background-color: var(--primary-color, #00405e) !important;
+  color: white !important;
+  font-weight: 600 !important;
+  box-shadow: 0 0 0 1px white !important;
+}
+
+/* Dropdown menu */
+.ant-dropdown-menu {
+  border-radius: 0.5rem !important;
+  padding: 8px !important;
+  box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 64, 94, 0.15)) !important;
+}
+
+.ant-dropdown-menu-item {
+  border-radius: 0.375rem !important;
+  transition: all 0.2s ease !important;
+  color: var(--text-primary, #2d3748) !important;
+  font-weight: 600 !important;
+}
+
+.ant-dropdown-menu-item:hover {
+  background-color: rgba(0, 64, 94, 0.05) !important;
+  color: var(--primary-color, #00405e) !important;
+} 

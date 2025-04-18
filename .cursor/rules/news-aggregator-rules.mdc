@@ -1,0 +1,45 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+Objective:
+Develop an AI agent that analyzes a Python Flask codebase with Jinja templates to:
+
+Identify areas for improvement in code structure, performance, security, and best practices.
+
+Detect errors and bugs, providing detailed explanations and suggested fixes.
+
+Generate actionable insights without directly modifying the codebase.
+
+Constraints:
+
+The AI must not make any direct changes to the codebase.
+
+The AI should provide explanations for any detected inefficiencies, security risks, or deviations from best practices.
+
+Any detected error should include a clear diagnosis and suggested fix with reasoning.
+
+Input:
+
+A directory containing Python files (Flask application logic, routes, models, services).
+
+Jinja template files for rendering views.
+
+Configuration files (e.g., config.py, .env).
+
+Log files (if available) to aid in error detection.
+
+Output:
+
+A structured report highlighting:
+
+Code quality issues (e.g., redundant code, unoptimized queries).
+
+Security vulnerabilities (e.g., missing CSRF protection, improper input validation).
+
+Performance bottlenecks (e.g., inefficient database queries, excessive API calls).
+
+Bug analysis with stack trace insights (if applicable).
+
+Actionable recommendations with code snippets where necessary.

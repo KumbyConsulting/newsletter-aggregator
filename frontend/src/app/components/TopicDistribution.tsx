@@ -5,356 +5,410 @@ import Link from 'next/link';
 import { 
   Card, 
   Typography, 
-  Button, 
-  Table, 
-  Skeleton, 
+  Table,
   Empty, 
   Progress, 
   Space,
-  Badge,
+  List,
+  Statistic,
+  Tag,
+  Row,
+  Col,
+  Input,
+  Radio,
+  Segmented,
   Tooltip,
-  message
+  Divider,
+  Spin,
+  Flex,
+  Button
 } from 'antd';
 import {
   BarChartOutlined,
   TableOutlined,
-  SyncOutlined,
+  TagOutlined,
+  SearchOutlined,
+  PieChartOutlined,
+  LineChartOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons';
 import { getTopicStats } from '../services/api';
+import { TopicStat } from '@/types'; // Import TopicStat type from types
 
-const { Title, Text } = Typography;
+// Simple chart implementation - in a real app, you'd use a chart library like Recharts
+import dynamic from 'next/dynamic';
 
-interface TopicStats {
-  topic: string;
-  count: number;
-  percentage: number;
-}
+// Dynamically import chart components to avoid SSR issues
+const DynamicBarChart = dynamic(
+  () => import('./charts/BarChart'),
+  { ssr: false, loading: () => <div style={{ height: 300, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>Loading chart...</div> }
+);
+
+const DynamicPieChart = dynamic(
+  () => import('./charts/PieChart'),
+  { ssr: false, loading: () => <div style={{ height: 300, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>Loading chart...</div> }
+);
+
+const { Title, Text, Paragraph } = Typography;
 
 interface TopicDistributionProps {
-  topicStats: TopicStats[];
-  isLoading: boolean;
+  topics: TopicStat[];
 }
 
-export default function TopicDistribution({ topicStats: initialTopicStats, isLoading: initialLoading }: TopicDistributionProps) {
-  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
-  const [localTopicStats, setLocalTopicStats] = useState<TopicStats[]>(initialTopicStats);
-  const [isLoading, setIsLoading] = useState<boolean>(initialLoading);
-  const [autoRefresh, setAutoRefresh] = useState<boolean>(false);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const chartRef = useRef<HTMLCanvasElement>(null);
-  const chartInstance = useRef<any>(null);
-  const refreshInterval = useRef<NodeJS.Timeout | null>(null);
+// Helper function to generate a URL query string for a topic
+const getTopicUrlQuery = (topic: string): string => {
+  const params = new URLSearchParams();
+  if (topic !== 'All') {
+    params.set('topic', topic);
+  }
+  params.set('page', '1'); 
+  return params.toString();
+};
 
-  // Sync with prop changes
+// View options for the dashboard
+type ViewMode = 'table' | 'barChart' | 'pieChart';
+
+export default function TopicDistribution({ topics }: TopicDistributionProps) {
+  const [filteredTopics, setFilteredTopics] = useState<TopicStat[]>(topics);
+  const [searchText, setSearchText] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [topN, setTopN] = useState<number>(10);
+  const [loading, setLoading] = useState(false);
+  const [topicStats, setTopicStats] = useState<any>(null);
+
   useEffect(() => {
-    if (!autoRefresh) {
-      setLocalTopicStats(initialTopicStats);
-      setIsLoading(initialLoading);
-      if (initialTopicStats.length > 0) {
-        setLastRefreshed(new Date());
-      }
-    }
-  }, [initialTopicStats, initialLoading, autoRefresh]);
-
-  // Auto-refresh effect
-  useEffect(() => {
-    if (autoRefresh) {
-      fetchLatestStats();
-      refreshInterval.current = setInterval(fetchLatestStats, 60000); // Refresh every minute
-    }
-
-    return () => {
-      if (refreshInterval.current) {
-        clearInterval(refreshInterval.current);
-        refreshInterval.current = null;
-      }
-    };
-  }, [autoRefresh]);
-
-  // Initialize or update chart when topicStats change or view mode changes
-  useEffect(() => {
-    if (viewMode === 'chart' && chartRef.current && !isLoading && localTopicStats.length > 0) {
-      const initChart = async () => {
-        try {
-          // Dynamically import Chart.js to avoid SSR issues
-          const { Chart, registerables } = await import('chart.js');
-          Chart.register(...registerables);
-          
-          // Destroy previous chart instance if it exists
-          if (chartInstance.current) {
-            chartInstance.current.destroy();
-          }
-          
-          // Create new chart
-          const ctx = chartRef.current?.getContext('2d');
-          if (ctx) {
-            // Create a color palette based on our theme
-            const colors = [
-              'rgba(43, 125, 233, 0.7)', // primary blue
-              'rgba(139, 109, 92, 0.7)', // brown
-              'rgba(74, 157, 126, 0.7)', // green
-              'rgba(230, 215, 195, 0.7)', // beige
-              'rgba(233, 196, 106, 0.7)', // yellow
-              'rgba(231, 111, 81, 0.7)', // orange
-            ];
-            
-            chartInstance.current = new Chart(ctx, {
-              type: 'bar',
-              data: {
-                labels: localTopicStats.map(t => t.topic),
-                datasets: [{
-                  label: 'Number of Articles',
-                  data: localTopicStats.map(t => t.count),
-                  backgroundColor: localTopicStats.map((_, i) => colors[i % colors.length]),
-                  borderColor: localTopicStats.map((_, i) => colors[i % colors.length].replace('0.7', '1')),
-                  borderWidth: 1,
-                  borderRadius: 6,
-                  barThickness: 24,
-                  maxBarThickness: 32
-                }]
-              },
-              options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: {
-                    display: false
-                  },
-                  tooltip: {
-                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                    padding: 12,
-                    titleFont: {
-                      size: 14,
-                      weight: 'bold'
-                    },
-                    bodyFont: {
-                      size: 13
-                    },
-                    callbacks: {
-                      label: function(context: any) {
-                        const topic = localTopicStats[context.dataIndex];
-                        return `Count: ${topic.count} (${topic.percentage}%)`;
-                      }
-                    }
-                  }
-                },
-                scales: {
-                  y: {
-                    beginAtZero: true,
-                    grid: {
-                      color: 'rgba(0, 0, 0, 0.05)'
-                    }
-                  },
-                  x: {
-                    grid: {
-                      display: false
-                    }
-                  }
-                }
-              }
-            });
-          }
-        } catch (error) {
-          console.error('Error initializing chart:', error);
-        }
-      };
-      
-      initChart();
-    }
-    
-    // Cleanup function
-    return () => {
-      if (chartInstance.current) {
-        chartInstance.current.destroy();
-        chartInstance.current = null;
+    // Fetch topic distribution stats from backend
+    const fetchTopicStats = async () => {
+      try {
+        console.log('Fetching topic stats using API service...');
+        // Use the API service function instead of direct fetch
+        const data = await getTopicStats();
+        console.log('Topic stats API response:', data);
+        setTopicStats(data);
+      } catch (error) {
+        console.error('Error fetching topic stats:', error);
       }
     };
-  }, [viewMode, localTopicStats, isLoading]);
 
-  const toggleView = () => {
-    setViewMode(prev => prev === 'table' ? 'chart' : 'table');
-  };
+    fetchTopicStats();
+  }, []);
 
-  const toggleAutoRefresh = () => {
-    setAutoRefresh(prev => !prev);
-    if (!autoRefresh) {
-      message.info('Auto-refresh enabled. Topic stats will update every minute.');
+  useEffect(() => {
+    if (searchText) {
+      setLoading(true);
+      // Simulate slight delay to show loading state
+      setTimeout(() => {
+      const filtered = topics.filter(topic => 
+        topic.topic.toLowerCase().includes(searchText.toLowerCase())
+      );
+      setFilteredTopics(filtered);
+        setLoading(false);
+      }, 300);
     } else {
-      message.info('Auto-refresh disabled.');
+      setFilteredTopics(topics);
     }
-  };
+  }, [searchText, topics]);
 
-  const fetchLatestStats = async () => {
-    try {
-      setIsLoading(true);
-      const result = await getTopicStats();
-      if (result && result.topics) {
-        setLocalTopicStats(result.topics);
-        setLastRefreshed(new Date());
-      }
-    } catch (error) {
-      console.error('Error fetching latest topic stats:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const manualRefresh = async () => {
-    message.loading('Refreshing topic statistics...', 0.5);
-    await fetchLatestStats();
-    message.success('Topic statistics updated');
-  };
-
-  // Render loading skeleton
-  if (isLoading && localTopicStats.length === 0) {
+  if (!topics || topics.length === 0) {
     return (
-      <Card>
-        <Skeleton active paragraph={{ rows: 6 }} />
-      </Card>
-    );
-  }
-
-  // Render empty state
-  if (!isLoading && localTopicStats.length === 0) {
-    return (
-      <Card>
-        <Title level={4}>Topic Distribution</Title>
-        <Empty description="No topic data available." />
-      </Card>
-    );
-  }
-
-  // Calculate total article count
-  const totalArticles = localTopicStats.reduce((sum, topic) => sum + topic.count, 0);
-
-  // Table columns configuration
-  const columns = [
-    {
-      title: 'Topic',
-      dataIndex: 'topic',
-      key: 'topic',
-      render: (text: string) => (
-        <Link 
-          href={`/?topic=${encodeURIComponent(text)}`}
-          style={{ color: 'var(--primary-color)' }}
-        >
-          {text}
-        </Link>
-      ),
-    },
-    {
-      title: 'Count',
-      dataIndex: 'count',
-      key: 'count',
-    },
-    {
-      title: 'Percentage',
-      dataIndex: 'percentage',
-      key: 'percentage',
-      render: (percentage: number) => `${percentage}%`,
-    },
-    {
-      title: 'Distribution',
-      key: 'distribution',
-      render: (_: any, record: TopicStats) => (
-        <Progress 
-          percent={record.percentage} 
-          showInfo={false} 
-          strokeColor="var(--primary-color)"
-          size="small"
+      <Card className="dashboard-card">
+        <Empty 
+          image={Empty.PRESENTED_IMAGE_SIMPLE} 
+          description={
+            <span className="empty-text">No topic data available</span>
+          }
         />
-      ),
-    },
+      </Card>
+    );
+  }
+
+  const totalCount = topics.reduce((sum, topic) => sum + topic.count, 0);
+
+  // Sort topics by count (descending) and take top N for chart display
+  const topTopics = [...topics]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, topN);
+
+  // Prepare data for charts with proper color scheme (Ant Design colors)
+  const antdColors = [
+    '#1677ff', // Primary blue
+    '#52c41a', // Success green
+    '#faad14', // Warning yellow
+    '#ff4d4f', // Error red
+    '#722ed1', // Purple
+    '#13c2c2', // Cyan
+    '#fa8c16', // Orange
+    '#eb2f96', // Magenta
+    '#a0d911', // Lime
+    '#1890ff', // Bright blue
+    '#f5222d', // Volcano
+    '#fa541c', // Sunset
+    '#fadb14', // Gold
+    '#52c41a', // Green
+    '#1677ff', // Geekblue
   ];
 
-  return (
-    <Card>
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Space align="center">
-            <Title level={4} style={{ margin: 0 }}>Topic Distribution</Title>
-            {autoRefresh && (
-              <Badge status="processing" />
-            )}
-          </Space>
-          <Space>
-            <Tooltip title={autoRefresh ? "Disable auto-refresh" : "Enable auto-refresh"}>
-              <Button
-                type={autoRefresh ? "default" : "primary"}
-                icon={<SyncOutlined spin={autoRefresh} />}
-                onClick={toggleAutoRefresh}
-              >
-                {autoRefresh ? "Auto" : "Auto Refresh"}
-              </Button>
-            </Tooltip>
-            <Button
-              onClick={manualRefresh}
-              disabled={isLoading}
-              icon={<SyncOutlined spin={isLoading} />}
-            >
-              Refresh
-            </Button>
-            <Button
-              type="default"
-              icon={viewMode === 'table' ? <BarChartOutlined /> : <TableOutlined />}
-              onClick={toggleView}
-            >
-              {viewMode === 'table' ? 'Chart View' : 'Table View'}
-            </Button>
-          </Space>
+  const chartData = topTopics.map((topic, index) => ({
+    name: topic.topic,
+    value: topic.count,
+    percentage: topic.percentage,
+    fill: antdColors[index % antdColors.length]
+  }));
+
+  // Render function for visualization based on view mode
+  const renderVisualization = () => {
+    if (loading) {
+      return (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 300 }}>
+          <Spin size="large" tip="Loading data..." />
         </div>
-        
-        {/* Metadata row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-          <Space>
-            <Tooltip title="Total number of articles across all topics">
-              <Text type="secondary">
-                <InfoCircleOutlined style={{ marginRight: 4 }} />
-                {totalArticles} total articles
-              </Text>
-            </Tooltip>
-          </Space>
-          {lastRefreshed && (
-            <Text type="secondary">
-              Last updated: {lastRefreshed.toLocaleTimeString()}
-            </Text>
-          )}
-        </div>
-        
-        {/* Table View */}
-        {viewMode === 'table' && (
+      );
+    }
+
+    switch (viewMode) {
+      case 'barChart':
+        return <DynamicBarChart data={chartData} />;
+      case 'pieChart':
+        return <DynamicPieChart data={chartData} />;
+      case 'table':
+      default:
+        return (
           <Table 
-            dataSource={localTopicStats} 
-            columns={columns} 
+            dataSource={filteredTopics}
             rowKey="topic"
-            pagination={false}
-            size="middle"
-            loading={isLoading && localTopicStats.length > 0}
+            pagination={{ 
+              pageSize: 10, 
+              showSizeChanger: true, 
+              pageSizeOptions: ['10', '20', '50', '100'],
+              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} topics`,
+              style: { marginTop: '16px' }
+            }}
+            className="topic-distribution-table"
+            loading={loading}
+          >
+            <Table.Column 
+              title="Topic" 
+              dataIndex="topic" 
+              key="topic"
+              sorter={(a: TopicStat, b: TopicStat) => a.topic.localeCompare(b.topic)}
+              render={(text, record: TopicStat) => (
+                <Link href={`/?${getTopicUrlQuery(record.topic)}`} passHref>
+                  <Text strong className="topic-link" style={{ cursor: 'pointer', color: 'var(--primary-color)' }}>
+                    {record.topic}
+                  </Text>
+                </Link>
+              )}
+            />
+            <Table.Column 
+              title="Count" 
+              dataIndex="count" 
+              key="count"
+              align="right"
+              sorter={(a: TopicStat, b: TopicStat) => a.count - b.count}
+              defaultSortOrder="descend"
+              render={(text, record: TopicStat) => (
+                <Space direction="vertical" size={0} align="end">
+                  <Text>{record.count}</Text>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>articles</Text>
+                </Space>
+              )}
+            />
+            <Table.Column 
+              title="Percentage" 
+              dataIndex="percentage" 
+              key="percentage"
+              align="right"
+              sorter={(a: TopicStat, b: TopicStat) => a.percentage - b.percentage}
+              render={(text, record: TopicStat) => (
+                <Space direction="vertical" size={0} align="end">
+                  <Text>{record.percentage.toFixed(1)}%</Text>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>of total</Text>
+                </Space>
+              )}
+            />
+            <Table.Column 
+              title="Distribution" 
+              key="distribution"
+              render={(text, record: TopicStat) => (
+                <Progress 
+                  percent={record.percentage} 
+                  size="small"
+                  showInfo={false}
+                  strokeColor={
+                    record.percentage > 50 ? 'var(--success-color)' : 
+                    record.percentage > 20 ? 'var(--warning-color)' : 
+                    'var(--primary-color)' 
+                  }
+                  trailColor="var(--border-color)"
+                  style={{ width: 150 }}
+                />
+              )}
+            />
+            <Table.Column 
+              title="Action" 
+              key="action"
+              align="center"
+              render={(text, record: TopicStat) => (
+                <Link href={`/?${getTopicUrlQuery(record.topic)}`} passHref>
+                  <Button type="link" icon={<BarChartOutlined />} size="small">
+                    View
+                  </Button>
+                </Link>
+              )}
+            />
+          </Table>
+        );
+    }
+  };
+
+  // Dashboard Statistics Row with data from backend
+  const renderStatistics = () => (
+    <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+      <Col xs={24} sm={8}>
+        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#e6f7ff', borderRadius: '8px' }}>
+          <Statistic 
+            title={<Text type="secondary">Total Topics</Text>} 
+            value={topicStats?.total_topics || topics.length} 
+            prefix={<TagOutlined style={{ color: '#1890ff' }} />} 
+            valueStyle={{ color: '#1890ff' }} 
           />
-        )}
-        
-        {/* Chart View */}
-        {viewMode === 'chart' && (
-          <div style={{ height: '320px', position: 'relative' }}>
-            {isLoading && localTopicStats.length > 0 && (
-              <div style={{ 
-                position: 'absolute', 
-                zIndex: 1, 
-                width: '100%', 
-                height: '100%', 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center',
-                background: 'rgba(255, 255, 255, 0.7)' 
-              }}>
-                <SyncOutlined spin style={{ fontSize: 24 }} />
-              </div>
-            )}
-            <canvas ref={chartRef}></canvas>
-          </div>
-        )}
-      </Space>
-    </Card>
+        </Card>
+      </Col>
+      <Col xs={24} sm={8}>
+        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#f6ffed', borderRadius: '8px' }}>
+          <Statistic 
+            title={<Text type="secondary">Total Articles</Text>} 
+            value={topicStats?.total_articles || totalCount} 
+            prefix={<BarChartOutlined style={{ color: '#52c41a' }} />} 
+            valueStyle={{ color: '#52c41a' }} 
+          />
+        </Card>
+      </Col>
+      <Col xs={24} sm={8}>
+        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#fffbe6', borderRadius: '8px' }}>
+          <Statistic 
+            title={<Text type="secondary">Average per Topic</Text>} 
+            value={topicStats?.average_per_topic || 
+              (topics.length ? (totalCount / topics.length).toFixed(1) : 0)
+            } 
+            prefix={<LineChartOutlined style={{ color: '#faad14' }} />} 
+            valueStyle={{ color: '#faad14' }} 
+          />
+        </Card>
+      </Col>
+    </Row>
   );
-} 
+
+  return (
+    <div className="dashboard-container" style={{ padding: '24px' }}>
+      {renderStatistics()}
+      
+      <Card className="dashboard-card" variant="borderless" style={{ borderRadius: '8px' }}>
+        <Flex justify="space-between" align="center" wrap="wrap" gap="middle" style={{ marginBottom: '16px' }}>
+          <div>
+            <Title level={4} style={{ marginBottom: 4 }}>Topic Distribution</Title>
+            <Text type="secondary">
+              Insights into {topicStats?.total_topics || topics.length} topics
+            </Text>
+          </div>
+          <Space size="middle" wrap>
+            <Input 
+              placeholder="Search topics" 
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              prefix={<SearchOutlined />}
+              allowClear
+              style={{ width: 200 }}
+            />
+            <Segmented
+              value={viewMode}
+              onChange={(value) => setViewMode(value as ViewMode)}
+              options={[
+                { value: 'table', icon: <TableOutlined /> },
+                { value: 'barChart', icon: <BarChartOutlined /> },
+                { value: 'pieChart', icon: <PieChartOutlined /> },
+              ]}
+            />
+          </Space>
+        </Flex>
+
+        {viewMode !== 'table' && (
+          <Flex justify="end" style={{ marginBottom: 16 }}>
+            <Space>
+              <Text>Show:</Text>
+              <Radio.Group 
+                value={topN} 
+                onChange={(e) => setTopN(e.target.value)}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value={5}>Top 5</Radio.Button>
+                <Radio.Button value={10}>Top 10</Radio.Button>
+                <Radio.Button value={20}>Top 20</Radio.Button>
+              </Radio.Group>
+              <Tooltip title="Showing top topics by article count">
+                <InfoCircleOutlined style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+              </Tooltip>
+            </Space>
+          </Flex>
+        )}
+
+        <div style={{ marginTop: '20px' }}>
+          {renderVisualization()}
+        </div>
+        
+        {!loading && (
+          <Flex justify="start" style={{ marginTop: 24 }}>
+            <Text type="secondary">
+              Total: {totalCount} articles across {topics.length} topics.
+            </Text>
+          </Flex>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+// Add styles to your global CSS or a separate module
+const styles = `
+.dashboard-container {
+  .stat-card {
+    height: 100%;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    transition: all 0.3s ease;
+
+    &:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      transform: translateY(-2px);
+    }
+
+    .ant-statistic {
+      .ant-statistic-title {
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        margin-bottom: 8px;
+      }
+
+      .ant-statistic-content {
+        font-size: 1.75rem;
+        font-weight: 600;
+      }
+    }
+
+    .stat-icon {
+      font-size: 1.25rem;
+      margin-right: 8px;
+    }
+  }
+
+  .dashboard-card {
+    margin-top: 24px;
+    border-radius: 12px;
+    background: #ffffff;
+  }
+}
+
+// ... rest of the existing styles ...
+`; 

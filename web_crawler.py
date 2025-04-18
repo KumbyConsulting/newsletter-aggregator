@@ -26,6 +26,8 @@ import aiohttp
 from aiohttp import ClientTimeout, TCPConnector
 from bs4 import BeautifulSoup
 import feedparser
+# Import newspaper3k
+from newspaper import Article as NewspaperArticle, Config as NewspaperConfig
 
 # Configure logging
 logging.basicConfig(
@@ -356,105 +358,134 @@ class WebCrawler:
             'image_url': ''
         }
         
-        # Extract title
-        title_tag = soup.find('title')
-        if title_tag:
-            result['title'] = title_tag.get_text(strip=True)
-            
-        # Try to get a better title from og:title or article title
-        og_title = soup.find('meta', property='og:title')
-        if og_title and og_title.get('content'):
-            result['title'] = og_title['content']
-            
-        h1 = soup.find('h1')
-        if h1:
-            result['title'] = h1.get_text(strip=True)
-            
-        # Extract main image
-        og_image = soup.find('meta', property='og:image')
-        if og_image and og_image.get('content'):
-            result['image_url'] = og_image['content']
-            
-        # Extract publication date
-        pub_date = None
-        date_selectors = [
-            ('meta', {'property': 'article:published_time'}),
-            ('meta', {'itemprop': 'datePublished'}),
-            ('time', {})
-        ]
-        
-        for tag, attrs in date_selectors:
-            date_elem = soup.find(tag, attrs)
-            if date_elem:
-                if tag == 'meta':
-                    pub_date = date_elem.get('content')
-                else:
-                    pub_date = date_elem.get('datetime') or date_elem.get_text(strip=True)
-                break
-                
-        if pub_date:
-            result['pub_date'] = pub_date
-            
-        # Extract author
-        author_selectors = [
-            ('meta', {'property': 'article:author'}),
-            ('meta', {'name': 'author'}),
-            ('a', {'rel': 'author'}),
-            ('span', {'class': 'author'}),
-            ('div', {'class': 'author'})
-        ]
-        
-        for tag, attrs in author_selectors:
-            author_elem = soup.find(tag, attrs)
-            if author_elem:
-                if tag == 'meta':
-                    result['author'] = author_elem.get('content', '')
-                else:
-                    result['author'] = author_elem.get_text(strip=True)
-                break
-                
-        # Extract main content
-        content_selectors = [
-            'article', '.article-content', '.article-body', '.content-body', 
-            '.post-content', '.entry-content', '.story-body', 'main',
-            '[itemprop="articleBody"]', '.article__body', '.article-text'
-        ]
-        
-        main_content = None
-        for selector in content_selectors:
-            content_element = soup.select_one(selector)
-            if content_element:
-                # Remove unwanted elements
-                for unwanted in content_element.select('.ad, .advertisement, .related, nav, .nav, .menu, .comments, .social, .share'):
-                    unwanted.decompose()
-                    
-                main_content = content_element
-                break
-                
-        # If no content found with selectors, try paragraphs
-        if main_content:
-            # Get all paragraphs in the main content
-            paragraphs = main_content.find_all('p')
-            result['content'] = ' '.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20])
-            
-            # Get excerpt from first substantial paragraph
-            for p in paragraphs:
-                text = p.get_text(strip=True)
-                if len(text) > 140:
-                    result['excerpt'] = text[:280] + ('...' if len(text) > 280 else '')
+        # === Attempt extraction with newspaper3k ===
+        try:
+            # Configure newspaper - disable fetching images, memos
+            config = NewspaperConfig()
+            config.fetch_images = False
+            config.memoize_articles = False
+            config.request_timeout = 15 # Shorter timeout for newspaper internal requests
+            config.browser_user_agent = self.user_agent
+
+            # Create a newspaper Article object and parse the HTML
+            news_article = NewspaperArticle('', config=config) # URL is not needed as we provide HTML
+            news_article.set_html(soup.prettify())
+            news_article.parse()
+
+            # Extract data from newspaper
+            result['title'] = news_article.title if news_article.title else result['title']
+            result['content'] = news_article.text if news_article.text else result['content']
+            result['author'] = ", ".join(news_article.authors) if news_article.authors else result['author']
+            result['pub_date'] = news_article.publish_date.isoformat() if news_article.publish_date else result['pub_date']
+            result['image_url'] = news_article.top_image if news_article.top_image else result['image_url']
+
+            # Use newspaper text for excerpt if available
+            if result['content']:
+                result['excerpt'] = result['content'][:280] + ('...' if len(result['content']) > 280 else '')
+                # Consider extraction successful if newspaper got text
+                result['has_full_content'] = True
+            else:
+                 result['has_full_content'] = False # Newspaper failed
+
+        except Exception as e:
+            logging.warning(f"Newspaper3k extraction failed: {e}. Falling back to manual extraction.")
+            result['has_full_content'] = False # Mark as failed if newspaper throws error
+            # Reset fields that might have been partially filled by newspaper on error
+            result['title'] = ''
+            result['content'] = ''
+            result['author'] = ''
+            result['pub_date'] = ''
+            result['image_url'] = ''
+            result['excerpt'] = ''
+
+        # === Fallback / Supplement with manual extraction if newspaper failed or missed fields ===
+        # Only run manual extraction if newspaper failed to get content
+        if not result['content']:
+            # Extract title (if newspaper missed it)
+            if not result['title']:
+                title_tag = soup.find('title')
+                if title_tag:
+                    result['title'] = title_tag.get_text(strip=True)
+                og_title = soup.find('meta', property='og:title')
+                if og_title and og_title.get('content'):
+                    result['title'] = og_title['content']
+                h1 = soup.find('h1')
+                if h1:
+                    result['title'] = h1.get_text(strip=True)
+
+            # Extract main image (if newspaper missed it)
+            if not result['image_url']:
+                og_image = soup.find('meta', property='og:image')
+                if og_image and og_image.get('content'):
+                    result['image_url'] = og_image['content']
+
+            # Extract publication date (if newspaper missed it)
+            if not result['pub_date']:
+                pub_date = None
+                date_selectors = [
+                    ('meta', {'property': 'article:published_time'}),
+                    ('meta', {'itemprop': 'datePublished'}),
+                    ('time', {})
+                ]
+                for tag, attrs in date_selectors:
+                    date_elem = soup.find(tag, attrs)
+                    if date_elem:
+                        if tag == 'meta': pub_date = date_elem.get('content')
+                        else: pub_date = date_elem.get('datetime') or date_elem.get_text(strip=True)
+                        break
+                if pub_date: result['pub_date'] = pub_date
+
+            # Extract author (if newspaper missed it)
+            if not result['author']:
+                author_selectors = [
+                    ('meta', {'property': 'article:author'}),
+                    ('meta', {'name': 'author'}),
+                    ('a', {'rel': 'author'}),
+                    ('span', {'class': 'author'}),
+                    ('div', {'class': 'author'})
+                ]
+                for tag, attrs in author_selectors:
+                    author_elem = soup.find(tag, attrs)
+                    if author_elem:
+                        if tag == 'meta': result['author'] = author_elem.get('content', '')
+                        else: result['author'] = author_elem.get_text(strip=True)
+                        break
+
+            # Manual content extraction (only if newspaper failed)
+            content_selectors = [
+                'article', '.article-content', '.article-body', '.content-body',
+                '.post-content', '.entry-content', '.story-body', 'main',
+                '[itemprop="articleBody"]', '.article__body', '.article-text'
+            ]
+            main_content_element = None
+            for selector in content_selectors:
+                content_element = soup.select_one(selector)
+                if content_element:
+                    for unwanted in content_element.select('.ad, .advertisement, .related, nav, .nav, .menu, .comments, .social, .share, script, style, figure, figcaption'):
+                        unwanted.decompose()
+                    main_content_element = content_element
                     break
-        else:
-            # Fallback: use all paragraphs in the document
-            paragraphs = soup.find_all('p')
-            paragraph_texts = [p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20]
-            
-            if paragraph_texts:
-                result['content'] = ' '.join(paragraph_texts)
-                result['excerpt'] = paragraph_texts[0][:280] + ('...' if len(paragraph_texts[0]) > 280 else '')
-                
-        # Clean up content
-        result['content'] = re.sub(r'\s+', ' ', result['content']).strip()
-        
+
+            if main_content_element:
+                paragraphs = main_content_element.find_all('p')
+                content_text = ' '.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20])
+            else:
+                paragraphs = soup.find_all('p')
+                content_text = ' '.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 20])
+
+            result['content'] = re.sub(r'\s+', ' ', content_text).strip()
+            if result['content']:
+                result['excerpt'] = result['content'][:280] + ('...' if len(result['content']) > 280 else '')
+                # Even if manually extracted, if we got substantial content, mark as full
+                # We might refine this threshold later
+                result['has_full_content'] = len(result['content']) > 500
+            else:
+                result['has_full_content'] = False
+
+        # Ensure title is never empty
+        if not result['title']:
+            result['title'] = "Title Not Found"
+
         return result
         
     async def fetch_url(self, url: str, follow_links: bool = False, depth: int = 0, max_depth: int = 1) -> Dict[str, Any]:
@@ -571,13 +602,13 @@ class WebCrawler:
                         'content_type': content_type,
                         'status_code': response.status,
                         'is_html': True,
-                        'html_content': html_content,
                         'title': article_data['title'],
                         'content': article_data['content'],
                         'excerpt': article_data['excerpt'],
                         'pub_date': article_data['pub_date'],
                         'author': article_data['author'],
                         'image_url': article_data['image_url'],
+                        'has_full_content': article_data['has_full_content'],
                         'links': [],
                         'timestamp': datetime.now().timestamp()
                     }
@@ -728,7 +759,7 @@ class WebCrawler:
         
     async def fetch_rss_feed(self, feed_url: str) -> List[Dict[str, Any]]:
         """
-        Fetch and parse an RSS feed
+        Fetch and parse an RSS feed with support for FDA and EMA specific formats
         
         Args:
             feed_url: URL of the RSS feed
@@ -762,21 +793,98 @@ class WebCrawler:
                 # Parse feed with feedparser
                 feed = feedparser.parse(content)
                 
+                # Check if we got any entries
+                if not feed.entries:
+                    # Try parsing with BeautifulSoup as fallback for non-standard feeds
+                    soup = BeautifulSoup(content, 'xml')
+                    items = soup.find_all(['item', 'entry'])
+                    
+                    if not items:
+                        logging.warning(f"No entries found in feed: {feed_url}")
+                        return []
+                        
+                    articles = []
+                    for item in items:
+                        try:
+                            # Extract article data with fallbacks for different tag names
+                            title_tag = item.find(['title', 'headline'])
+                            link_tag = item.find(['link', 'url'])
+                            description_tag = item.find(['description', 'summary', 'content'])
+                            date_tag = item.find(['pubDate', 'published', 'updated', 'date'])
+                            author_tag = item.find(['author', 'creator', 'dc:creator'])
+                            
+                            # Only proceed if we have at least title and link
+                            if title_tag and link_tag:
+                                # Handle link correctly - could be text or attribute
+                                link = link_tag.text.strip() if link_tag.text.strip() else link_tag.get('href', '')
+                                
+                                # Special handling for EMA feeds which may have links as attributes
+                                if not link and 'ema.europa.eu' in feed_url:
+                                    link = link_tag.get('href', '')
+                                
+                                # Special handling for FDA feeds
+                                if 'fda.gov' in feed_url:
+                                    # Some FDA feeds have guid with isPermaLink=true
+                                    guid_tag = item.find('guid')
+                                    if guid_tag and guid_tag.get('isPermaLink') == 'true':
+                                        link = guid_tag.text.strip()
+                                
+                                article = {
+                                    'source': feed.feed.get('title', urlparse(feed_url).netloc),
+                                    'title': title_tag.text.strip() if title_tag else '',
+                                    'description': description_tag.text.strip() if description_tag else '',
+                                    'link': link,
+                                    'pub_date': date_tag.text.strip() if date_tag else '',
+                                    'author': author_tag.text.strip() if author_tag else '',
+                                    'feed_url': feed_url
+                                }
+                                
+                                # Only include articles with required fields
+                                if article['title'] and article['link']:
+                                    articles.append(article)
+                        except Exception as e:
+                            logging.warning(f"Error parsing feed item from {feed_url}: {e}")
+                            continue
+                            
+                    return articles
+                
+                # Standard processing for well-formed feeds
                 articles = []
                 for entry in feed.entries:
+                    # Handle different link formats
+                    link = entry.get('link', '')
+                    
+                    # Special handling for FDA feeds which sometimes put the link in guid
+                    if not link and 'fda.gov' in feed_url and 'guid' in entry:
+                        if getattr(entry, 'guidislink', False):
+                            link = entry.guid
+                    
+                    # Special handling for EMA feeds
+                    if not link and 'ema.europa.eu' in feed_url and hasattr(entry, 'links'):
+                        for link_obj in entry.links:
+                            if link_obj.get('rel') == 'alternate':
+                                link = link_obj.get('href', '')
+                                break
+                    
                     article = {
                         'source': feed.feed.get('title', urlparse(feed_url).netloc),
                         'title': entry.get('title', ''),
-                        'description': entry.get('summary', ''),
-                        'link': entry.get('link', ''),
-                        'pub_date': entry.get('published', ''),
-                        'author': entry.get('author', ''),
+                        'description': entry.get('summary', entry.get('description', '')),
+                        'link': link,
+                        'pub_date': entry.get('published', entry.get('updated', '')),
+                        'author': entry.get('author', entry.get('creator', '')),
                         'id': entry.get('id', ''),
                         'feed_url': feed_url
                     }
                     
+                    # For EMA feeds, try to get a better description from content
+                    if 'ema.europa.eu' in feed_url:
+                        if hasattr(entry, 'content') and entry.content:
+                            # Use the first content element's value
+                            article['description'] = entry.content[0].value
+                    
                     # Only include articles with required fields
-                    if all([article['title'], article['link']]):
+                    if article['title'] and article['link']:
                         articles.append(article)
                         
                 return articles
@@ -790,16 +898,16 @@ class WebCrawler:
 async def main():
     # Example seed URLs
     seed_urls = [
-        'https://news.ycombinator.com/',
-        'https://www.theverge.com/',
-        'https://techcrunch.com/'
+        'https://www.fda.gov/news-events',
+        'https://www.biopharmadive.com/',
+        'https://www.fiercepharma.com/'
     ]
     
     # Example RSS feeds
     rss_feeds = {
-        'The Verge': 'https://www.theverge.com/rss/index.xml',
-        'TechCrunch': 'https://techcrunch.com/feed/',
-        'Wired': 'https://www.wired.com/feed/rss'
+        'Pharmaceutical Technology': 'https://www.pharmaceutical-technology.com/feed/',
+        'FiercePharma': 'https://www.fiercepharma.com/rss/xml',
+        'FDA News': 'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/press-releases/feed'
     }
     
     # Define a status callback
