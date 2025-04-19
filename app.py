@@ -1425,15 +1425,18 @@ async def stream_rag_query_get():
                         continue
                         
                     response_text += chunk
-                    yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+                    # Corrected f-string: Use single quotes outside, double quotes inside json.dumps
+                    yield f'data: {json.dumps({"chunk": chunk, "done": False})}\n\n'
                     
                 # Send final message with sources
-                yield f"data: {json.dumps({
+                response_data = {
                     'chunk': '',
                     'done': True,
                     'sources': sources,
                     'full_response': response_text
-                })}\n\n"
+                }
+                # Corrected f-string
+                yield f'data: {json.dumps(response_data)}\n\n'
                 
                 # Record success metric
                 monitoring_service.record_count(
@@ -1447,27 +1450,34 @@ async def stream_rag_query_get():
                 try:
                     partial_response = await ai_service.get_partial_response()
                     if partial_response:
-                        yield f"data: {json.dumps({'chunk': f'\n\nAI service temporarily unavailable. Partial response: {partial_response}', 'done': True})}\n\n"
+                        # Corrected f-string
+                        yield f'data: {json.dumps({"chunk": f"\\n\\nAI service temporarily unavailable. Partial response: {partial_response}", "done": True})}\n\n'
                     else:
-                        yield f"data: {json.dumps({'error': 'AI service temporarily unavailable', 'done': True})}\n\n"
+                        # Corrected f-string
+                        yield f'data: {json.dumps({"error": "AI service temporarily unavailable", "done": True})}\n\n'
                 except Exception as partial_error:
                     logging.error(f"Error getting partial response: {str(partial_error)}")
-                    yield f"data: {json.dumps({'error': 'AI service temporarily unavailable', 'done': True})}\n\n"
+                    # Corrected f-string
+                    yield f'data: {json.dumps({"error": "AI service temporarily unavailable", "done": True})}\n\n'
             except RateLimitException as e:
                 logging.warning(f"Rate limit exceeded during streaming: {e}")
-                yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
+                # Corrected f-string
+                yield f'data: {json.dumps({"error": str(e), "done": True})}\n\n'
             except Exception as e:
                 logging.error(f"Error during streaming: {e}")
                 # Try to get partial response
                 try:
                     partial_response = await ai_service.get_partial_response()
                     if partial_response:
-                        yield f"data: {json.dumps({'chunk': f'\n\nError occurred. Partial response: {partial_response}', 'done': True})}\n\n"
+                        # Corrected f-string
+                        yield f'data: {json.dumps({"chunk": f"\\n\\nError occurred. Partial response: {partial_response}", "done": True})}\n\n'
                     else:
-                        yield f"data: {json.dumps({'error': 'Error generating response', 'done': True})}\n\n"
+                        # Corrected f-string
+                        yield f'data: {json.dumps({"error": "Error generating response", "done": True})}\n\n'
                 except Exception as partial_error:
                     logging.error(f"Error getting partial response: {str(partial_error)}")
-                    yield f"data: {json.dumps({'error': 'Error generating response', 'done': True})}\n\n"
+                    # Corrected f-string
+                    yield f'data: {json.dumps({"error": "Error generating response", "done": True})}\n\n'
             finally:
                 # Ensure the generator is properly closed
                 if generator and hasattr(generator, 'aclose'):
