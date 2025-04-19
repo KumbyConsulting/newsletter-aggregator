@@ -6,42 +6,35 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt waitress
 
-# Copy the rest of the application
-COPY . .
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV USE_CLOUD_LOGGING=true
-# ENV PORT=8080  # Removed as Cloud Run sets this automatically
-ENV HEALTH_PORT=8081
+ENV PORT=8080
 ENV FLASK_ENV=production
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV STORAGE_BACKEND=chromadb
+ENV STORAGE_BACKEND=firestore
+ENV SKIP_CHROMADB_INIT=true
 
-# Create a non-root user first
+# Create a non-root user
 RUN useradd -m appuser
+
+# Create simple startup script for quick start
+RUN echo '#!/bin/bash\necho "Starting app on port $PORT"\ncd /app && python start.py' > /app/startup.sh && \
+    chmod +x /app/startup.sh
+
+# Copy the application code last to minimize rebuilds
+COPY . .
 
 # Create directories for persistent data and set permissions
 RUN mkdir -p /app/data /app/chroma_db && \
-    chown -R appuser:appuser /app/data /app/chroma_db && \
-    chmod -R 755 /app/data /app/chroma_db && \
-    chown -R appuser:appuser /app
-
-# Create a startup script
-RUN echo '#!/bin/bash\necho "Starting application..."\n\n# Run initialization scripts\necho "Initializing application..."\npython -c "import chromadb; print(\"ChromaDB initialized\"); client = chromadb.PersistentClient(path=\"/app/chroma_db\")"\n\n# Start the application with timeout\necho "Starting main application..."\ntimeout 60s python start.py' > /app/startup.sh && \
-    chmod +x /app/startup.sh
-
-# Add pre-initialization for ChromaDB
-RUN python -c "import chromadb; chromadb.PersistentClient(path=\"/app/chroma_db\")" || true
+    chown -R appuser:appuser /app && \
+    chmod -R 755 /app
 
 # Switch to non-root user
 USER appuser
 
-# Expose ports for main app and health check
-EXPOSE 8080 8081
+# Expose port
+EXPOSE 8080
 
-# Add health check
-HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 CMD curl -f http://localhost:8081/_ah/health || exit 1
-
-# Use our custom startup script
+# Use the startup script
 CMD ["/app/startup.sh"] 

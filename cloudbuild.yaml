@@ -25,7 +25,8 @@ steps:
       - '--timeout=600s'
       - '--cpu-boost'
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
-      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET_NAME=newsletter-aggregator,USE_GCS_BACKUP=true,USE_VERTEX_AI=true,USE_CLOUD_LOGGING=true,STORAGE_BACKEND=chromadb,FLASK_ENV=production,USE_SECRET_MANAGER=true'
+      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET_NAME=newsletter-aggregator,USE_GCS_BACKUP=true,USE_VERTEX_AI=true,USE_CLOUD_LOGGING=true,STORAGE_BACKEND=firestore,FLASK_ENV=production,USE_SECRET_MANAGER=true,SKIP_CHROMADB_INIT=true'
+      - '--port=8080'
 
   # Create a tagged production version
   - name: 'gcr.io/cloud-builders/docker'

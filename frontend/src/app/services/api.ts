@@ -205,7 +205,8 @@ async function apiRequest<T>(
   endpoint: string, 
   options: RequestInit = {}, 
   cacheKey: string = '', 
-  cacheTTL: number = 60000
+  cacheTTL: number = 60000,
+  timeoutMs: number = 30000 // Allow configurable timeout
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   const fullCacheKey = cacheKey || endpoint;
@@ -221,25 +222,73 @@ async function apiRequest<T>(
     return apiCache.getPending<T>(fullCacheKey) as Promise<T>;
   }
   
+  // Use shorter timeout for update status endpoint to fail faster on polling
+  const actualTimeout = endpoint === '/update/status' ? 10000 : timeoutMs;
+  
   // Create the request promise
   const requestPromise = (async () => {
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(new Error('TimeoutError: signal timed out')), actualTimeout);
+      
       const response = await fetch(url, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,
         },
-        // Add timeout signal
-        signal: AbortSignal.timeout(30000), // 30 second timeout
+        // Use abort controller instead of timeout signal for better error handling
+        signal: controller.signal,
       });
       
+      // Clear the timeout
+      clearTimeout(timeoutId);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.message || errorData.error || 'API request failed');
+        let errorData: ApiErrorResponse;
+        
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          // If we can't parse JSON, create a generic error
+          errorData = {
+            error: `Server error (${response.status})`,
+            status_code: response.status
+          };
+        }
+        
+        // Create a meaningful error with status code and normalized properties
+        const error = new Error(errorData.error || `API request failed with status ${response.status}`);
+        (error as any).statusCode = response.status;
+        (error as any).apiError = errorData;
+        
+        // Add standard fields to ensure consistent error handling
+        // This helps when the error is caught in different parts of the application
+        if (errorData.error) {
+          (error as any).error = errorData.error;
+        }
+        if (errorData.status_code) {
+          (error as any).status_code = errorData.status_code;
+        }
+        
+        // Add deployment environment to error for debugging
+        (error as any).environment = process.env.NODE_ENV || 'unknown';
+        
+        throw error;
       }
       
-      const data = await response.json() as T;
+      // For empty responses or non-JSON responses, handle gracefully
+      if (response.status === 204) {
+        return {} as T; // Return empty object for no content
+      }
+      
+      let data: T;
+      try {
+        data = await response.json() as T;
+      } catch (e) {
+        console.warn('Invalid JSON response from API:', e);
+        data = {} as T; // Return empty object for parsing errors
+      }
       
       // Cache the successful response
       apiCache.set<T>(fullCacheKey, data, cacheTTL);
@@ -247,6 +296,16 @@ async function apiRequest<T>(
       return data;
     } catch (error) {
       console.error(`API Error (${endpoint}):`, error);
+      
+      // Enhance error object with more context
+      if (error instanceof Error) {
+        if (error.name === 'AbortError' || error.message.includes('timed out')) {
+          const timeoutError = new Error('TimeoutError: signal timed out');
+          (timeoutError as any).isTimeout = true;
+          throw timeoutError;
+        }
+      }
+      
       throw error;
     }
   })();
@@ -282,7 +341,32 @@ export async function getTopicStats(): Promise<{ topics: TopicStats[] }> {
  * Get update status
  */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
-  return apiRequest('/update/status');
+  try {
+    // Use a shorter timeout for status checks
+    return await apiRequest('/update/status', {}, '', 0, 10000);
+  } catch (error) {
+    // Provide a fallback status when server is unreachable
+    if (error instanceof Error && 
+        ((error as any).isTimeout || 
+         (error as any).statusCode >= 500 || 
+         error.message.includes('timed out'))) {
+      console.warn('Server unavailable during status check, using fallback status');
+      return {
+        in_progress: false,
+        last_update: null,
+        status: 'unknown',
+        progress: 0,
+        message: 'Unable to connect to server',
+        error: 'Connection error',
+        sources_processed: 0,
+        total_sources: 0,
+        articles_found: 0,
+        estimated_completion_time: null,
+        can_be_cancelled: false
+      };
+    }
+    throw error;
+  }
 }
 
 /**

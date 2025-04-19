@@ -33,7 +33,7 @@ gcloud run deploy $SERVICE_NAME \
   --min-instances=0 \
   --max-instances=3 \
   --timeout=300s \
-  --set-env-vars=NEXT_PUBLIC_API_URL=https://newsletter-aggregator-857170198287.us-central1.run.app/
+  --set-env-vars=NEXT_PUBLIC_API_URL=https://newsletter-aggregator-857170198287.us-central1.run.app
 
 echo "Deployment completed. Service should be available soon at:"
 echo "https://$SERVICE_NAME-857170198287.$REGION.run.app" 

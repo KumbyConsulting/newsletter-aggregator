@@ -11,6 +11,7 @@ COPY . .
 
 # Set environment variables for the build
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_PUBLIC_SKIP_BAIL_WARNINGS=true
 
 # Build the application
 RUN npm run build

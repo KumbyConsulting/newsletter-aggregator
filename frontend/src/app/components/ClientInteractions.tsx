@@ -106,12 +106,13 @@ function UpdateButton() {
   const basePollingInterval = 3000; // Start with 3 seconds
   const maxPollingInterval = 15000; // Max 15 seconds
 
-  // Adaptive polling interval based on progress
+  // Get adaptive polling interval - more conservative than before
   const getPollingInterval = (progress: number) => {
-    if (progress < 25) return basePollingInterval;
-    if (progress < 50) return basePollingInterval * 1.5;
-    if (progress < 75) return basePollingInterval * 2;
-    return maxPollingInterval;
+    // Base interval is now 5 seconds minimum
+    if (progress < 25) return 5000; 
+    if (progress < 50) return 8000;
+    if (progress < 75) return 12000;
+    return maxPollingInterval; // 15 seconds max
   };
 
   // Function to check status with retry logic
@@ -148,27 +149,60 @@ function UpdateButton() {
       }
     } catch (error) {
       console.error('Error fetching update status:', error);
-      const apiError = error as ApiErrorResponse;
       
-      // Implement retry logic for transient failures
+      // Don't show errors for initial check - silent fail
+      if (!initialCheck) {
+        // Only show error UI after several retries
+        if (retryCount.current >= maxRetries - 1) {
+          const errorMessage = error instanceof Error ? error.message : 'Server not responding';
+          setUpdateStatus(prev => ({ 
+            ...(prev ?? {} as UpdateStatus), 
+            status: 'unknown',
+            message: 'Connection issue',
+            error: `Unable to check status: ${errorMessage}`,
+            in_progress: prev?.in_progress ?? false
+          }));
+        }
+      }
+      
+      // Implement retry logic with more aggressive backoff for server errors
       if (retryCount.current < maxRetries) {
         retryCount.current++;
-        const retryDelay = Math.min(1000 * Math.pow(2, retryCount.current), 8000);
+        // Exponential backoff with jitter - avoid thundering herd
+        const baseDelay = 1000 * Math.pow(2, retryCount.current);
+        const jitter = Math.random() * 1000;
+        const retryDelay = Math.min(baseDelay + jitter, 15000);
+        
+        console.log(`Retrying status check in ${Math.round(retryDelay/1000)}s (attempt ${retryCount.current}/${maxRetries})`);
         setTimeout(() => checkStatus(initialCheck), retryDelay);
         return;
       }
 
-      message.error(apiError.error || 'Failed to check update status');
+      // After max retries, stop polling but don't show error if it was initial check
+      if (!initialCheck) {
+        message.error('Server not responding. Will try again later.');
+      }
       setIsUpdating(false);
       stopPolling();
+      
+      // Schedule a final retry after a longer cooldown period (1 minute)
+      setTimeout(() => {
+        retryCount.current = 0;
+        checkStatus(true);
+      }, 60000);
     }
   }, [message]);
 
-  // Enhanced polling logic with adaptive intervals
+  // Enhanced polling logic with adaptive intervals and more conservative defaults
   const startPolling = (progress: number) => {
     if (pollingInterval.current) return;
     const interval = getPollingInterval(progress);
-    pollingInterval.current = setInterval(() => checkStatus(), interval);
+    
+    // Set a minimum poll interval of 5 seconds to avoid overwhelming server
+    const safeInterval = Math.max(interval, 5000);
+    
+    pollingInterval.current = setInterval(() => checkStatus(), safeInterval);
+    console.log(`Started polling with interval: ${safeInterval}ms`);
   };
 
   const stopPolling = () => {
@@ -209,10 +243,28 @@ function UpdateButton() {
       startPolling(0); // Start with base polling interval
     } catch (error) {
       console.error('Error starting update:', error);
-      const apiError = error as ApiErrorResponse;
       
-      // Enhanced error handling with specific messages
-      const errorMessage = apiError.error || 'Failed to start update.';
+      // More robust error extraction for different API response formats
+      let errorMessage = 'Failed to start update.';
+      
+      if (typeof error === 'object' && error !== null) {
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        }
+        
+        // Try to extract error from different response formats
+        const errorObj = error as Record<string, any>;
+        if (errorObj.apiError && typeof errorObj.apiError === 'object') {
+          errorMessage = errorObj.apiError.error || errorObj.apiError.message || errorMessage;
+        } else if ('error' in errorObj && typeof errorObj.error === 'string') {
+          errorMessage = errorObj.error || errorMessage;
+        } else if ('message' in errorObj && typeof errorObj.message === 'string') {
+          errorMessage = errorObj.message;
+        } else if ('statusText' in errorObj && typeof errorObj.statusText === 'string') {
+          errorMessage = `Server error: ${errorObj.statusText}`;
+        }
+      }
+      
       message.error({
         content: errorMessage,
         duration: 5,

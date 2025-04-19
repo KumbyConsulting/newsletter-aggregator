@@ -23,7 +23,7 @@ steps:
       - '--min-instances=0'
       - '--max-instances=3'
       - '--timeout=300s'
-      - '--set-env-vars=NEXT_PUBLIC_API_URL=https://newsletter-aggregator-857170198287.us-central1.run.app/'
+      - '--set-env-vars=NEXT_PUBLIC_API_URL=https://newsletter-aggregator-857170198287.us-central1.run.app'
 
   # Create a tagged production version
   - name: 'gcr.io/cloud-builders/docker'
