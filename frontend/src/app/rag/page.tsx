@@ -69,7 +69,7 @@ import {
   SavedAnalysis,
   Article,
   AnalysisType
-} from '../services/api';
+} from '@/services/api';
 import ReactMarkdown from 'react-markdown';
 import { formatDistanceToNow } from 'date-fns';
 

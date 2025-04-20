@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useReducer, ReactNode, useCallback } from 'react';
 import { Article } from '@/types';
+import { getArticles } from '@/services/api';
 
 // Define state type
 interface ArticleState {
@@ -138,9 +139,6 @@ export function ArticleProvider({ children }: ArticleProviderProps) {
     dispatch({ type: 'FETCH_ARTICLES_START' });
     
     try {
-      // Dynamic import to avoid SSR issues
-      const { getArticles } = await import('../services/api');
-      
       const result = await getArticles(
         state.currentPage,
         state.perPage,

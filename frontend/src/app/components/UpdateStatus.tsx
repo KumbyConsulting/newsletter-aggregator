@@ -30,7 +30,7 @@ import {
   getScrapingMetrics,
   UpdateStatus as UpdateStatusType, 
   ScrapingMetrics 
-} from '../services/api';
+} from '@/services/api';
 
 const { Title, Text } = Typography;
 
@@ -49,7 +49,9 @@ export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
     total_sources: 0,
     articles_found: 0,
     last_update: null,
-    error: null
+    error: null,
+    estimated_completion_time: null,
+    can_be_cancelled: false
   });
   const [metrics, setMetrics] = useState<ScrapingMetrics | null>(null);
   const [showMetrics, setShowMetrics] = useState(false);

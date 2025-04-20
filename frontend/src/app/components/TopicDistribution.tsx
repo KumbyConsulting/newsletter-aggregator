@@ -32,7 +32,7 @@ import {
   LineChartOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons';
-import { getTopicStats } from '../services/api';
+import { getTopicStats } from '@/services/api';
 import { TopicStat } from '@/types'; // Import TopicStat type from types
 
 // Simple chart implementation - in a real app, you'd use a chart library like Recharts

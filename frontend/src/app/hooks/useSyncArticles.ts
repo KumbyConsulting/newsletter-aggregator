@@ -75,7 +75,7 @@ export default function useSyncArticles(articles: Article[]) {
       
       try {
         // Dynamically import to avoid SSR issues
-        const { SyncService } = await import('../services/syncService');
+        const { SyncService } = await import('@/services/syncService');
         const syncService = SyncService.getInstance();
         
         // Filter articles to only include valid ones
