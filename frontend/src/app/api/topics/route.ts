@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 
 // Base URL for the backend API - Remove trailing slash to fix URL construction
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:5000';
+const API_BASE_URL = process.env.INTERNAL_BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:5000';
 
 /**
  * API route handler for topics endpoint

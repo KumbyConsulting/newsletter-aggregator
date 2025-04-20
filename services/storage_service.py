@@ -1736,3 +1736,150 @@ class StorageService:
         except Exception as e:
             logging.error(f"Error getting RAG history: {e}")
             return []
+
+    # --- Methods for Saved Analyses ---
+
+    async def save_analysis(self, analysis_data: Dict) -> str:
+        """Save analysis results to the 'saved_analyses' collection."""
+        try:
+            if not self.db or isinstance(self.db, MagicMock):
+                 raise StorageException("Firestore is not available.")
+                 
+            # Ensure required fields are present (adjust as needed)
+            required = ['id', 'query', 'response', 'analysis_type', 'confidence', 'timestamp']
+            if not all(field in analysis_data for field in required):
+                raise StorageException("Missing required fields in analysis data.")
+
+            doc_ref = self.db.collection('saved_analyses').document(analysis_data['id'])
+            # Use set() which creates or overwrites
+            await doc_ref.set({
+                'id': analysis_data['id'],
+                'query': analysis_data['query'],
+                'response': analysis_data['response'],
+                'analysis_type': analysis_data['analysis_type'],
+                'confidence': analysis_data['confidence'],
+                'timestamp': analysis_data['timestamp'],
+                'sources': analysis_data.get('sources', []),
+                'created_at': firestore.SERVER_TIMESTAMP # Add creation timestamp
+            })
+            logging.info(f"Successfully saved analysis: {analysis_data['id']}")
+            return analysis_data['id']
+        except Exception as e:
+            logging.error(f"Database error saving analysis: {e}")
+            raise StorageException(f"Failed to save analysis: {str(e)}")
+
+    async def get_saved_analyses(self, limit: int = 10, offset: int = 0, sort_by: str = 'timestamp', sort_order: str = 'desc') -> Dict:
+        """Get a list of saved analyses with pagination and sorting."""
+        try:
+            if not self.db or isinstance(self.db, MagicMock):
+                 raise StorageException("Firestore is not available.")
+
+            # Validate sort parameters
+            valid_sort_fields = ['timestamp', 'analysis_type', 'confidence', 'created_at']
+            if sort_by not in valid_sort_fields:
+                sort_by = 'created_at' # Default to creation time
+            
+            valid_sort_orders = ['asc', 'desc']
+            if sort_order not in valid_sort_orders:
+                sort_order = 'desc'
+
+            # Query saved analyses
+            query = self.db.collection('saved_analyses').order_by(
+                sort_by,
+                direction=firestore.Query.DESCENDING if sort_order == 'desc' else firestore.Query.ASCENDING
+            ).limit(limit).offset(offset)
+
+            # Execute query
+            docs = query.get()
+
+            # Format results
+            analyses = []
+            for doc in docs:
+                analysis_data = doc.to_dict()
+                # Ensure timestamps are handled correctly if they are Firestore Timestamps
+                if 'created_at' in analysis_data and hasattr(analysis_data['created_at'], 'isoformat'):
+                     analysis_data['created_at'] = analysis_data['created_at'].isoformat()
+                if 'timestamp' in analysis_data and hasattr(analysis_data['timestamp'], 'isoformat'):
+                     analysis_data['timestamp'] = analysis_data['timestamp'].isoformat()
+
+                analyses.append({
+                    'id': analysis_data.get('id'),
+                    'query': analysis_data.get('query'),
+                    'response': analysis_data.get('response'), # Consider adding truncation for list view
+                    'analysis_type': analysis_data.get('analysis_type'),
+                    'confidence': analysis_data.get('confidence'),
+                    'timestamp': analysis_data.get('timestamp'),
+                    'created_at': analysis_data.get('created_at'),
+                    'sources_count': len(analysis_data.get('sources', [])) # Add source count instead of full sources
+                })
+
+            # Get total count efficiently
+            # Note: Firestore count() aggregation might require specific setup/indexes
+            # Using get() for total count as fallback
+            total_query = self.db.collection('saved_analyses')
+            # Remove await as get() is synchronous
+            total_docs = total_query.get()
+            total_count = len(total_docs)
+
+            return {
+                'analyses': analyses,
+                'total': total_count,
+                'limit': limit,
+                'offset': offset,
+                'page': (offset // limit) + 1,
+                'total_pages': (total_count + limit - 1) // limit
+            }
+
+        except Exception as e:
+            logging.error(f"Error getting saved analyses: {e}")
+            raise StorageException(f"Failed to retrieve saved analyses: {str(e)}")
+
+    async def get_saved_analysis(self, analysis_id: str) -> Optional[Dict]:
+        """Get a specific saved analysis by ID."""
+        try:
+            if not self.db or isinstance(self.db, MagicMock):
+                 raise StorageException("Firestore is not available.")
+
+            doc_ref = self.db.collection('saved_analyses').document(analysis_id)
+            # Remove await as get() is synchronous
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                logging.warning(f"Saved analysis not found: {analysis_id}")
+                return None
+
+            analysis_data = doc.to_dict()
+            # Ensure timestamps are handled correctly if they are Firestore Timestamps
+            if 'created_at' in analysis_data and hasattr(analysis_data['created_at'], 'isoformat'):
+                 analysis_data['created_at'] = analysis_data['created_at'].isoformat()
+            if 'timestamp' in analysis_data and hasattr(analysis_data['timestamp'], 'isoformat'):
+                 analysis_data['timestamp'] = analysis_data['timestamp'].isoformat()
+                 
+            return analysis_data # Return the full data
+
+        except Exception as e:
+            logging.error(f"Error getting saved analysis {analysis_id}: {e}")
+            raise StorageException(f"Failed to retrieve saved analysis {analysis_id}: {str(e)}")
+
+    async def delete_saved_analysis(self, analysis_id: str) -> bool:
+        """Delete a saved analysis by ID."""
+        try:
+            if not self.db or isinstance(self.db, MagicMock):
+                 raise StorageException("Firestore is not available.")
+
+            doc_ref = self.db.collection('saved_analyses').document(analysis_id)
+            # Remove await as get() is synchronous
+            doc = doc_ref.get()
+
+            if not doc.exists:
+                logging.warning(f"Analysis {analysis_id} not found for deletion.")
+                return False # Indicate not found
+
+            # Delete analysis
+            await doc_ref.delete()
+            logging.info(f"Successfully deleted analysis {analysis_id}")
+            return True
+
+        except Exception as e:
+            logging.error(f"Error deleting saved analysis {analysis_id}: {e}")
+            raise StorageException(f"Failed to delete saved analysis {analysis_id}: {str(e)}")

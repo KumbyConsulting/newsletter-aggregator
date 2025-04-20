@@ -26,7 +26,7 @@ import {
   ReloadOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons';
-import { getSources } from '@/app/services/api';
+import { getSources } from '@/services/api';
 
 const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;

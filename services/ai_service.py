@@ -394,14 +394,30 @@ class VertexAIModel(AIModelInterface):
                 max_output_tokens=2048,
             )
             
-            try:
-                # Try to initialize with more stable gemini-1.0-pro
-                self.model = GenerativeModel("models/gemini-1.5-pro-latest")
-                logging.info("Successfully initialized Vertex AI with models/gemini-1.5-pro-latest model")
-            except Exception as model_error:
-                logging.warning(f"Failed to initialize models/gemini-1.5-pro-latest: {model_error}")
+            # Define prioritized models to try
+            model_candidates = [
+                "models/gemini-1.5-pro-latest",
+                "models/gemini-1.5-pro",
+                "models/gemini-1.5-flash",
+                "models/gemini-1.5-flash-latest",
+                "models/gemini-1.0-pro",
+                "models/gemini-pro"
+            ]
+            
+            # Try each model in order
+            model_initialized = False
+            for model_name in model_candidates:
                 try:
-                    # List available models
+                    self.model = GenerativeModel(model_name)
+                    logging.info(f"Successfully initialized Vertex AI with {model_name}")
+                    model_initialized = True
+                    break
+                except Exception as model_error:
+                    logging.warning(f"Failed to initialize {model_name}: {model_error}")
+            
+            # If no models from candidates worked, try listing available models
+            if not model_initialized:
+                try:
                     available_models = GenerativeModel.list_models()
                     model_names = [model.name for model in available_models]
                     logging.info(f"Available Vertex AI models: {model_names}")
@@ -411,23 +427,25 @@ class VertexAIModel(AIModelInterface):
                     if gemini_models:
                         self.model = GenerativeModel(gemini_models[0])
                         logging.info(f"Using alternative Vertex AI model: {gemini_models[0]}")
+                        model_initialized = True
                     else:
                         raise GeminiAPIException(f"No Gemini models found. Available models: {model_names}")
                 except Exception as list_error:
-                    raise GeminiAPIException(f"Failed to initialize model and list models: {str(model_error)}. List error: {str(list_error)}")
+                    raise GeminiAPIException(f"Failed to initialize models and list available models. List error: {str(list_error)}")
             
-            # Test the model with a simple prompt with try/except to better handle errors
-            try:
-                test_response = self.model.generate_content(
-                    "Test prompt to verify model initialization.",
-                    generation_config=self.generation_config
-                )
-                if not test_response or not test_response.text:
-                    raise GeminiAPIException("Model initialization test failed: empty response")
-                logging.info("Vertex AI model test successful")
-            except Exception as test_error:
-                logging.error(f"Model test failed: {test_error}")
-                raise GeminiAPIException(f"Model test failed: {str(test_error)}")
+            # Test the model with a simple prompt
+            if model_initialized:
+                try:
+                    test_response = self.model.generate_content(
+                        "Test prompt to verify model initialization.",
+                        generation_config=self.generation_config
+                    )
+                    if not test_response or not test_response.text:
+                        raise GeminiAPIException("Model initialization test failed: empty response")
+                    logging.info("Vertex AI model test successful")
+                except Exception as test_error:
+                    logging.error(f"Model test failed: {test_error}")
+                    raise GeminiAPIException(f"Model test failed: {str(test_error)}")
             
         except Exception as e:
             logging.error(f"Failed to initialize VertexAIModel: {e}")
@@ -638,6 +656,9 @@ class AIService:
             logging.info("AIService initialized successfully")
         except Exception as e:
             logging.error(f"Failed to initialize AIService: {e}")
+            # Don't raise an exception, set a flag that AI features are disabled
+            self.ai_enabled = False
+            self.error_message = str(e)
             raise AIServiceException(f"AI service initialization failed: {str(e)}")
 
     def _initialize_model(self):
@@ -648,7 +669,12 @@ class AIService:
             
             if config.use_vertex_ai:
                 logging.info("Using VertexAIModel for Gemini access")
-                return VertexAIModel(config)
+                try:
+                    return VertexAIModel(config)
+                except Exception as vertex_error:
+                    logging.error(f"Failed to initialize VertexAIModel: {vertex_error}, falling back to GeminiDirectModel")
+                    # Fall back to direct API if Vertex AI fails
+                    return GeminiDirectModel(config)
             else:
                 logging.info("Using GeminiDirectModel for direct API access")
                 return GeminiDirectModel(config)
@@ -2251,25 +2277,39 @@ class KumbyAI(AIService):
     """Enhanced AI service with specialized pharmaceutical industry capabilities"""
     
     def __init__(self, storage_service: StorageService):
-        super().__init__(storage_service)
-        self.industry_context = {
-            "domain": "pharmaceutical",
-            "training_cutoff": "November 2023",
-            "capabilities": [
-                "regulatory_analysis",
-                "market_trends",
-                "drug_development",
-                "clinical_trials",
-                "competitive_intelligence"
-            ]
-        }
-        self.prompt_library = PromptLibrary()
+        try:
+            super().__init__(storage_service)
+            self.industry_context = {
+                "domain": "pharmaceutical",
+                "training_cutoff": "November 2023",
+                "capabilities": [
+                    "regulatory_analysis",
+                    "market_trends",
+                    "drug_development",
+                    "clinical_trials",
+                    "competitive_intelligence"
+                ]
+            }
+            self.prompt_library = PromptLibrary()
+            self.ai_enabled = True
+        except AIServiceException as e:
+            # Handle AI service initialization failure
+            logging.error(f"KumbyAI initialization failed: {e}")
+            self.storage_service = storage_service
+            self.ai_enabled = False
+            self.error_message = str(e)
+            self.industry_context = {}
+            self.prompt_library = PromptLibrary()
         
-    async def is_healthy(self) -> bool:
+    async def is_healthy(self):
         """Check if the AI service is healthy and responding."""
+        if not hasattr(self, 'ai_enabled') or not self.ai_enabled:
+            logging.error("AI service is disabled due to initialization failure")
+            return False
+            
         try:
             logging.info("Checking AI service health with test prompt")
-            test_prompt = "Test prompt to verify service health."
+            test_prompt = "Write a one-word response to confirm you're working: 'OPERATIONAL'"
             
             # Try to generate a simple response
             start_time = time.time()
@@ -2296,6 +2336,19 @@ class KumbyAI(AIService):
             # Unexpected errors
             logging.error(f"AI health check failed - unexpected error: {e}", exc_info=True)
             return False
+            
+    async def generate_custom_content(self, prompt):
+        """Generate content with AI, with fallback if AI is not available"""
+        if not hasattr(self, 'ai_enabled') or not self.ai_enabled:
+            return f"AI services are currently unavailable: {getattr(self, 'error_message', 'Unknown error')}"
+        
+        try:
+            return await self.model.generate_content(prompt)
+        except Exception as e:
+            logging.error(f"Error generating content: {e}")
+            return f"Error generating content: {str(e)}"
+
+    # Override other methods that use the AI model to check ai_enabled first
 
 class GeminiFineTunedModel(AIModelInterface):
     """Implementation of Gemini model with pharmaceutical domain fine-tuning capabilities"""

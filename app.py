@@ -26,7 +26,7 @@ from google.cloud import firestore
 from services.config_service import ConfigService
 from services.cache_service import CacheService
 from services.rate_limiting_service import RateLimitingService
-from services.storage_service import StorageService
+from services.storage_service import StorageService, StorageException
 from services.monitoring_service import MonitoringService
 from services.logging_service import LoggingService
 from newsLetter import scrape_news, RateLimitException, generate_missing_summaries, verify_database_consistency
@@ -94,7 +94,15 @@ app.secret_key = config.flask_secret_key
 
 # Initialize services
 storage_service = StorageService()
-ai_service = KumbyAI(storage_service)  # Use KumbyAI instead of AIService
+
+try:
+    ai_service = KumbyAI(storage_service)  # Use KumbyAI instead of AIService
+    logging.info("AI service initialized successfully")
+except Exception as e:
+    # Critical error but don't crash the app
+    ai_service = None
+    logging.critical(f"Fatal error starting AI service: {str(e)}")
+    # Continue without AI service - the application will have limited functionality
 
 # Custom API Error Class
 class APIError(Exception):
@@ -416,13 +424,6 @@ def health_check():
 def warmup():
     """Warmup endpoint for Cloud Run"""
     return jsonify({"status": "warmed_up"}), 200
-
-@app.route('/')
-def root():
-    """Root endpoint redirects to index page"""
-    if request.path == '/':
-        return redirect(url_for('index'))
-    return jsonify({"status": "ok"}), 200
 
 def clean_html(raw_html):
     """Sanitize HTML content for safe display"""
@@ -1450,8 +1451,9 @@ async def stream_rag_query_get():
                 try:
                     partial_response = await ai_service.get_partial_response()
                     if partial_response:
-                        # Corrected f-string
-                        yield f'data: {json.dumps({"chunk": f"\\n\\nAI service temporarily unavailable. Partial response: {partial_response}", "done": True})}\n\n'
+                        # Corrected nested f-string issue
+                        chunk_content = f"\n\nAI service temporarily unavailable. Partial response: {partial_response}"
+                        yield f'data: {json.dumps({"chunk": chunk_content, "done": True})}\n\n'
                     else:
                         # Corrected f-string
                         yield f'data: {json.dumps({"error": "AI service temporarily unavailable", "done": True})}\n\n'
@@ -1469,8 +1471,9 @@ async def stream_rag_query_get():
                 try:
                     partial_response = await ai_service.get_partial_response()
                     if partial_response:
-                        # Corrected f-string
-                        yield f'data: {json.dumps({"chunk": f"\\n\\nError occurred. Partial response: {partial_response}", "done": True})}\n\n'
+                        # Corrected nested f-string issue
+                        chunk_content = f"\n\nError occurred. Partial response: {partial_response}"
+                        yield f'data: {json.dumps({"chunk": chunk_content, "done": True})}\n\n'
                     else:
                         # Corrected f-string
                         yield f'data: {json.dumps({"error": "Error generating response", "done": True})}\n\n'
@@ -2212,6 +2215,13 @@ async def analyze_value_evidence():
 async def kumbyai_chat():
     """KumbyAI chat endpoint"""
     try:
+        # Check if AI service is available
+        if ai_service is None:
+            return jsonify({
+                'error': 'AI service is not available',
+                'success': False
+            }), 503
+            
         data = request.get_json()
         if not data or 'message' not in data:
             return jsonify({'error': 'No message provided'}), 400
@@ -2380,28 +2390,31 @@ async def get_topic_stats():
     try:
         # First try to get from storage service for enhanced statistics
         if hasattr(storage_service, 'get_topic_distribution'):
-            topic_stats = await storage_service.get_topic_distribution()
-            
-            # Format for the frontend
-            formatted_stats = []
-            for topic, stats in topic_stats.items():
-                formatted_stats.append({
-                    'topic': topic,
-                    'count': stats.get('count', 0), # Use .get() for safety
-                    'percentage': stats.get('percentage', 0.0), # Use .get() for safety
-                    # Add new fields using .get() for safe access
-                    'trend': stats.get('trend', 'stable'), 
-                    'growth_rate': stats.get('growth_rate', 0),
-                    'recent_count': stats.get('recent_count', 0) 
-                })
-            
-            # Sort by count (descending)
-            formatted_stats.sort(key=lambda x: x['count'], reverse=True)
-            
-            return jsonify({"topics": formatted_stats})
+            try:
+                topic_stats = await storage_service.get_topic_distribution()
+                
+                # Format for the frontend
+                formatted_stats = []
+                for topic, stats in topic_stats.items():
+                    formatted_stats.append({
+                        'topic': topic,
+                        'count': stats.get('count', 0), # Use .get() for safety
+                        'percentage': stats.get('percentage', 0.0), # Use .get() for safety
+                        # Add new fields using .get() for safe access
+                        'trend': stats.get('trend', 'stable'), 
+                        'growth_rate': stats.get('growth_rate', 0),
+                        'recent_count': stats.get('recent_count', 0) 
+                    })
+                
+                # Sort by count (descending)
+                formatted_stats.sort(key=lambda x: x['count'], reverse=True)
+                
+                return jsonify({"topics": formatted_stats})
+            except Exception as storage_error:
+                logging.error(f"Error getting topic distribution from storage service: {storage_error}")
+                # Continue to fallback method
         
         # Fallback to the regular topics endpoint implementation
-        # This fallback might be removed if storage_service is reliable
         from services.constants import TOPICS
         
         filename = config.articles_file_path
@@ -2420,51 +2433,62 @@ async def get_topic_stats():
                 })
             return jsonify({"topics": all_topics})
             
-        df = pd.read_csv(filename)
-        
-        # Calculate topic distribution
-        topic_counts = df['topic'].value_counts().reset_index()
-        topic_counts.columns = ['topic', 'count']
-        total_articles = len(df)
-        # Ensure division by zero doesn't occur
-        topic_counts['percentage'] = (topic_counts['count'] / max(1, total_articles) * 100).round(1)
-        
-        # Add trend, growth rate, and recent count columns (with default values)
-        topic_counts['trend'] = 'stable' 
-        topic_counts['growth_rate'] = 0
-        topic_counts['recent_count'] = 0
-        
-        # Make sure all possible topics are included
-        all_defined_topics = set(TOPICS.keys())
-        existing_topics_in_csv = set(topic_counts['topic'].tolist())
-        
-        # Add missing topics with zero counts and default trends
-        for missing_topic in all_defined_topics - existing_topics_in_csv:
-            # Create a DataFrame for the missing topic
-            missing_df = pd.DataFrame([{
-                'topic': missing_topic, 
-                'count': 0, 
-                'percentage': 0.0,
-                'trend': 'stable', 
-                'growth_rate': 0,
-                'recent_count': 0 
-            }])
-            # Concatenate using pandas.concat
-            topic_counts = pd.concat([topic_counts, missing_df], ignore_index=True)
-        
-        # Sort by count (descending)
-        topic_counts = topic_counts.sort_values('count', ascending=False)
-        
-        return jsonify({
-            "topics": topic_counts.to_dict('records')
-        })
+        try:
+            df = pd.read_csv(filename)
+            
+            # Calculate topic distribution
+            topic_counts = df['topic'].value_counts().reset_index()
+            topic_counts.columns = ['topic', 'count']
+            total_articles = len(df)
+            # Ensure division by zero doesn't occur
+            topic_counts['percentage'] = (topic_counts['count'] / max(1, total_articles) * 100).round(1)
+            
+            # Add trend, growth rate, and recent count columns (with default values)
+            topic_counts['trend'] = 'stable' 
+            topic_counts['growth_rate'] = 0
+            topic_counts['recent_count'] = 0
+            
+            # Make sure all possible topics are included
+            all_defined_topics = set(TOPICS.keys())
+            existing_topics_in_csv = set(topic_counts['topic'].tolist())
+            
+            # Add missing topics with zero counts and default trends
+            for missing_topic in all_defined_topics - existing_topics_in_csv:
+                # Create a DataFrame for the missing topic
+                missing_df = pd.DataFrame([{
+                    'topic': missing_topic, 
+                    'count': 0, 
+                    'percentage': 0.0,
+                    'trend': 'stable', 
+                    'growth_rate': 0,
+                    'recent_count': 0 
+                }])
+                # Concatenate using pandas.concat
+                topic_counts = pd.concat([topic_counts, missing_df], ignore_index=True)
+            
+            # Sort by count (descending)
+            topic_counts = topic_counts.sort_values('count', ascending=False)
+            
+            return jsonify({
+                "topics": topic_counts.to_dict('records')
+            })
+        except Exception as df_error:
+            logging.error(f"Error processing CSV file: {df_error}")
+            # Last resort fallback - return empty list with status 200 rather than 500 error
+            return jsonify({
+                "topics": [],
+                "error": "Unable to process topic statistics",
+                "status": "error"
+            })
         
     except Exception as e:
         logging.error(f"Error in get_topic_stats API: {e}")
+        # Don't return 500 status - return empty topics with an error message
         return jsonify({
             "error": str(e),
-            "topics": []
-        }), 500
+            "topics": [],
+            "status": "error"
+        })
 
 @app.route('/api/articles/<article_id>/analyze', methods=['POST'], endpoint='analyze_article_endpoint')
 @async_route
@@ -2480,6 +2504,10 @@ async def analyze_article(article_id):
     Returns structured analysis in the requested format.
     """
     try:
+        # Check if AI service is available
+        if ai_service is None:
+            raise APIError("AI service is not available", status_code=503)
+            
         # Validate request payload
         data = request.get_json() or {}
         analysis_type = data.get('analysis_type', 'general')
@@ -2493,9 +2521,7 @@ async def analyze_article(article_id):
         if not article:
             raise APIError(f"Article with id {article_id} not found", status_code=404)
             
-        # Get AI service and verify health
-        # The KumbyAI instance is named ai_service, initialized globally
-        # ai_service = ai_service # No need to reassign if already global
+        # Verify AI health
         is_healthy = await ai_service.is_healthy()
         
         if not is_healthy:
@@ -2623,64 +2649,6 @@ async def save_analysis():
         logging.error(f"Error saving analysis: {e}")
         abort(500, description="An unexpected error occurred")
 
-@app.route('/api/analysis/saved', methods=['GET'], endpoint='get_saved_analyses_endpoint')
-@async_route
-async def get_saved_analyses():
-    """Get list of saved analyses"""
-    try:
-        # Get query parameters
-        limit = request.args.get('limit', 10, type=int)
-        offset = request.args.get('offset', 0, type=int)
-        sort_by = request.args.get('sort_by', 'timestamp')
-        sort_order = request.args.get('sort_order', 'desc')
-        
-        # Validate sort parameters
-        valid_sort_fields = ['timestamp', 'analysis_type', 'confidence']
-        if sort_by not in valid_sort_fields:
-            sort_by = 'timestamp'
-            
-        valid_sort_orders = ['asc', 'desc']
-        if sort_order not in valid_sort_orders:
-            sort_order = 'desc'
-            
-        # Query saved analyses
-        query = db.collection('saved_analyses').order_by(
-            sort_by, 
-            direction=firestore.Query.DESCENDING if sort_order == 'desc' else firestore.Query.ASCENDING
-        ).limit(limit).offset(offset)
-        
-        # Execute query
-        docs = await query.get()
-        
-        # Format results
-        analyses = []
-        for doc in docs:
-            analysis_data = doc.to_dict()
-            analyses.append({
-                'id': analysis_data.get('id'),
-                'query': analysis_data.get('query'),
-                'response': analysis_data.get('response'),
-                'analysis_type': analysis_data.get('analysis_type'),
-                'confidence': analysis_data.get('confidence'),
-                'timestamp': analysis_data.get('timestamp'),
-                'sources': analysis_data.get('sources', [])
-            })
-            
-        # Get total count
-        total_query = db.collection('saved_analyses')
-        total_docs = await total_query.get()
-        total_count = len(total_docs)
-            
-        return jsonify({
-            'analyses': analyses,
-            'total': total_count,
-            'limit': limit,
-            'offset': offset
-        })
-            
-    except Exception as e:
-        logging.error(f"Error getting saved analyses: {e}")
-        abort(500, description="Failed to retrieve saved analyses")
 
 @app.route('/api/analysis/saved/<analysis_id>', methods=['GET'], endpoint='get_saved_analysis_endpoint')
 @async_route
@@ -2710,29 +2678,6 @@ async def get_saved_analysis(analysis_id):
         logging.error(f"Error getting saved analysis: {e}")
         abort(500, description="Failed to retrieve saved analysis")
 
-@app.route('/api/analysis/saved/<analysis_id>', methods=['DELETE'], endpoint='delete_saved_analysis_endpoint')
-@async_route
-async def delete_saved_analysis(analysis_id):
-    """Delete a saved analysis by ID"""
-    try:
-        # Get analysis
-        doc_ref = db.collection('saved_analyses').document(analysis_id)
-        doc = await doc_ref.get()
-        
-        if not doc.exists:
-            abort(404, description="Analysis not found")
-            
-        # Delete analysis
-        await doc_ref.delete()
-        
-        return jsonify({
-            'success': True,
-            'message': 'Analysis deleted successfully'
-        })
-            
-    except Exception as e:
-        logging.error(f"Error deleting saved analysis: {e}")
-        abort(500, description="Failed to delete saved analysis")
 
 @app.route('/api/articles/validate', methods=['POST'], endpoint='validate_articles_endpoint')
 @async_route
@@ -2821,10 +2766,109 @@ async def get_sources():
         logging.error(f"Error getting sources: {e}")
         raise APIError(f"Failed to get sources: {str(e)}")
 
+@app.route('/api/analysis/saved', methods=['GET'], endpoint='get_saved_analyses_endpoint')
+@async_route
+async def get_saved_analyses():
+    """Get list of saved analyses using StorageService"""
+    try:
+        # Get query parameters
+        limit = request.args.get('limit', 10, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        sort_by = request.args.get('sort_by', 'created_at') # Default sort by creation
+        sort_order = request.args.get('sort_order', 'desc')
+
+        # Ensure limit and offset are non-negative
+        limit = max(1, limit)
+        offset = max(0, offset)
+            
+        try:
+            # Use StorageService to get saved analyses
+            results = await storage_service.get_saved_analyses(
+                limit=limit,
+                offset=offset,
+                sort_by=sort_by,
+                sort_order=sort_order
+            )
+            
+            return jsonify(results)
+            
+        except StorageException as db_error:
+            logging.error(f"Storage service error getting saved analyses: {db_error}")
+            abort(500, description=f"Failed to retrieve saved analyses: {db_error}")
+            
+    except Exception as e:
+        logging.error(f"Error getting saved analyses: {e}", exc_info=True)
+        abort(500, description="An unexpected error occurred while retrieving saved analyses")
+
+
+
+@app.route('/api/analysis/saved/<analysis_id>', methods=['DELETE'], endpoint='delete_saved_analysis_endpoint')
+@async_route
+async def delete_saved_analysis(analysis_id):
+    """Delete a saved analysis by ID using StorageService"""
+    try:
+        if not analysis_id:
+             abort(400, description="Analysis ID is required")
+             
+        try:
+            # Use StorageService to delete the analysis
+            deleted = await storage_service.delete_saved_analysis(analysis_id)
+            
+            if not deleted:
+                # If the service returned False, it means the analysis wasn't found
+                abort(404, description="Analysis not found")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Analysis deleted successfully'
+            })
+            
+        except StorageException as db_error:
+            logging.error(f"Storage service error deleting analysis {analysis_id}: {db_error}")
+            abort(500, description=f"Failed to delete analysis {analysis_id}: {db_error}")
+            
+    except Exception as e:
+        logging.error(f"Error deleting saved analysis {analysis_id}: {e}", exc_info=True)
+        abort(500, description=f"An unexpected error occurred while deleting analysis {analysis_id}")
+
+@app.route('/api/status', methods=['GET'])
+async def get_service_status():
+    """Get the current status of app services"""
+    try:
+        status = {
+            "status": "ok",
+            "services": {
+                "api": True,
+                "storage": True,
+                "ai": ai_service is not None
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        # Check if AI is available but not healthy
+        if ai_service is not None:
+            try:
+                ai_health = await ai_service.is_healthy()
+                status["services"]["ai_healthy"] = ai_health
+                if not ai_health:
+                    status["services"]["ai_error"] = getattr(ai_service, 'error_message', 'Unknown error')
+            except Exception as e:
+                status["services"]["ai_healthy"] = False
+                status["services"]["ai_error"] = str(e)
+        
+        return jsonify(status)
+    except Exception as e:
+        logging.error(f"Error checking service status: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.utcnow().isoformat()
+        }), 500
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Newsletter Aggregator Application')
-    parser.add_argument('--port', type=int, default=5000, help='Port to run the application on')
+    parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 5000)), help='Port to run the application on')
     parser.add_argument('--import_articles', action='store_true', help='Import articles from CSV to database on startup')
     parser.add_argument('--verify_db', action='store_true', help='Verify and repair database consistency')
     args = parser.parse_args()
@@ -2862,4 +2906,18 @@ if __name__ == "__main__":
         except Exception as e:
             logging.error(f"Error importing articles: {e}")
     
-    app.run(debug=True, port=args.port)
+    # Use debug mode only in development environment
+    debug_mode = os.environ.get('FLASK_ENV', 'development').lower() != 'production'
+    logging.info(f"Starting Flask application on port {args.port} with debug={debug_mode}")
+    
+    # Log important configuration information
+    logging.info(f"Environment: {os.environ.get('FLASK_ENV', 'development')}")
+    logging.info(f"Storage backend: {os.environ.get('STORAGE_BACKEND', 'default')}")
+    logging.info(f"Using Cloud Logging: {os.environ.get('USE_CLOUD_LOGGING', 'False')}")
+    
+    # Run the app - when run directly (not through waitress/gunicorn)
+    try:
+        app.run(debug=debug_mode, host='0.0.0.0', port=args.port)
+    except Exception as e:
+        logging.critical(f"Fatal error starting the application: {e}", exc_info=True)
+        sys.exit(1)

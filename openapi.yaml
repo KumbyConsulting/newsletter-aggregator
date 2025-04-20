@@ -1,0 +1,61 @@
+swagger: '2.0'
+info:
+  title: Newsletter Aggregator API
+  description: API Gateway for Newsletter Aggregator service
+  version: 1.0.0
+schemes:
+  - https
+produces:
+  - application/json
+paths:
+  /api/**:
+    get:
+      summary: Proxy GET requests to the backend
+      operationId: proxyApiGet
+      x-google-backend:
+        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Proxy POST requests to the backend
+      operationId: proxyApiPost
+      x-google-backend:
+        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
+      responses:
+        '200':
+          description: OK
+    put:
+      summary: Proxy PUT requests to the backend
+      operationId: proxyApiPut
+      x-google-backend:
+        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Proxy DELETE requests to the backend
+      operationId: proxyApiDelete
+      x-google-backend:
+        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
+      responses:
+        '200':
+          description: OK
+  /:
+    get:
+      summary: Proxy root GET requests to the backend
+      operationId: proxyRootGet
+      x-google-backend:
+        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/
+      responses:
+        '200':
+          description: OK
+  /**:
+    get:
+      summary: Proxy all other GET requests to the backend
+      operationId: proxyOtherGet
+      x-google-backend:
+        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/${request.path.wildcard.path_to_replace}
+      responses:
+        '200':
+          description: OK 

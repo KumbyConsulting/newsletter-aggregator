@@ -7,23 +7,50 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/newsletter-frontend:v1']
 
-  # Deploy container image to Cloud Run
+  # Deploy container image to Cloud Run (without backend URL env var initially)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    id: DeployFrontend
+    entrypoint: 'bash'
     args:
-      - 'run'
-      - 'deploy'
-      - 'newsletter-frontend'
-      - '--image=gcr.io/$PROJECT_ID/newsletter-frontend:v1'
-      - '--region=us-central1'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--memory=512Mi'
-      - '--cpu=1'
-      - '--min-instances=0'
-      - '--max-instances=3'
-      - '--timeout=300s'
-      - '--set-env-vars=NEXT_PUBLIC_API_URL=https://newsletter-aggregator-857170198287.us-central1.run.app'
+      - '-c'
+      - |
+        # Deploy without the API URL first
+        gcloud run deploy newsletter-frontend \
+          --image=gcr.io/$PROJECT_ID/newsletter-frontend:v1 \
+          --region=us-central1 \
+          --platform=managed \
+          --allow-unauthenticated \
+          --memory=512Mi \
+          --cpu=1 \
+          --min-instances=0 \
+          --max-instances=3 \
+          --timeout=300s
+        
+        # Determine the correct backend URL
+        BACKEND_URL="${_API_URL}" # Default to fallback
+        if gsutil ls gs://newsletter-aggregator/gateway_url.txt 2>/dev/null; then
+          gsutil cp gs://newsletter-aggregator/gateway_url.txt /workspace/backend_url.txt
+          BACKEND_URL=$(cat /workspace/backend_url.txt)
+          echo "Using API Gateway URL from GCS"
+        else
+          echo "API Gateway URL not found, using substitution URL"
+          echo "$$BACKEND_URL" > /workspace/backend_url.txt # Write fallback URL to file
+        fi
+        echo "Backend URL determined and written to /workspace/backend_url.txt"
+
+  # Update the Cloud Run service with the correct backend URL env var
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: UpdateEnvVar
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        BACKEND_URL=$(cat /workspace/backend_url.txt)
+        echo "Updating frontend service with NEXT_PUBLIC_API_URL=$$BACKEND_URL and INTERNAL_BACKEND_URL=$$BACKEND_URL"
+        gcloud run services update newsletter-frontend \
+          --region=us-central1 \
+          --platform=managed \
+          --update-env-vars=NEXT_PUBLIC_API_URL="$$BACKEND_URL",INTERNAL_BACKEND_URL="$$BACKEND_URL"
 
   # Create a tagged production version
   - name: 'gcr.io/cloud-builders/docker'
@@ -35,4 +62,8 @@ steps:
 
 images:
   - 'gcr.io/$PROJECT_ID/newsletter-frontend:v1'
-  - 'gcr.io/$PROJECT_ID/newsletter-frontend:latest' 
+  - 'gcr.io/$PROJECT_ID/newsletter-frontend:latest'
+
+# Define substitution variables
+substitutions:
+  _API_URL: "https://newsletter-aggregator-857170198287.us-central1.run.app" 

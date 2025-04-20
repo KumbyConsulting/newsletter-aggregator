@@ -25,8 +25,9 @@ steps:
       - '--timeout=600s'
       - '--cpu-boost'
       - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
-      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET_NAME=newsletter-aggregator,USE_GCS_BACKUP=true,USE_VERTEX_AI=true,USE_CLOUD_LOGGING=true,STORAGE_BACKEND=firestore,FLASK_ENV=production,USE_SECRET_MANAGER=true,SKIP_CHROMADB_INIT=true'
+      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET_NAME=newsletter-aggregator,USE_GCS_BACKUP=true,USE_VERTEX_AI=true,USE_CLOUD_LOGGING=true,STORAGE_BACKEND=firestore,FLASK_ENV=production,USE_SECRET_MANAGER=true,SKIP_CHROMADB_INIT=true,API_GATEWAY_ENABLED=true'
       - '--port=8080'
+      - '--cpu-throttling'
 
   # Create a tagged production version
   - name: 'gcr.io/cloud-builders/docker'
@@ -35,6 +36,106 @@ steps:
   # Push the latest tag
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:latest']
+
+  # Create a service account for API Gateway if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if ! gcloud iam service-accounts describe newsletter-aggregator-sa@$PROJECT_ID.iam.gserviceaccount.com 2>/dev/null; then
+          gcloud iam service-accounts create newsletter-aggregator-sa \
+            --display-name="Newsletter Aggregator Service Account"
+        fi
+        # Grant the service account permission to invoke Cloud Run
+        gcloud run services add-iam-policy-binding newsletter-aggregator \
+          --member="serviceAccount:newsletter-aggregator-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+          --role="roles/run.invoker" \
+          --region=us-central1
+
+  # Get the project number and update the OpenAPI spec
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+        sed -i "s/SERVICE_PROJECT_NUMBER/$$PROJECT_NUMBER/g" openapi.yaml
+
+  # Create API Gateway API if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if ! gcloud api-gateway apis describe newsletter-aggregator-api --project=$PROJECT_ID 2>/dev/null; then
+          echo "Creating API Gateway API: newsletter-aggregator-api"
+          gcloud api-gateway apis create newsletter-aggregator-api \
+            --project=$PROJECT_ID
+        else
+          echo "API Gateway API newsletter-aggregator-api already exists."
+        fi
+
+  # Create API Gateway Config if it doesn't exist
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        # NOTE: API Configs are immutable. If the spec changes, you need a new config name (e.g., v2).
+        # This check prevents errors on reruns but won't update an existing config.
+        if ! gcloud api-gateway api-configs describe newsletter-aggregator-config-v1 --api=newsletter-aggregator-api --project=$PROJECT_ID 2>/dev/null; then
+          echo "Creating API Gateway Config: newsletter-aggregator-config-v1"
+          gcloud api-gateway api-configs create newsletter-aggregator-config-v1 \
+            --api=newsletter-aggregator-api \
+            --openapi-spec=openapi.yaml \
+            --project=$PROJECT_ID \
+            --backend-auth-service-account=newsletter-aggregator-sa@$PROJECT_ID.iam.gserviceaccount.com
+        else
+          echo "API Gateway Config newsletter-aggregator-config-v1 already exists."
+        fi
+
+  # Create or update API Gateway
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if gcloud api-gateway gateways describe newsletter-aggregator-gateway --location=us-central1 --project=$PROJECT_ID 2>/dev/null; then
+          echo "Updating existing API Gateway..."
+          gcloud api-gateway gateways update newsletter-aggregator-gateway \
+            --api=newsletter-aggregator-api \
+            --api-config=newsletter-aggregator-config-v1 \
+            --location=us-central1 \
+            --project=$PROJECT_ID
+        else
+          echo "Creating new API Gateway..."
+          gcloud api-gateway gateways create newsletter-aggregator-gateway \
+            --api=newsletter-aggregator-api \
+            --api-config=newsletter-aggregator-config-v1 \
+            --location=us-central1 \
+            --project=$PROJECT_ID
+        fi
+        
+        echo "API Gateway deployment complete. Fetching URL..."
+        GATEWAY_URL=$(gcloud api-gateway gateways describe newsletter-aggregator-gateway --location=us-central1 --project=$PROJECT_ID --format='value(defaultHostname)')
+        
+        # Ensure the URL is not empty before proceeding
+        if [ -z "$$GATEWAY_URL" ]; then
+          echo "Error: Failed to retrieve Gateway URL." >&2
+          exit 1
+        fi
+
+        # Prepend https://
+        FULL_GATEWAY_URL="https://$$GATEWAY_URL"
+        
+        echo "Gateway URL retrieved: $$FULL_GATEWAY_URL"
+        
+        # Store the full URL in GCS for the frontend build
+        echo "Storing Gateway URL in gs://newsletter-aggregator/gateway_url.txt"
+        echo "$$FULL_GATEWAY_URL" | gsutil cp - gs://newsletter-aggregator/gateway_url.txt
+        
+        echo "Gateway URL successfully stored."
 
 images:
   - 'gcr.io/$PROJECT_ID/newsletter-aggregator:v1'

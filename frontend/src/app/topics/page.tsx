@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { getTopicStats, TopicStats } from '@/app/services/api';
+import { getTopicStats, TopicStats } from '@/services/api';
 import {
   Card,
   Row,

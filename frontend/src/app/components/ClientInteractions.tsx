@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button, notification, Space, Alert, Progress, Typography, App, message as staticMessage } from 'antd';
 import { SyncOutlined, CheckCircleOutlined, CloseCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { startUpdate, getUpdateStatus, pollUpdateStatus, clearCache } from '@/app/services/api';
+import { startUpdate, getUpdateStatus, pollUpdateStatus, clearCache } from '@/services/api';
 import { UpdateStatus, ApiErrorResponse } from '@/types';
 import React from 'react';
 

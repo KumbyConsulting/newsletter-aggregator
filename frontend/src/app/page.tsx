@@ -37,7 +37,7 @@ import {
   getTopicStats, 
   Article as ApiArticle,
   mapCoreToArticle
-} from '@/app/services/api';
+} from '@/services/api';
 import { Article, ArticlesApiResponse, TopicStat, TopicsApiResponse, ApiErrorResponse } from '@/types';
 
 // Import placeholder components (we'll create/update these next)

@@ -156,6 +156,7 @@ class ConfigService:
         self.log_format = self.settings.LOG_FORMAT
         self.use_cloud_logging = self.settings.USE_CLOUD_LOGGING
         self.gcp_project_id = self.settings.GCP_PROJECT_ID
+        self.gcp_region = self.settings.GCP_REGION
         
         self.rss_feeds_json = self.settings.RSS_FEEDS_JSON
         self.feed_update_interval = self.settings.FEED_UPDATE_INTERVAL

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Article } from '@/types';
 import isEqual from 'lodash/isEqual';
-import { Article as CoreArticle } from '@/app/services/api';
+import { Article as CoreArticle } from '@/services/api';
 
 /**
  * Hook to ensure articles are synced with backend database

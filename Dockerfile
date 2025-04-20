@@ -19,7 +19,7 @@ ENV SKIP_CHROMADB_INIT=true
 RUN useradd -m appuser
 
 # Create simple startup script for quick start
-RUN echo '#!/bin/bash\necho "Starting app on port $PORT"\ncd /app && python start.py' > /app/startup.sh && \
+RUN echo '#!/bin/bash\necho "Starting app on port $PORT"\nexport PORT=$PORT\ncd /app && exec python start.py' > /app/startup.sh && \
     chmod +x /app/startup.sh
 
 # Copy the application code last to minimize rebuilds
