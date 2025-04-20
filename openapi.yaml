@@ -7,6 +7,9 @@ schemes:
   - https
 produces:
   - application/json
+x-google-endpoints:
+  - name: ${GATEWAY_URL}
+    allowCors: true
 paths:
   /api/**:
     get:
@@ -58,4 +61,31 @@ paths:
         address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/${request.path.wildcard.path_to_replace}
       responses:
         '200':
-          description: OK 
+          description: OK
+  /api/{proxy+}:
+    options:
+      summary: CORS support
+      description: Enable CORS by returning correct headers
+      operationId: corsSupport
+      x-google-backend:
+        address: ${BACKEND_URL}
+        path_translation: APPEND_PATH_TO_ADDRESS
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+              description: Headers allowed in CORS requests
+    x-google-backend:
+      address: ${BACKEND_URL}
+      path_translation: APPEND_PATH_TO_ADDRESS 

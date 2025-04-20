@@ -83,7 +83,6 @@ steps:
       - '-c'
       - |
         # NOTE: API Configs are immutable. If the spec changes, you need a new config name (e.g., v2).
-        # This check prevents errors on reruns but won't update an existing config.
         if ! gcloud api-gateway api-configs describe newsletter-aggregator-config-v1 --api=newsletter-aggregator-api --project=$PROJECT_ID 2>/dev/null; then
           echo "Creating API Gateway Config: newsletter-aggregator-config-v1"
           gcloud api-gateway api-configs create newsletter-aggregator-config-v1 \
@@ -95,7 +94,7 @@ steps:
           echo "API Gateway Config newsletter-aggregator-config-v1 already exists."
         fi
 
-  # Create or update API Gateway
+  # Create or update API Gateway and store URL
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -120,22 +119,48 @@ steps:
         echo "API Gateway deployment complete. Fetching URL..."
         GATEWAY_URL=$(gcloud api-gateway gateways describe newsletter-aggregator-gateway --location=us-central1 --project=$PROJECT_ID --format='value(defaultHostname)')
         
-        # Ensure the URL is not empty before proceeding
         if [ -z "$$GATEWAY_URL" ]; then
           echo "Error: Failed to retrieve Gateway URL." >&2
           exit 1
         fi
 
-        # Prepend https://
         FULL_GATEWAY_URL="https://$$GATEWAY_URL"
+        echo "Gateway URL: $$FULL_GATEWAY_URL"
         
-        echo "Gateway URL retrieved: $$FULL_GATEWAY_URL"
+        # Store the URL for frontend build
+        echo "$$FULL_GATEWAY_URL" > /workspace/gateway_url.txt
+        echo "NEXT_PUBLIC_API_GATEWAY_URL=$$FULL_GATEWAY_URL" > /workspace/frontend/.env.production
+
+  # Build and deploy frontend
+  - name: 'node:18'
+    dir: 'frontend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "Installing frontend dependencies..."
+        npm install
+        echo "Building frontend..."
+        npm run build
         
-        # Store the full URL in GCS for the frontend build
-        echo "Storing Gateway URL in gs://newsletter-aggregator/gateway_url.txt"
-        echo "$$FULL_GATEWAY_URL" | gsutil cp - gs://newsletter-aggregator/gateway_url.txt
-        
-        echo "Gateway URL successfully stored."
+  # Deploy frontend to Cloud Storage (optional, if you're using GCS for static hosting)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    dir: 'frontend'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        if gsutil ls gs://newsletter-aggregator-frontend 2>/dev/null; then
+          echo "Deploying frontend to Cloud Storage..."
+          gsutil -m cp -r .next/static/* gs://newsletter-aggregator-frontend/static/
+          gsutil -m cp -r public/* gs://newsletter-aggregator-frontend/public/
+        else
+          echo "Creating frontend bucket and deploying..."
+          gsutil mb -l us-central1 gs://newsletter-aggregator-frontend
+          gsutil web set -m index.html gs://newsletter-aggregator-frontend
+          gsutil -m cp -r .next/static/* gs://newsletter-aggregator-frontend/static/
+          gsutil -m cp -r public/* gs://newsletter-aggregator-frontend/public/
+        fi
 
 images:
   - 'gcr.io/$PROJECT_ID/newsletter-aggregator:v1'

@@ -22,13 +22,24 @@ const nextConfig: NextConfig = {
     return config;
   },
   async rewrites() {
-    const apiUrl = process.env.API_URL || 'http://localhost:5000';
+    // Prioritize API Gateway URL, fallback to direct API URL, then localhost
+    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    
+    const targetUrl = apiGatewayUrl || apiUrl;
+    console.log('API Target URL:', targetUrl); // Debug log
+    
     return [
       {
         source: '/api/:path*',
-        destination: `${apiUrl}/api/:path*`,
-      },
+        destination: `${targetUrl}/api/:path*`,
+      }
     ];
+  },
+  // Add env configuration
+  env: {
+    NEXT_PUBLIC_API_GATEWAY_URL: process.env.NEXT_PUBLIC_API_GATEWAY_URL,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
   },
 };
 
