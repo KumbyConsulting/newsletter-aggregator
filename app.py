@@ -2361,27 +2361,19 @@ async def admin_cleanup_duplicates():
             'success': False
         }), 500
 
-# Enable CORS for all routes
 @app.after_request
 def add_cors_headers(response):
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Cache-Control', 'no-cache, no-store, must-revalidate')
-    response.headers.add('Pragma', 'no-cache')
-    response.headers.add('Expires', '0')
-    response.headers['Cache-Control'] = 'public, max-age=0'
-    return response
-
-# Add after the app initialization
-@app.after_request
-def add_header(response):
-    """Add headers to both force latest IE rendering engine or Chrome Frame,
-    and also to cache the rendered page for 10 minutes."""
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    response.headers["Pragma"] = "no-cache"
-    response.headers["Expires"] = "0"
-    response.headers['Cache-Control'] = 'public, max-age=0'
+    """Add CORS headers to all responses"""
+    # Allow requests from your Vercel frontend domain
+    response.headers['Access-Control-Allow-Origin'] = 'https://newsletter-aggregator-kvpb.vercel.app'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Max-Age'] = '3600'  # Cache preflight requests for 1 hour
+    
+    # Handle OPTIONS request
+    if request.method == 'OPTIONS':
+        response.status_code = 204
     return response
 
 @app.route('/api/topics/stats', methods=['GET'])

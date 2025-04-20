@@ -3,89 +3,608 @@ info:
   title: Newsletter Aggregator API
   description: API Gateway for Newsletter Aggregator service
   version: 1.0.0
+host: newsletter-aggregator-api-1v5ua4g6l66k7.apigateway.newsletter-450510.cloud.goog
 schemes:
   - https
 produces:
   - application/json
 x-google-endpoints:
-  - name: ${GATEWAY_URL}
+  - name: newsletter-aggregator-api-1v5ua4g6l66k7.apigateway.newsletter-450510.cloud.goog
     allowCors: true
+
 paths:
-  /api/**:
+  # Update Operations
+  /api/update/status:
     get:
-      summary: Proxy GET requests to the backend
-      operationId: proxyApiGet
+      summary: Get update status
+      operationId: getUpdateStatus
       x-google-backend:
-        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
       responses:
         '200':
           description: OK
-    post:
-      summary: Proxy POST requests to the backend
-      operationId: proxyApiPost
-      x-google-backend:
-        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
-      responses:
-        '200':
-          description: OK
-    put:
-      summary: Proxy PUT requests to the backend
-      operationId: proxyApiPut
-      x-google-backend:
-        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
-      responses:
-        '200':
-          description: OK
-    delete:
-      summary: Proxy DELETE requests to the backend
-      operationId: proxyApiDelete
-      x-google-backend:
-        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/api/${request.path.wildcard.path_to_replace}
-      responses:
-        '200':
-          description: OK
-  /:
-    get:
-      summary: Proxy root GET requests to the backend
-      operationId: proxyRootGet
-      x-google-backend:
-        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/
-      responses:
-        '200':
-          description: OK
-  /**:
-    get:
-      summary: Proxy all other GET requests to the backend
-      operationId: proxyOtherGet
-      x-google-backend:
-        address: https://newsletter-aggregator-SERVICE_PROJECT_NUMBER.a.run.app/${request.path.wildcard.path_to_replace}
-      responses:
-        '200':
-          description: OK
-  /api/{proxy+}:
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
     options:
       summary: CORS support
-      description: Enable CORS by returning correct headers
-      operationId: corsSupport
+      operationId: corsUpdateStatus
       x-google-backend:
-        address: ${BACKEND_URL}
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
       responses:
         '204':
           description: CORS headers returned
           headers:
             Access-Control-Allow-Origin:
-              schema:
-                type: string
+              type: string
               description: Origins allowed to make requests
             Access-Control-Allow-Methods:
-              schema:
-                type: string
+              type: string
               description: Methods allowed for CORS requests
             Access-Control-Allow-Headers:
-              schema:
-                type: string
+              type: string
               description: Headers allowed in CORS requests
-    x-google-backend:
-      address: ${BACKEND_URL}
-      path_translation: APPEND_PATH_TO_ADDRESS 
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/update/start:
+    post:
+      summary: Start update process
+      operationId: startUpdate
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+        '403':
+          description: Forbidden
+        '404':
+          description: Not Found
+        '500':
+          description: Internal Server Error
+    options:
+      summary: CORS support
+      operationId: corsStartUpdate
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/update/cancel:
+    post:
+      summary: Cancel update process
+      operationId: cancelUpdate
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsCancelUpdate
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  # Article Operations
+  /api/articles:
+    get:
+      summary: Get articles with filtering and pagination
+      operationId: getArticles
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsGetArticles
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/articles/validate:
+    post:
+      summary: Validate article IDs
+      operationId: validateArticles
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsValidateArticles
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  # RAG Operations
+  /api/rag:
+    post:
+      summary: Submit RAG query
+      operationId: submitRagQuery
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 60.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsSubmitRagQuery
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/rag/stream:
+    post:
+      summary: Stream RAG query
+      operationId: streamRagQuery
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 60.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    get:
+      summary: Stream RAG query (GET)
+      operationId: streamRagQueryGet
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 60.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsStreamRagQuery
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/rag/history:
+    get:
+      summary: Get RAG history
+      operationId: getRagHistory
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    delete:
+      summary: Clear RAG history
+      operationId: clearRagHistory
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsRagHistory
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  # Topic and Source Operations
+  /api/topics:
+    get:
+      summary: Get available topics
+      operationId: getTopics
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsGetTopics
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/topics/stats:
+    get:
+      summary: Get topic statistics
+      operationId: getTopicStats
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsGetTopicStats
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/sources:
+    get:
+      summary: Get sources with counts
+      operationId: getSources
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsGetSources
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
+
+  /api/search/suggestions:
+    get:
+      summary: Get search suggestions
+      operationId: getSearchSuggestions
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '200':
+          description: OK
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+    options:
+      summary: CORS support
+      operationId: corsGetSearchSuggestions
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        path_translation: APPEND_PATH_TO_ADDRESS
+        deadline: 30.0
+      responses:
+        '204':
+          description: CORS headers returned
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached 
