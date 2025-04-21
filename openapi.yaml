@@ -874,5 +874,13 @@ x-google-allow-cors:
     - Content-Type
     - Authorization
     - x-api-key
+    - Origin
+    - Accept
+    - Access-Control-Request-Method
+    - Access-Control-Request-Headers
+  expose-headers:
+    - Content-Type
+    - Authorization
+    - x-api-key
   allow-credentials: true
   max-age: 3600 

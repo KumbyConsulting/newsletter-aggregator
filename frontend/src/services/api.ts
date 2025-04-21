@@ -260,6 +260,7 @@ async function apiRequest<T>(
   const headers = {
     'Content-Type': 'application/json',
     'x-api-key': API_KEY,
+    'Accept': 'application/json',
     ...options.headers,
   };
 
@@ -274,7 +275,8 @@ async function apiRequest<T>(
         const response = await fetch(url.toString(), {
           ...options,
           headers,
-          credentials: 'include', // Include credentials as specified in OpenAPI CORS config
+          mode: 'cors', // Explicitly set CORS mode
+          credentials: 'omit', // Don't send credentials since we're using API key
           signal: controller.signal,
         });
         
@@ -290,6 +292,13 @@ async function apiRequest<T>(
               error: `Server error (${response.status})`,
               status_code: response.status
             };
+          }
+          
+          // Enhanced error handling for CORS and auth issues
+          if (response.status === 403) {
+            errorData.error = 'API key invalid or missing';
+          } else if (response.status === 0 || !response.status) {
+            errorData.error = 'Network error - CORS or connectivity issue';
           }
           
           const error = new Error(errorData.error || `API request failed with status ${response.status}`);
