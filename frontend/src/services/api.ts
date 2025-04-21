@@ -198,6 +198,45 @@ class APICache {
 // Initialize the API cache
 const apiCache = new APICache();
 
+// Add retry utility
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const retryWithBackoff = async <T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  initialDelay = 1000,
+  maxDelay = 10000,
+  factor = 2
+): Promise<T> => {
+  let attempt = 0;
+  let delay = initialDelay;
+
+  while (attempt < retries) {
+    try {
+      return await fn();
+    } catch (error) {
+      attempt++;
+      if (attempt === retries) {
+        throw error;
+      }
+
+      // Only retry on timeout or network errors
+      if (error instanceof Error && 
+          !((error as any).isTimeout || 
+            error.message.includes('Failed to fetch') ||
+            error.message.includes('NetworkError'))) {
+        throw error;
+      }
+
+      console.warn(`Attempt ${attempt} failed, retrying in ${delay}ms...`);
+      await wait(delay);
+      delay = Math.min(delay * factor, maxDelay);
+    }
+  }
+
+  throw new Error('Max retries reached');
+};
+
 /**
  * Make a request to the API with the configured base URL
  * Enhanced with caching and better error handling
@@ -207,114 +246,78 @@ async function apiRequest<T>(
   options: RequestInit = {}, 
   cacheKey: string = '', 
   cacheTTL: number = 60000,
-  timeoutMs: number = 30000 // Allow configurable timeout
+  timeoutMs: number = 30000,
+  retryConfig = {
+    retries: 3,
+    initialDelay: 1000,
+    maxDelay: 10000,
+    factor: 2
+  }
 ): Promise<T> {
-  // Add API key to the endpoint URL
-  const url = new URL(`${API_BASE_URL}${endpoint}`);
-  url.searchParams.append('key', API_KEY);
-  const fullCacheKey = cacheKey || endpoint;
-  
-  // Check if we have a valid cached response
-  const cachedData = apiCache.get<T>(fullCacheKey);
-  if (cachedData) {
-    return cachedData;
+  // Check cache first
+  if (cacheKey && !options.method) {
+    const cachedData = apiCache.get<T>(cacheKey);
+    if (cachedData) return cachedData;
   }
-  
-  // Check if we have a pending request for this endpoint
-  if (apiCache.isPending(fullCacheKey)) {
-    return apiCache.getPending<T>(fullCacheKey) as Promise<T>;
+
+  // If there's a pending request for this cache key, return its promise
+  if (cacheKey && apiCache.isPending(cacheKey)) {
+    const pendingRequest = apiCache.getPending<T>(cacheKey);
+    if (pendingRequest) return pendingRequest;
   }
-  
-  // Use shorter timeout for update status endpoint to fail faster on polling
-  const actualTimeout = endpoint === '/update/status' ? 10000 : timeoutMs;
-  
-  // Create the request promise
-  const requestPromise = (async () => {
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const fetchWithTimeout = async (): Promise<T> => {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(new Error('TimeoutError: signal timed out')), actualTimeout);
-      
-      const response = await fetch(url.toString(), {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         headers: {
           'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
           ...options.headers,
         },
-        // Use abort controller instead of timeout signal for better error handling
         signal: controller.signal,
       });
-      
-      // Clear the timeout
-      clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
-        let errorData: ApiErrorResponse;
-        
-        try {
-          errorData = await response.json();
-        } catch (e) {
-          // If we can't parse JSON, create a generic error
-          errorData = {
-            error: `Server error (${response.status})`,
-            status_code: response.status
-          };
-        }
-        
-        // Create a meaningful error with status code and normalized properties
-        const error = new Error(errorData.error || `API request failed with status ${response.status}`);
-        (error as any).statusCode = response.status;
-        (error as any).apiError = errorData;
-        
-        // Add standard fields to ensure consistent error handling
-        if (errorData.error) {
-          (error as any).error = errorData.error;
-        }
-        if (errorData.status_code) {
-          (error as any).status_code = errorData.status_code;
-        }
-        
-        // Add deployment environment to error for debugging
-        (error as any).environment = process.env.NODE_ENV || 'unknown';
-        
-        throw error;
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
+
+      const data = await response.json();
       
-      // For empty responses or non-JSON responses, handle gracefully
-      if (response.status === 204) {
-        return {} as T; // Return empty object for no content
+      // Cache successful responses if cache key provided
+      if (cacheKey && !options.method) {
+        apiCache.set(cacheKey, data, cacheTTL);
       }
-      
-      let data: T;
-      try {
-        data = await response.json() as T;
-      } catch (e) {
-        console.warn('Invalid JSON response from API:', e);
-        data = {} as T; // Return empty object for parsing errors
-      }
-      
-      // Cache the successful response
-      apiCache.set<T>(fullCacheKey, data, cacheTTL);
-      
-      return data;
+
+      return data as T;
     } catch (error) {
-      console.error(`API Error (${endpoint}):`, error);
-      
-      // Enhance error object with more context
-      if (error instanceof Error) {
-        if (error.name === 'AbortError' || error.message.includes('timed out')) {
-          const timeoutError = new Error('TimeoutError: signal timed out');
-          (timeoutError as any).isTimeout = true;
-          throw timeoutError;
-        }
+      if (error.name === 'AbortError') {
+        throw new Error('TimeoutError: signal timed out');
       }
-      
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
-  })();
-  
-  // Store the pending request
-  apiCache.setPending<T>(fullCacheKey, requestPromise);
-  
+  };
+
+  // Create the request promise with retry logic
+  const requestPromise = retryWithBackoff(
+    fetchWithTimeout,
+    retryConfig.retries,
+    retryConfig.initialDelay,
+    retryConfig.maxDelay,
+    retryConfig.factor
+  );
+
+  // Store the promise if we have a cache key
+  if (cacheKey) {
+    apiCache.setPending(cacheKey, requestPromise);
+  }
+
   return requestPromise;
 }
 
@@ -343,32 +346,20 @@ export async function getTopicStats(): Promise<{ topics: TopicStats[] }> {
  * Get update status
  */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
-  try {
-    // Use a shorter timeout for status checks
-    return await apiRequest('/update/status', {}, '', 0, 10000);
-  } catch (error) {
-    // Provide a fallback status when server is unreachable
-    if (error instanceof Error && 
-        ((error as any).isTimeout || 
-         (error as any).statusCode >= 500 || 
-         error.message.includes('timed out'))) {
-      console.warn('Server unavailable during status check, using fallback status');
-      return {
-        in_progress: false,
-        last_update: null,
-        status: 'unknown',
-        progress: 0,
-        message: 'Unable to connect to server',
-        error: 'Connection error',
-        sources_processed: 0,
-        total_sources: 0,
-        articles_found: 0,
-        estimated_completion_time: null,
-        can_be_cancelled: false
-      };
+  // Use a shorter timeout for status checks
+  return apiRequest<UpdateStatus>(
+    '/update/status',
+    {},
+    'update_status',
+    5000, // Cache for 5 seconds
+    10000, // Timeout after 10 seconds
+    {
+      retries: 2,
+      initialDelay: 500,
+      maxDelay: 2000,
+      factor: 2
     }
-    throw error;
-  }
+  );
 }
 
 /**
@@ -413,49 +404,36 @@ export async function startUpdate(): Promise<{ success: boolean; message: string
  */
 export async function pollUpdateStatus(
   initialIntervalMs: number = 2000,
-  maxIntervalMs: number = 15000,
+  maxIntervalMs: number = 10000, // Reduced from 15000
   maxAttempts: number = 100,
   stopCondition: (status: UpdateStatus) => boolean = (status) => !status.in_progress
 ): Promise<UpdateStatus> {
   let attempts = 0;
   let currentInterval = initialIntervalMs;
-  
+
   while (attempts < maxAttempts) {
-    attempts++;
-    
     try {
       const status = await getUpdateStatus();
       
       if (stopCondition(status)) {
         return status;
       }
-      
-      // Calculate next interval using exponential backoff with progress-based adjustment
-      // As progress increases, polling frequency decreases
-      if (status.progress) {
-        // Adjust interval based on progress: higher progress = longer interval
-        const progressFactor = Math.min(1, status.progress / 100);
-        currentInterval = Math.min(
-          maxIntervalMs,
-          initialIntervalMs * (1 + progressFactor * 3)
-        );
-      } else {
-        // Standard exponential backoff if no progress info
-        currentInterval = Math.min(
-          maxIntervalMs,
-          currentInterval * 1.2
-        );
-      }
-      
-      // Wait for the calculated interval
-      await new Promise(resolve => setTimeout(resolve, currentInterval));
+
+      // Exponential backoff with max limit
+      currentInterval = Math.min(currentInterval * 1.5, maxIntervalMs);
+      await wait(currentInterval);
+      attempts++;
     } catch (error) {
-      console.error('Error polling update status:', error);
-      // On error, wait a bit longer before retrying
-      await new Promise(resolve => setTimeout(resolve, currentInterval * 2));
+      if (error.message.includes('TimeoutError')) {
+        // On timeout, use a shorter interval for the next attempt
+        currentInterval = Math.max(initialIntervalMs, currentInterval / 2);
+        await wait(500); // Short delay before retry
+      } else {
+        throw error;
+      }
     }
   }
-  
+
   throw new Error('Max polling attempts reached');
 }
 
