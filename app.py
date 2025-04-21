@@ -2370,7 +2370,8 @@ def add_cors_headers(response):
     # List of allowed origins
     allowed_origins = [
         'https://newsletter-aggregator-kvpb.vercel.app',
-        'https://newsletter-aggregator-knap-b125yaqk7-kumbyconsultings-projects.vercel.app'
+        'https://newsletter-aggregator-knap-b125yaqk7-kumbyconsultings-projects.vercel.app',
+        'https://newsletter-aggregator-knap.vercel.app'  # Added new Vercel domain
     ]
     
     # If the request origin is in our list of allowed origins, set it in the response

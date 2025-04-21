@@ -7,6 +7,7 @@
 // Configure API base URL to use Next.js API routes
 // This changes from external calls to internal Next.js API routes
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'; // Use environment variable, fallback to relative /api if not set
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'AIzaSyB057kXlCQSfbKmw8Pinuu4JKxjaRave4k';
 
 // Add throttling and caching utilities
 import debounce from 'lodash/debounce';
@@ -208,7 +209,9 @@ async function apiRequest<T>(
   cacheTTL: number = 60000,
   timeoutMs: number = 30000 // Allow configurable timeout
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Add API key to the endpoint URL
+  const url = new URL(`${API_BASE_URL}${endpoint}`);
+  url.searchParams.append('key', API_KEY);
   const fullCacheKey = cacheKey || endpoint;
   
   // Check if we have a valid cached response
@@ -231,7 +234,7 @@ async function apiRequest<T>(
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(new Error('TimeoutError: signal timed out')), actualTimeout);
       
-      const response = await fetch(url, {
+      const response = await fetch(url.toString(), {
         ...options,
         headers: {
           'Content-Type': 'application/json',
@@ -263,7 +266,6 @@ async function apiRequest<T>(
         (error as any).apiError = errorData;
         
         // Add standard fields to ensure consistent error handling
-        // This helps when the error is caught in different parts of the application
         if (errorData.error) {
           (error as any).error = errorData.error;
         }
@@ -629,7 +631,10 @@ export async function streamRagQuery(
   onChunk: (chunk: string) => void
 ): Promise<void> {
   try {
-    const response = await fetch('/api/rag/stream', {
+    const url = new URL(`${API_BASE_URL}/rag/stream`);
+    url.searchParams.append('key', API_KEY);
+
+    const response = await fetch(url.toString(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(query),
