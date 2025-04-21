@@ -2364,12 +2364,22 @@ async def admin_cleanup_duplicates():
 @app.after_request
 def add_cors_headers(response):
     """Add CORS headers to all responses"""
-    # Allow requests from your Vercel frontend domain
-    response.headers['Access-Control-Allow-Origin'] = 'https://newsletter-aggregator-kvpb.vercel.app'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
-    response.headers['Access-Control-Allow-Credentials'] = 'true'
-    response.headers['Access-Control-Max-Age'] = '3600'  # Cache preflight requests for 1 hour
+    # Get the origin from the request
+    origin = request.headers.get('Origin')
+    
+    # List of allowed origins
+    allowed_origins = [
+        'https://newsletter-aggregator-kvpb.vercel.app',
+        'https://newsletter-aggregator-knap-b125yaqk7-kumbyconsultings-projects.vercel.app'
+    ]
+    
+    # If the request origin is in our list of allowed origins, set it in the response
+    if origin in allowed_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Max-Age'] = '3600'  # Cache preflight requests for 1 hour
     
     # Handle OPTIONS request
     if request.method == 'OPTIONS':
