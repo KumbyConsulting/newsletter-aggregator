@@ -739,19 +739,18 @@ def async_update(app_context):
             asyncio.set_event_loop(loop)
             
             try:
-                # Run the update process
-                scrape_coro = scrape_news(status_callback=update_callback)
-                success = loop.run_until_complete(scrape_coro)
+                # Run the update process with a fresh coroutine
+                success = loop.run_until_complete(scrape_news(status_callback=update_callback))
                 
                 if success:
-                    # Verify database consistency
+                    # Verify database consistency with a fresh coroutine
                     update_status_safely({
                         "progress": 85,
                         "message": "Verifying database consistency..."
                     })
                     
-                    verify_coro = verify_database_consistency()
-                    verify_success, stats = loop.run_until_complete(verify_coro)
+                    # Create a new coroutine for verification
+                    verify_success, stats = loop.run_until_complete(verify_database_consistency())
                     
                     if verify_success:
                         if stats["repaired"] > 0:
