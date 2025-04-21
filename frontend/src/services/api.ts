@@ -4,10 +4,10 @@
  * Improved caching and throttling to reduce unnecessary API calls
  */
 
-// Configure API base URL to use Next.js API routes
-// This changes from external calls to internal Next.js API routes
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api'; // Use environment variable, fallback to relative /api if not set
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'AIzaSyB057kXlCQSfbKmw8Pinuu4JKxjaRave4k';
+// Configure API base URL to use API Gateway
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'https://newsletter-aggregator-gateway-axs105xr.uc.gateway.dev';
+const API_BASE_URL = `${API_GATEWAY_URL}/api`; // Append /api to match OpenAPI spec paths
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 // Add throttling and caching utilities
 import debounce from 'lodash/debounce';
@@ -255,18 +255,14 @@ async function apiRequest<T>(
   }
 ): Promise<T> {
   const url = new URL(`${API_BASE_URL}${endpoint}`);
-  url.searchParams.append('key', API_KEY);
-  const fullCacheKey = cacheKey || endpoint;
   
-  const cachedData = apiCache.get<T>(fullCacheKey);
-  if (cachedData) {
-    return cachedData;
-  }
-  
-  if (apiCache.isPending(fullCacheKey)) {
-    return apiCache.getPending<T>(fullCacheKey) as Promise<T>;
-  }
-  
+  // Set up headers according to OpenAPI spec
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-api-key': API_KEY,
+    ...options.headers,
+  };
+
   const actualTimeout = endpoint === '/update/status' ? 10000 : timeoutMs;
   
   const requestPromise = retryWithBackoff(
@@ -277,10 +273,8 @@ async function apiRequest<T>(
       try {
         const response = await fetch(url.toString(), {
           ...options,
-          headers: {
-            'Content-Type': 'application/json',
-            ...options.headers,
-          },
+          headers,
+          credentials: 'include', // Include credentials as specified in OpenAPI CORS config
           signal: controller.signal,
         });
         
@@ -324,7 +318,7 @@ async function apiRequest<T>(
           data = {} as T;
         }
         
-        apiCache.set<T>(fullCacheKey, data, cacheTTL);
+        apiCache.set<T>(cacheKey, data, cacheTTL);
         
         return data;
       } finally {
@@ -337,7 +331,7 @@ async function apiRequest<T>(
     retryConfig.factor
   );
   
-  apiCache.setPending<T>(fullCacheKey, requestPromise);
+  apiCache.setPending<T>(cacheKey, requestPromise);
   
   return requestPromise;
 }
