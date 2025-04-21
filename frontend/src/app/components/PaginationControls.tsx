@@ -36,26 +36,38 @@ export default function PaginationControls({
   }, [currentPage, totalPages, totalItems, itemsPerPage, disabled]);
 
   const handlePageChange = useCallback((page: number, pageSize?: number) => {
-    console.log(`Page change requested: ${page}, pageSize: ${pageSize || itemsPerPage}`);
-    
-    // Create a new URLSearchParams object from the current search params
-    const current = new URLSearchParams(Array.from(searchParams.entries()));
-    
-    // Update the page parameter
-    current.set('page', page.toString());
-    
-    // Optionally update limit if page size changes
-    if (pageSize && pageSize !== itemsPerPage) {
-      current.set('limit', pageSize.toString());
+    try {
+      console.log(`Page change requested: ${page}, pageSize: ${pageSize || itemsPerPage}`);
+      
+      // Validate page number
+      if (page < 1 || page > totalPages) {
+        console.error(`Invalid page number: ${page}`);
+        return;
+      }
+      
+      // Create a new URLSearchParams object from the current search params
+      const current = new URLSearchParams(Array.from(searchParams.entries()));
+      
+      // Update the page parameter
+      current.set('page', page.toString());
+      
+      // Optionally update limit if page size changes
+      if (pageSize && pageSize !== itemsPerPage) {
+        current.set('limit', pageSize.toString());
+        // Reset to page 1 when changing page size
+        current.set('page', '1');
+      }
+      
+      // Create the new URL with updated parameters
+      const query = current.toString();
+      const newUrl = `${pathname}?${query}`;
+      
+      console.log(`Navigating to: ${newUrl}`);
+      router.push(newUrl);
+    } catch (error) {
+      console.error('Error during pagination:', error);
     }
-    
-    // Create the new URL with updated parameters
-    const query = current.toString();
-    const newUrl = `${pathname}?${query}`;
-    
-    console.log(`Navigating to: ${newUrl}`);
-    router.push(newUrl);
-  }, [searchParams, router, pathname, itemsPerPage]);
+  }, [searchParams, router, pathname, itemsPerPage, totalPages]);
 
   // Always render pagination controls, even with one page
   // This ensures the UI is consistent and users can still change page size
@@ -91,6 +103,11 @@ export default function PaginationControls({
         }
         .ant-pagination-options {
           margin-left: 16px;
+        }
+        @media (max-width: 576px) {
+          .ant-pagination-options {
+            margin-left: 8px;
+          }
         }
       `}</style>
     </div>

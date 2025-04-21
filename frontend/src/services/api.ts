@@ -368,24 +368,37 @@ export async function getTopicStats(): Promise<{ topics: TopicStats[] }> {
  */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
   try {
-    return await apiRequest('/update/status', {}, '', 0, 10000, {
-      retries: 5,
-      initialDelay: 500,
-      maxDelay: 2000,
-      factor: 1.5
-    });
+    return await apiRequest<UpdateStatus>(
+      '/update/status',
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+      'update_status',
+      5000, // Cache for 5 seconds
+      10000, // Timeout after 10 seconds
+      {
+        retries: 2,
+        initialDelay: 1000,
+        maxDelay: 3000,
+        factor: 1.5
+      }
+    );
   } catch (error) {
     console.warn('Server unavailable during status check, using fallback status');
+    // Return a fallback status object
     return {
       in_progress: false,
-      last_update: null,
-      status: 'unknown',
+      status: 'idle',
       progress: 0,
-      message: 'Unable to connect to server',
-      error: error instanceof Error ? error.message : 'Connection error',
+      message: 'Status check failed, please try again',
       sources_processed: 0,
       total_sources: 0,
       articles_found: 0,
+      last_update: null,
+      error: error instanceof Error ? error.message : 'Unknown error',
       estimated_completion_time: null,
       can_be_cancelled: false
     };

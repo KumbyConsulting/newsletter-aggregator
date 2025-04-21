@@ -718,7 +718,7 @@ def get_update_status_safely():
     """Thread-safe access to the status dictionary with minimal locking time"""
     with update_status_lock:
         # Return a deep copy to prevent external modification
-        return dict(update_status)  # Return a copy
+        return dict(update_status)
 
 def async_update(app_context):
     """Enhanced background task for updating articles"""
@@ -957,18 +957,40 @@ def cancel_update():
         }), 500
 
 @app.route('/api/update/status', methods=['GET'])
-def get_update_status():
+@async_route
+@cache_service.cache_decorator(namespace="update_status", ttl=2)  # Cache for 2 seconds
+@rate_limiting_service.rate_limit_decorator(key="api")
+async def get_update_status():
     """Enhanced API endpoint to get the current update status"""
     try:
-        status = get_update_status_safely()
-        status['is_running'] = is_update_running()
-        return jsonify(status)
+        # Create new status object instead of modifying the original
+        status_dict = get_update_status_safely()
+        running = is_update_running()
+        
+        # Create a new dictionary with all status info
+        response = {
+            **status_dict,
+            'is_running': running
+        }
+        
+        return jsonify(response)
     except Exception as e:
         logging.error(f"Error getting update status: {e}", exc_info=True)
+        # Return a fallback status object on error
         return jsonify({
+            "in_progress": False,
+            "status": "error",
+            "progress": 0,
+            "message": "Error checking status",
             "error": str(e),
-            "status": "error"
-        }), 500
+            "sources_processed": 0,
+            "total_sources": 0,
+            "articles_found": 0,
+            "last_update": None,
+            "estimated_completion_time": None,
+            "can_be_cancelled": False,
+            "is_running": False
+        }), 200  # Return 200 with fallback instead of 500 to prevent frontend errors
 
 # Legacy route that redirects to the unified endpoint
 @app.route('/update', methods=['POST'])
@@ -2579,10 +2601,9 @@ update_thread = None
 update_thread_lock = Lock()
 
 def is_update_running():
-    """Thread-safe check if update is running"""
-    global update_thread
-    with update_thread_lock:
-        return update_thread is not None and update_thread.is_alive()
+    """Check if an update is currently running"""
+    with update_status_lock:
+        return update_status.get('in_progress', False)
 
 def cancel_update():
     """Thread-safe update cancellation"""
