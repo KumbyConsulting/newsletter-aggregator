@@ -175,6 +175,7 @@ export default function Home() {
     
     // Create a cache key from the search parameters
     const cacheKey = JSON.stringify(params);
+    console.log(`Fetching data with cache key: ${cacheKey}`);
     
     // Check if we have a valid cached result
     if (isCacheValid(cacheKey)) {
@@ -192,86 +193,142 @@ export default function Home() {
     
     // Not in cache or cache expired, fetch from API
     setIsLoading(true);
-    setFetchError(null);
     
     try {
-      // Get articles from service API
+      // Get articles from service API - pass advanced params
       const articlesData = await fetchArticlesService(
-        params.page,
-        params.limit,
-        params.search,
-        params.topic,
-        params.sort_by,
+        params.page, 
+        params.limit, 
+        params.search, 
+        params.topic !== 'All' ? params.topic : '',
+        params.sort_by, 
         params.sort_order,
-        undefined, // source
-        undefined, // dateFrom
-        undefined, // dateTo
-        undefined, // readingTime
-        undefined, // hasSummary
-        undefined, // hasFullContent
+        '', // source - not used here
+        '', // dateFrom - not used here
+        '', // dateTo - not used here
+        '', // readingTime - not used here
+        false, // hasSummary - not used here
+        false, // hasFullContent - not used here
+        // --- Pass Advanced Params to API Call ---
         params.searchType,
         params.threshold,
         params.fields
+        // --- End Pass Advanced Params to API Call ---
       );
-
-      // Get topics data
-      const topicsData = await getTopicStats();
-
-      // Update state with fetched data
-      setArticles(articlesData.articles.map(mapCoreToArticle));
-      setTopics(topicsData.topics);
-      setPagination({
-        page: articlesData.page,
-        total: articlesData.total,
-        total_pages: Math.max(1, Math.ceil(articlesData.total / params.limit))
-      });
-
-      // Cache the results
-      setSearchCache(prev => ({
-        ...prev,
-        [cacheKey]: {
-          articles: articlesData.articles.map(mapCoreToArticle),
+      
+      // Set a default empty topics array in case topics API fails
+      let topicsData = { topics: [] as TopicStat[] };
+      try {
+        // Get topics stats - with error handling
+        topicsData = await getTopicStats();
+      } catch (topicError) {
+        console.error("Error fetching topic stats:", topicError);
+        // Continue with empty topics - non-critical failure
+      }
+      
+      // Make sure we have valid data before updating state
+      if (articlesData && articlesData.articles) {
+        // Calculate total_pages if not provided or invalid
+        const total_pages = articlesData.total_pages || 
+                          Math.max(1, Math.ceil((articlesData.total || articlesData.articles.length) / params.limit));
+        
+        console.log('API response pagination:', {
+          page: articlesData.page,
+          total: articlesData.total,
+          total_pages: articlesData.total_pages,
+          calculated_total_pages: total_pages,
+          articles_count: articlesData.articles.length
+        });
+        
+        // Cache the results
+        const cacheEntry = {
+          articles: articlesData.articles,
           topics: topicsData.topics,
           pagination: {
             page: articlesData.page,
-            total: articlesData.total,
-            total_pages: Math.max(1, Math.ceil(articlesData.total / params.limit))
+            total: articlesData.total || articlesData.articles.length,
+            total_pages: total_pages
           },
           timestamp: Date.now()
+        };
+        
+        setSearchCache(prev => ({
+          ...prev,
+          [cacheKey]: cacheEntry
+        }));
+        
+        // Update state with new data
+        setArticles(articlesData.articles);
+        setTopics(topicsData.topics);
+        setPagination({
+          page: articlesData.page,
+          total: articlesData.total || articlesData.articles.length,
+          total_pages: total_pages
+        });
+        setFetchError(null);
+      } else {
+        throw new Error('Invalid API response format');
+      }
+    } catch (error: any) {
+      console.error("Error fetching data for Home page:", error);
+      
+      // More robust error handling to handle different error formats
+      let errorMessage = 'An unexpected error occurred while loading data.';
+      let statusCode = 500;
+      
+      if (error.message && error.message.includes('timed out')) {
+        errorMessage = 'The server took too long to respond. Please try again later.';
+        statusCode = 504; // Gateway timeout
+      } else if (typeof error === 'object' && error !== null) {
+        // Handle various error object formats that might come from different API implementations
+        if ('apiError' in error && error.apiError) {
+          errorMessage = error.apiError.error || error.apiError.message || errorMessage;
+          statusCode = error.apiError.status_code || error.statusCode || statusCode;
+        } else if ('error' in error) {
+          errorMessage = error.error;
+          statusCode = error.status_code || statusCode;
+        } else if ('message' in error) {
+          errorMessage = error.message;
+          if (error.message.includes('failed with status 502')) statusCode = 502;
+          else if (error.message.includes('failed with status 503')) statusCode = 503;
+          else if (error.message.includes('failed with status 504')) statusCode = 504;
         }
-      }));
-
-    } catch (error) {
-      console.error('Error fetching data:', error);
+      }
+      
       setFetchError({
-        error: error.message || 'Failed to fetch data',
-        status_code: error.status_code || 500
+        error: errorMessage,
+        status_code: statusCode
       });
+      
+      // Provide an empty fallback state to prevent UI breakage
+      if (!articles.length) {
+        setArticles([]);
+        setPagination({
+          page: 1,
+          total: 0,
+          total_pages: 1
+        });
+      }
+      
+      // Re-throw the error so the calling code can handle it
+      throw error;
     } finally {
+      // Always reset loading state regardless of success or failure
       setIsLoading(false);
     }
-  }, [currentPage, currentLimit, currentTopic, currentSearch, currentSortBy, currentSortOrder, searchParamsObj, isCacheValid]);
+  }, [currentPage, currentLimit, currentTopic, currentSearch, currentSortBy, currentSortOrder, searchParamsObj, isCacheValid, searchCache, articles.length]);
 
-  // Handle page change
-  const handlePageChange = useCallback((page: number) => {
-    if (page === currentPage) return;
-    
-    const newParams = new URLSearchParams(searchParamsObj?.toString() || '');
-    newParams.set('page', page.toString());
-    
-    // Update URL without causing a full page reload
-    router.push(`?${newParams.toString()}`, { scroll: false });
-    
-    // Fetch data for the new page
-    fetchDataWithCache({ page });
-  }, [currentPage, searchParamsObj, router, fetchDataWithCache]);
-
-  // Update data when search parameters change
+  // Initial data fetch on mount or when search criteria change
   useEffect(() => {
     if (searchParamsObj) {
-      fetchDataWithCache();
+      console.log('Search criteria changed, fetching page:', currentPage);
+      fetchDataWithCache({ page: currentPage })
+        .catch(error => {
+          console.error('Failed to fetch articles:', error);
+          // Loading state is reset in the finally block of fetchDataWithCache
+        });
     }
-  }, [searchParamsObj, fetchDataWithCache]);
+  }, [currentTopic, currentSearch, currentSortBy, currentSortOrder, currentLimit, currentPage, fetchDataWithCache, searchParamsObj]);
 
   // Debounced search handler
   const debouncedSearch = useMemo(
@@ -382,15 +439,15 @@ export default function Home() {
     return (
       <div style={{ margin: '32px 0' }}>
         <PaginationControls
-          current={pagination.page}
-          total={pagination.total}
-          pageSize={currentLimit}
-          onChange={handlePageChange}
+          currentPage={pagination.page}
+          totalPages={totalPages}
+          totalItems={pagination.total}
+          itemsPerPage={currentLimit}
           disabled={isLoading}
         />
       </div>
     );
-  }, [pagination, currentLimit, isLoading, handlePageChange]);
+  }, [pagination, currentLimit, isLoading]);
 
   return (
     <Layout className="newsletter-layout">

@@ -3,56 +3,68 @@
 import { Pagination } from 'antd';
 import type { PaginationProps } from 'antd';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 interface PaginationControlsProps {
-  current: number;
-  total: number;
-  pageSize: number;
-  onChange: (page: number, pageSize?: number) => void;
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  itemsPerPage: number;
   disabled?: boolean;
 }
 
 export default function PaginationControls({
-  current,
-  total,
-  pageSize,
-  onChange,
+  currentPage,
+  totalPages,
+  totalItems,
+  itemsPerPage,
   disabled = false
 }: PaginationControlsProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const handlePageChange = useCallback((page: number, size?: number) => {
+  // Log props on mount and when they change
+  useEffect(() => {
+    console.log('PaginationControls props:', { 
+      currentPage, 
+      totalPages, 
+      totalItems, 
+      itemsPerPage, 
+      disabled 
+    });
+  }, [currentPage, totalPages, totalItems, itemsPerPage, disabled]);
+
+  const handlePageChange = useCallback((page: number, pageSize?: number) => {
+    console.log(`Page change requested: ${page}, pageSize: ${pageSize || itemsPerPage}`);
+    
     // Create a new URLSearchParams object from the current search params
-    const params = new URLSearchParams(Array.from(searchParams.entries()));
+    const current = new URLSearchParams(Array.from(searchParams.entries()));
     
     // Update the page parameter
-    params.set('page', page.toString());
+    current.set('page', page.toString());
     
-    // Update limit if page size changes
-    if (size && size !== pageSize) {
-      params.set('limit', size.toString());
+    // Optionally update limit if page size changes
+    if (pageSize && pageSize !== itemsPerPage) {
+      current.set('limit', pageSize.toString());
     }
     
     // Create the new URL with updated parameters
-    const query = params.toString();
+    const query = current.toString();
     const newUrl = `${pathname}?${query}`;
     
-    // Update URL without full page reload
-    router.push(newUrl, { scroll: false });
-    
-    // Call the onChange handler
-    onChange(page, size);
-  }, [searchParams, router, pathname, pageSize, onChange]);
+    console.log(`Navigating to: ${newUrl}`);
+    router.push(newUrl);
+  }, [searchParams, router, pathname, itemsPerPage]);
 
+  // Always render pagination controls, even with one page
+  // This ensures the UI is consistent and users can still change page size
   return (
     <div className="pagination-container">
       <Pagination
-        current={current}
-        total={total}
-        pageSize={pageSize}
+        current={currentPage}
+        total={totalItems}
+        pageSize={itemsPerPage}
         onChange={handlePageChange}
         onShowSizeChange={(current, size) => handlePageChange(1, size)}
         showSizeChanger={true}

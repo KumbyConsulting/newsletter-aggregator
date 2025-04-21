@@ -254,70 +254,91 @@ async function apiRequest<T>(
     factor: 2
   }
 ): Promise<T> {
-  // Check cache first
-  if (cacheKey && !options.method) {
-    const cachedData = apiCache.get<T>(cacheKey);
-    if (cachedData) return cachedData;
+  const url = new URL(`${API_BASE_URL}${endpoint}`);
+  url.searchParams.append('key', API_KEY);
+  const fullCacheKey = cacheKey || endpoint;
+  
+  const cachedData = apiCache.get<T>(fullCacheKey);
+  if (cachedData) {
+    return cachedData;
   }
-
-  // If there's a pending request for this cache key, return its promise
-  if (cacheKey && apiCache.isPending(cacheKey)) {
-    const pendingRequest = apiCache.getPending<T>(cacheKey);
-    if (pendingRequest) return pendingRequest;
+  
+  if (apiCache.isPending(fullCacheKey)) {
+    return apiCache.getPending<T>(fullCacheKey) as Promise<T>;
   }
-
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  const fetchWithTimeout = async (): Promise<T> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': API_KEY,
-          ...options.headers,
-        },
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Cache successful responses if cache key provided
-      if (cacheKey && !options.method) {
-        apiCache.set(cacheKey, data, cacheTTL);
-      }
-
-      return data as T;
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        throw new Error('TimeoutError: signal timed out');
-      }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  };
-
-  // Create the request promise with retry logic
+  
+  const actualTimeout = endpoint === '/update/status' ? 10000 : timeoutMs;
+  
   const requestPromise = retryWithBackoff(
-    fetchWithTimeout,
+    async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(new Error('TimeoutError: signal timed out')), actualTimeout);
+      
+      try {
+        const response = await fetch(url.toString(), {
+          ...options,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          let errorData: ApiErrorResponse;
+          
+          try {
+            errorData = await response.json();
+          } catch (e) {
+            errorData = {
+              error: `Server error (${response.status})`,
+              status_code: response.status
+            };
+          }
+          
+          const error = new Error(errorData.error || `API request failed with status ${response.status}`);
+          (error as any).statusCode = response.status;
+          (error as any).apiError = errorData;
+          
+          if (errorData.error) {
+            (error as any).error = errorData.error;
+          }
+          if (errorData.status_code) {
+            (error as any).status_code = errorData.status_code;
+          }
+          
+          throw error;
+        }
+        
+        if (response.status === 204) {
+          return {} as T;
+        }
+        
+        let data: T;
+        try {
+          data = await response.json() as T;
+        } catch (e) {
+          console.warn('Invalid JSON response from API:', e);
+          data = {} as T;
+        }
+        
+        apiCache.set<T>(fullCacheKey, data, cacheTTL);
+        
+        return data;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    },
     retryConfig.retries,
     retryConfig.initialDelay,
     retryConfig.maxDelay,
     retryConfig.factor
   );
-
-  // Store the promise if we have a cache key
-  if (cacheKey) {
-    apiCache.setPending(cacheKey, requestPromise);
-  }
-
+  
+  apiCache.setPending<T>(fullCacheKey, requestPromise);
+  
   return requestPromise;
 }
 
@@ -346,20 +367,29 @@ export async function getTopicStats(): Promise<{ topics: TopicStats[] }> {
  * Get update status
  */
 export async function getUpdateStatus(): Promise<UpdateStatus> {
-  // Use a shorter timeout for status checks
-  return apiRequest<UpdateStatus>(
-    '/update/status',
-    {},
-    'update_status',
-    5000, // Cache for 5 seconds
-    10000, // Timeout after 10 seconds
-    {
-      retries: 2,
+  try {
+    return await apiRequest('/update/status', {}, '', 0, 10000, {
+      retries: 5,
       initialDelay: 500,
       maxDelay: 2000,
-      factor: 2
-    }
-  );
+      factor: 1.5
+    });
+  } catch (error) {
+    console.warn('Server unavailable during status check, using fallback status');
+    return {
+      in_progress: false,
+      last_update: null,
+      status: 'unknown',
+      progress: 0,
+      message: 'Unable to connect to server',
+      error: error instanceof Error ? error.message : 'Connection error',
+      sources_processed: 0,
+      total_sources: 0,
+      articles_found: 0,
+      estimated_completion_time: null,
+      can_be_cancelled: false
+    };
+  }
 }
 
 /**
@@ -404,36 +434,49 @@ export async function startUpdate(): Promise<{ success: boolean; message: string
  */
 export async function pollUpdateStatus(
   initialIntervalMs: number = 2000,
-  maxIntervalMs: number = 10000, // Reduced from 15000
+  maxIntervalMs: number = 15000,
   maxAttempts: number = 100,
   stopCondition: (status: UpdateStatus) => boolean = (status) => !status.in_progress
 ): Promise<UpdateStatus> {
   let attempts = 0;
   let currentInterval = initialIntervalMs;
-
+  
   while (attempts < maxAttempts) {
+    attempts++;
+    
     try {
       const status = await getUpdateStatus();
       
       if (stopCondition(status)) {
         return status;
       }
-
-      // Exponential backoff with max limit
-      currentInterval = Math.min(currentInterval * 1.5, maxIntervalMs);
-      await wait(currentInterval);
-      attempts++;
-    } catch (error) {
-      if (error.message.includes('TimeoutError')) {
-        // On timeout, use a shorter interval for the next attempt
-        currentInterval = Math.max(initialIntervalMs, currentInterval / 2);
-        await wait(500); // Short delay before retry
+      
+      // Calculate next interval using exponential backoff with progress-based adjustment
+      // As progress increases, polling frequency decreases
+      if (status.progress) {
+        // Adjust interval based on progress: higher progress = longer interval
+        const progressFactor = Math.min(1, status.progress / 100);
+        currentInterval = Math.min(
+          maxIntervalMs,
+          initialIntervalMs * (1 + progressFactor * 3)
+        );
       } else {
-        throw error;
+        // Standard exponential backoff if no progress info
+        currentInterval = Math.min(
+          maxIntervalMs,
+          currentInterval * 1.2
+        );
       }
+      
+      // Wait for the calculated interval
+      await new Promise(resolve => setTimeout(resolve, currentInterval));
+    } catch (error) {
+      console.error('Error polling update status:', error);
+      // On error, wait a bit longer before retrying
+      await new Promise(resolve => setTimeout(resolve, currentInterval * 2));
     }
   }
-
+  
   throw new Error('Max polling attempts reached');
 }
 
