@@ -1,0 +1,39 @@
+name: Deploy API Gateway
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'openapi.yaml'
+      - 'deploy-api.sh'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v0
+      with:
+        project_id: newsletter-450510
+        service_account_key: ${{ secrets.GCP_SA_KEY }}
+        export_default_credentials: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y curl jq
+
+    - name: Make deploy script executable
+      run: chmod +x ./deploy-api.sh
+
+    - name: Deploy to API Gateway
+      run: ./deploy-api.sh
+      env:
+        PROJECT_ID: newsletter-450510
+        API_ID: newsletter-aggregator-api
+        GATEWAY_ID: newsletter-aggregator-gateway
+        LOCATION: us-central1 

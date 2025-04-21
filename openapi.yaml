@@ -23,6 +23,12 @@ x-google-backend:
   protocol: h2
   deadline: 30.0
   jwt_audience: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+x-google-cors:
+  allow-origin: ["https://newsletter-aggregator-knap.vercel.app", "https://newsletter-aggregator.vercel.app", "http://localhost:3000"]
+  allow-methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  allow-headers: ["Content-Type", "Authorization"]
+  allow-credentials: true
+  max-age: "3600"
 
 paths:
   # Update Operations
@@ -35,6 +41,19 @@ paths:
       responses:
         '200':
           description: Update status retrieved successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Allow-Credentials:
+              type: string
+              description: Whether credentials are allowed
       x-google-backend:
         address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
     options:
@@ -43,12 +62,30 @@ paths:
       security:
         - api_key: []
       responses:
-        '200':
+        '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+              description: Origins allowed to make requests
+            Access-Control-Allow-Methods:
+              type: string
+              description: Methods allowed for CORS requests
+            Access-Control-Allow-Headers:
+              type: string
+              description: Headers allowed in CORS requests
+            Access-Control-Allow-Credentials:
+              type: string
+              description: Whether credentials are allowed
+            Access-Control-Max-Age:
+              type: string
+              description: How long the response can be cached
       x-google-cors:
-        allow-origin: "*"
-        allow-methods: GET
-        allow-headers: Content-Type,Authorization
+        allow-origin: ["https://newsletter-aggregator-knap.vercel.app", "https://newsletter-aggregator.vercel.app", "http://localhost:3000"]
+        allow-methods: ["GET", "OPTIONS"]
+        allow-headers: ["Content-Type", "Authorization"]
+        allow-credentials: true
+        max-age: "3600"
 
   /api/update/start:
     post:
