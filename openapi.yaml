@@ -3,13 +3,13 @@ info:
   title: Newsletter Aggregator API
   description: API for the Newsletter Aggregator service
   version: 1.0.0
-host: newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+host: newsletter-aggregator-ukm23f55ra-uc.a.run.app
 schemes:
   - https
 produces:
   - application/json
 x-google-backend:
-  address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+  address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
   protocol: h2
 paths:
   /api/update/status:
@@ -18,7 +18,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 10.0
       responses:
         '200':
@@ -34,7 +34,7 @@ paths:
       summary: CORS support for update status
       operationId: corsUpdateStatus
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 10.0
       responses:
         '204':
@@ -46,7 +46,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         path_translation: APPEND_PATH_TO_ADDRESS
         deadline: 30.0
       responses:
@@ -61,7 +61,7 @@ paths:
       summary: CORS support
       operationId: corsStartUpdate
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         path_translation: APPEND_PATH_TO_ADDRESS
         deadline: 30.0
       responses:
@@ -74,7 +74,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 10.0
       parameters:
         - name: topic
@@ -112,7 +112,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 10.0
       responses:
         '200':
@@ -128,7 +128,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-api-7mdxrxbo2q-uc.a.run.app
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 30.0
       parameters:
         - name: query
@@ -156,6 +156,459 @@ paths:
                       type: string
                     url:
                       type: string
+
+  /api/admin/cleanup-duplicates:
+    post:
+      operationId: adminCleanupDuplicates
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Cleanup duplicates operation completed
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  /api/admin/export-csv:
+    get:
+      operationId: adminExportCsv
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: CSV export completed
+          schema:
+            type: object
+            properties:
+              url:
+                type: string
+
+  /api/admin/force-sync:
+    post:
+      operationId: adminForceSync
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Force sync operation completed
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  /api/articles/{article_id}/analyze:
+    post:
+      operationId: analyzeArticle
+      security:
+        - api_key: []
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Article analysis completed
+          schema:
+            type: object
+            properties:
+              analysis:
+                type: object
+
+  /api/kumby/clinical-trial:
+    post:
+      operationId: analyzeClinicalTrial
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Clinical trial analysis completed
+          schema:
+            type: object
+
+  /api/kumby/digital-health:
+    post:
+      operationId: analyzeDigitalHealth
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Digital health analysis completed
+          schema:
+            type: object
+
+  /api/kumby/drug:
+    post:
+      operationId: analyzeDrugDevelopment
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Drug development analysis completed
+          schema:
+            type: object
+
+  /api/kumby/manufacturing:
+    post:
+      operationId: analyzeManufacturing
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Manufacturing analysis completed
+          schema:
+            type: object
+
+  /api/kumby/market-access:
+    post:
+      operationId: analyzeMarketAccess
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Market access analysis completed
+          schema:
+            type: object
+
+  /api/kumby/patent:
+    post:
+      operationId: analyzePatent
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Patent analysis completed
+          schema:
+            type: object
+
+  /api/kumby/pipeline:
+    post:
+      operationId: analyzePipeline
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Pipeline analysis completed
+          schema:
+            type: object
+
+  /api/kumby/regulatory:
+    post:
+      operationId: analyzeRegulatoryImpact
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Regulatory impact analysis completed
+          schema:
+            type: object
+
+  /api/kumby/regulatory-strategy:
+    post:
+      operationId: analyzeRegulatoryStrategy
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Regulatory strategy analysis completed
+          schema:
+            type: object
+
+  /api/kumby/safety:
+    post:
+      operationId: analyzeSafety
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Safety analysis completed
+          schema:
+            type: object
+
+  /api/kumby/therapeutic-area:
+    post:
+      operationId: analyzeTherapeuticArea
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Therapeutic area analysis completed
+          schema:
+            type: object
+
+  /api/kumby/value-evidence:
+    post:
+      operationId: analyzeValueEvidence
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Value evidence analysis completed
+          schema:
+            type: object
+
+  /api/update:
+    post:
+      operationId: updateArticles
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Articles update completed
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  /api/update/cancel:
+    post:
+      operationId: cancelUpdate
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: Update cancelled successfully
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  /api/analysis/saved:
+    get:
+      operationId: getSavedAnalyses
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: List of saved analyses
+          schema:
+            type: array
+            items:
+              type: object
+
+  /api/analysis/saved/{analysis_id}:
+    get:
+      operationId: getSavedAnalysis
+      security:
+        - api_key: []
+      parameters:
+        - name: analysis_id
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: Saved analysis details
+          schema:
+            type: object
+    delete:
+      operationId: deleteSavedAnalysis
+      security:
+        - api_key: []
+      parameters:
+        - name: analysis_id
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: Analysis deleted successfully
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  /api/analysis/save:
+    post:
+      operationId: saveAnalysis
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: Analysis saved successfully
+          schema:
+            type: object
+            properties:
+              id:
+                type: string
+              message:
+                type: string
+
+  /api/rag/stream:
+    post:
+      operationId: streamRagQuery
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Streaming RAG query response
+          schema:
+            type: object
+    get:
+      operationId: streamRagQueryGet
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: Streaming RAG query response
+          schema:
+            type: object
+
+  /api/rag/history:
+    get:
+      operationId: getRagHistory
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: RAG query history
+          schema:
+            type: array
+            items:
+              type: object
+    delete:
+      operationId: clearRagHistory
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: RAG history cleared
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+
+  /api/sources:
+    get:
+      operationId: getSources
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: List of sources
+          schema:
+            type: array
+            items:
+              type: string
+
+  /api/topics/stats:
+    get:
+      operationId: getTopicStats
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '200':
+          description: Topic statistics
+          schema:
+            type: object
+
+  /api/kumbyai/chat:
+    post:
+      operationId: kumbyaiChat
+      security:
+        - api_key: []
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 30.0
+      responses:
+        '200':
+          description: KumbyAI chat response
+          schema:
+            type: object
+            properties:
+              response:
+                type: string
 
 securityDefinitions:
   api_key:

@@ -68,23 +68,25 @@ rate_limiting_service.configure_limit("summarize", calls=10, period=60)  # 10 su
 
 # Define async route decorator
 def async_route(f):
-    """Decorator for async routes that provides a unique endpoint name for each wrapped function
-    and ensures event loops are properly handled in a multi-threaded environment"""
+    """Decorator to handle async routes in Flask"""
+    if not hasattr(async_route, 'counter'):
+        async_route.counter = 0
+    async_route.counter += 1
+    
     @wraps(f)
     def wrapped(*args, **kwargs):
+        # Get event loop or create a new one
         try:
-            # Try to get existing event loop
             loop = asyncio.get_event_loop()
         except RuntimeError:
-            # Create new event loop if none exists in this thread
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
         # Run the coroutine in this loop
         return loop.run_until_complete(f(*args, **kwargs))
     
-    # Use a unique name for the wrapped function based on the original function's name
-    wrapped.__name__ = f"{f.__name__}_async_wrapper"
+    # Use a unique name for the wrapped function based on the original function's name and a counter
+    wrapped.__name__ = f"{f.__name__}_async_wrapper_{async_route.counter}"
     return wrapped
 
 # Initialize Flask app
