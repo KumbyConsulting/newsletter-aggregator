@@ -105,6 +105,15 @@ paths:
                   type: string
                 topic:
                   type: string
+    options:
+      summary: CORS support for articles
+      operationId: corsArticles
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/topics:
     get:
@@ -121,6 +130,15 @@ paths:
             type: array
             items:
               type: string
+    options:
+      summary: CORS support for topics
+      operationId: corsTopics
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/rag:
     post:
@@ -156,6 +174,15 @@ paths:
                       type: string
                     url:
                       type: string
+    options:
+      summary: CORS support for RAG queries
+      operationId: corsRag
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/admin/cleanup-duplicates:
     post:
@@ -173,6 +200,15 @@ paths:
             properties:
               message:
                 type: string
+    options:
+      summary: CORS support for cleanup duplicates
+      operationId: corsCleanupDuplicates
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/admin/export-csv:
     get:
@@ -190,6 +226,15 @@ paths:
             properties:
               url:
                 type: string
+    options:
+      summary: CORS support for export CSV
+      operationId: corsExportCsv
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/admin/force-sync:
     post:
@@ -207,6 +252,15 @@ paths:
             properties:
               message:
                 type: string
+    options:
+      summary: CORS support for force sync
+      operationId: corsForceSync
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/articles/{article_id}/analyze:
     post:
@@ -226,9 +280,20 @@ paths:
           description: Article analysis completed
           schema:
             type: object
-            properties:
-              analysis:
-                type: object
+    options:
+      summary: CORS support for article analysis
+      operationId: corsAnalyzeArticle
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/clinical-trial:
     post:
@@ -243,6 +308,15 @@ paths:
           description: Clinical trial analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for clinical trial analysis
+      operationId: corsClinicalTrial
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/digital-health:
     post:
@@ -257,6 +331,15 @@ paths:
           description: Digital health analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for digital health analysis
+      operationId: corsDigitalHealth
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/drug:
     post:
@@ -271,6 +354,15 @@ paths:
           description: Drug development analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for drug development analysis
+      operationId: corsDrugDevelopment
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/manufacturing:
     post:
@@ -285,6 +377,15 @@ paths:
           description: Manufacturing analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for manufacturing analysis
+      operationId: corsManufacturing
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/market-access:
     post:
@@ -299,6 +400,15 @@ paths:
           description: Market access analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for market access analysis
+      operationId: corsMarketAccess
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/patent:
     post:
@@ -313,6 +423,15 @@ paths:
           description: Patent analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for patent analysis
+      operationId: corsPatent
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/pipeline:
     post:
@@ -327,6 +446,15 @@ paths:
           description: Pipeline analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for pipeline analysis
+      operationId: corsPipeline
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/regulatory:
     post:
@@ -341,6 +469,15 @@ paths:
           description: Regulatory impact analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for regulatory impact analysis
+      operationId: corsRegulatory
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/regulatory-strategy:
     post:
@@ -355,6 +492,15 @@ paths:
           description: Regulatory strategy analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for regulatory strategy analysis
+      operationId: corsRegulatoryStrategy
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/safety:
     post:
@@ -369,6 +515,15 @@ paths:
           description: Safety analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for safety analysis
+      operationId: corsSafety
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/therapeutic-area:
     post:
@@ -383,6 +538,15 @@ paths:
           description: Therapeutic area analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for therapeutic area analysis
+      operationId: corsTherapeuticArea
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumby/value-evidence:
     post:
@@ -397,6 +561,15 @@ paths:
           description: Value evidence analysis completed
           schema:
             type: object
+    options:
+      summary: CORS support for value evidence analysis
+      operationId: corsValueEvidence
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/update:
     post:
@@ -447,6 +620,15 @@ paths:
             type: array
             items:
               type: object
+    options:
+      summary: CORS support for saved analyses list
+      operationId: corsSavedAnalyses
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/analysis/saved/{analysis_id}:
     get:
@@ -483,9 +665,20 @@ paths:
           description: Analysis deleted successfully
           schema:
             type: object
-            properties:
-              message:
-                type: string
+    options:
+      summary: CORS support for saved analysis operations
+      operationId: corsSavedAnalysis
+      parameters:
+        - name: analysis_id
+          in: path
+          required: true
+          type: string
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/analysis/save:
     post:
@@ -500,11 +693,15 @@ paths:
           description: Analysis saved successfully
           schema:
             type: object
-            properties:
-              id:
-                type: string
-              message:
-                type: string
+    options:
+      summary: CORS support for saving analysis
+      operationId: corsSaveAnalysis
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/rag/stream:
     post:
@@ -531,6 +728,15 @@ paths:
           description: Streaming RAG query response
           schema:
             type: object
+    options:
+      summary: CORS support for RAG streaming
+      operationId: corsRagStream
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/rag/history:
     get:
@@ -562,6 +768,15 @@ paths:
             properties:
               message:
                 type: string
+    options:
+      summary: CORS support for RAG history
+      operationId: corsRagHistory
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/sources:
     get:
@@ -578,6 +793,15 @@ paths:
             type: array
             items:
               type: string
+    options:
+      summary: CORS support for sources
+      operationId: corsSources
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/topics/stats:
     get:
@@ -592,6 +816,15 @@ paths:
           description: Topic statistics
           schema:
             type: object
+    options:
+      summary: CORS support for topic stats
+      operationId: corsTopicStats
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
   /api/kumbyai/chat:
     post:
@@ -606,9 +839,15 @@ paths:
           description: KumbyAI chat response
           schema:
             type: object
-            properties:
-              response:
-                type: string
+    options:
+      summary: CORS support for KumbyAI chat
+      operationId: corsKumbyAiChat
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
 
 securityDefinitions:
   api_key:
@@ -634,5 +873,6 @@ x-google-allow-cors:
   allow-headers:
     - Content-Type
     - Authorization
+    - x-api-key
   allow-credentials: true
   max-age: 3600 
