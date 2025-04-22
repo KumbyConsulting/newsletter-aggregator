@@ -11,6 +11,23 @@ produces:
 x-google-backend:
   address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
   protocol: h2
+x-google-management:
+  metrics:
+    - name: "requests"
+      displayName: "Requests"
+      valueType: INT64
+      metricKind: DELTA
+  quota:
+    limits:
+      - name: "requests-per-project"
+        metric: "requests"
+        unit: "1/min/{project}"
+        values:
+          STANDARD: 1000
+x-google-endpoints:
+  - name: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev
+    allowCors: true
+
 paths:
   /api/update/status:
     get:
@@ -33,6 +50,8 @@ paths:
     options:
       summary: CORS support for update status
       operationId: corsUpdateStatus
+      security:
+        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 10.0
@@ -114,6 +133,16 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
 
   /api/topics:
     get:
@@ -855,22 +884,18 @@ securityDefinitions:
     name: x-api-key
     in: header
 
-x-google-endpoints:
-  - name: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev
-    allowCors: true
-
-x-google-allow-cors:
-  allow-origins:
+x-google-allow:
+  origins:
     - https://newsletter-aggregator-knap.vercel.app
     - https://newsletter-aggregator.vercel.app
     - http://localhost:3000
-  allow-methods:
+  methods:
     - GET
     - POST
     - PUT
     - DELETE
     - OPTIONS
-  allow-headers:
+  headers:
     - Content-Type
     - Authorization
     - x-api-key
@@ -883,4 +908,6 @@ x-google-allow-cors:
     - Authorization
     - x-api-key
   allow-credentials: true
-  max-age: 3600 
+  max-age: 3600
+
+ 
