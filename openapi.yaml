@@ -25,7 +25,7 @@ x-google-management:
         values:
           STANDARD: 1000
 x-google-endpoints:
-  - name: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev
+  - name: newsletter-aggregator-ukm23f55ra-uc.a.run.app
     allowCors: true
 
 paths:
@@ -50,14 +50,19 @@ paths:
     options:
       summary: CORS support for update status
       operationId: corsUpdateStatus
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
         deadline: 10.0
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/update/start:
     post:
@@ -86,6 +91,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/articles:
     get:
@@ -135,14 +147,11 @@ paths:
           description: CORS headers returned successfully
           headers:
             Access-Control-Allow-Origin:
-              schema:
-                type: string
+              type: string
             Access-Control-Allow-Methods:
-              schema:
-                type: string
+              type: string
             Access-Control-Allow-Headers:
-              schema:
-                type: string
+              type: string
 
   /api/topics:
     get:
@@ -168,6 +177,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/rag:
     post:
@@ -212,6 +228,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/admin/cleanup-duplicates:
     post:
@@ -238,6 +261,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/admin/export-csv:
     get:
@@ -264,6 +294,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/admin/force-sync:
     post:
@@ -290,6 +327,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/articles/{article_id}/analyze:
     post:
@@ -323,6 +367,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/clinical-trial:
     post:
@@ -346,6 +397,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/digital-health:
     post:
@@ -369,6 +427,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/drug:
     post:
@@ -392,6 +457,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/manufacturing:
     post:
@@ -415,6 +487,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/market-access:
     post:
@@ -438,6 +517,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/patent:
     post:
@@ -461,6 +547,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/pipeline:
     post:
@@ -484,6 +577,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/regulatory:
     post:
@@ -507,6 +607,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/regulatory-strategy:
     post:
@@ -530,6 +637,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/safety:
     post:
@@ -553,6 +667,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/therapeutic-area:
     post:
@@ -576,6 +697,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumby/value-evidence:
     post:
@@ -599,6 +727,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/update:
     post:
@@ -613,9 +748,22 @@ paths:
           description: Articles update completed
           schema:
             type: object
-            properties:
-              message:
-                type: string
+    options:
+      summary: CORS support for articles update
+      operationId: corsUpdateArticles
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/update/cancel:
     post:
@@ -633,6 +781,22 @@ paths:
             properties:
               message:
                 type: string
+    options:
+      summary: CORS support for cancel update
+      operationId: corsCancelUpdate
+      x-google-backend:
+        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        deadline: 10.0
+      responses:
+        '204':
+          description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/analysis/saved:
     get:
@@ -658,6 +822,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/analysis/saved/{analysis_id}:
     get:
@@ -708,6 +879,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/analysis/save:
     post:
@@ -731,6 +909,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/rag/stream:
     post:
@@ -766,6 +951,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/rag/history:
     get:
@@ -806,6 +998,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/sources:
     get:
@@ -831,6 +1030,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/topics/stats:
     get:
@@ -854,6 +1060,13 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
   /api/kumbyai/chat:
     post:
@@ -877,37 +1090,18 @@ paths:
       responses:
         '204':
           description: CORS headers returned successfully
+          headers:
+            Access-Control-Allow-Origin:
+              type: string
+            Access-Control-Allow-Methods:
+              type: string
+            Access-Control-Allow-Headers:
+              type: string
 
 securityDefinitions:
   api_key:
     type: apiKey
     name: x-api-key
     in: header
-
-x-google-allow:
-  origins:
-    - https://newsletter-aggregator-knap.vercel.app
-    - https://newsletter-aggregator.vercel.app
-    - http://localhost:3000
-  methods:
-    - GET
-    - POST
-    - PUT
-    - DELETE
-    - OPTIONS
-  headers:
-    - Content-Type
-    - Authorization
-    - x-api-key
-    - Origin
-    - Accept
-    - Access-Control-Request-Method
-    - Access-Control-Request-Headers
-  expose-headers:
-    - Content-Type
-    - Authorization
-    - x-api-key
-  allow-credentials: true
-  max-age: 3600
 
  
