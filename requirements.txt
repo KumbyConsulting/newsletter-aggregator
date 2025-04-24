@@ -60,3 +60,9 @@ circuitbreaker==1.4.0
 cachetools==5.3.1
 werkzeug>=2.3.7
 gunicorn==21.2.0
+
+# Added from the code block
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-CORS
+psycopg2-binary
