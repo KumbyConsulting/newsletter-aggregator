@@ -45,7 +45,14 @@ spec:
             - "/bin/sh"
           args:
             - "-c"
-            - "python -m gunicorn --bind :8080 --bind :8000 app:app"
+            # Updated Gunicorn command to use environment variables and async worker
+            - >
+              exec gunicorn --bind :$PORT --bind :$PROMETHEUS_PORT
+              --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS
+              --worker-class $GUNICORN_WORKER_CLASS --timeout $GUNICORN_TIMEOUT
+              --max-requests $GUNICORN_MAX_REQUESTS --max-requests-jitter $GUNICORN_MAX_REQUESTS_JITTER
+              --keep-alive 5 --log-level info --access-logfile=- --error-logfile=-
+              app:app
           env:
             # Base environment variables - some will be patched by Skaffold profiles
             # NOTE: Relies on Skaffold patching for FLASK_ENV and GCS_BUCKET_NAME
@@ -70,18 +77,21 @@ spec:
               value: "true"
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: PORT # Added PORT env var for clarity in Gunicorn command
+              value: "8080"
+            # Updated Gunicorn settings for async
             - name: GUNICORN_WORKERS
-              value: "8"
+              value: "1" # Start with 1 worker for async
             - name: GUNICORN_THREADS
-              value: "8"
+              value: "8" # 8 threads for 2 CPU
             - name: GUNICORN_WORKER_CLASS
-              value: "gthread"
+              value: "uvicorn.workers.UvicornWorker" # Async worker class
             - name: GUNICORN_MAX_REQUESTS
               value: "1000"
             - name: GUNICORN_MAX_REQUESTS_JITTER
               value: "50"
             - name: GUNICORN_TIMEOUT
-              value: "300"
+              value: "60" # Reduced timeout to 60 seconds
             - name: ENABLE_PROMETHEUS
               value: "true"
             - name: PROMETHEUS_PORT
