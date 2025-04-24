@@ -1,526 +1,2190 @@
 swagger: '2.0'
 info:
   title: Newsletter Aggregator API
-  description: API for the Newsletter Aggregator service
-  version: 1.0.0
-host: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev
+  description: API for the Newsletter Aggregator service, providing access to aggregated news articles, AI-driven summaries, analysis, and RAG capabilities.
+  version: 1.1.0 # Updated version
+host: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev # Replace with your actual gateway host if different
 schemes:
   - https
 produces:
   - application/json
+consumes: # Added consumes for POST/PUT/PATCH requests
+  - application/json
 x-google-backend:
-  address: https://newsletter-aggregator-857170198287.us-central1.run.app
+  address: https://newsletter-aggregator-857170198287.us-central1.run.app # Backend service address
   protocol: h2
-x-google-management:
-  metrics:
-    - name: "requests"
-      displayName: "Requests"
-      valueType: INT64
-      metricKind: DELTA
-  quota:
-    limits:
-      - name: "requests-per-project"
-        metric: "requests"
-        unit: "1/min/{project}"
-        values:
-          STANDARD: 1000
-x-google-endpoints:
-  - name: newsletter-aggregator-857170198287.us-central1.run.app
-    allowCors: true
+# Optional: Add security definitions if using API Gateway authentication (e.g., Google ID token)
+# securityDefinitions:
+#   google_id_token:
+#     authorizationUrl: ""
+#     flow: "implicit"
+#     type: "oauth2"
+#     x-google-issuer: "https://accounts.google.com"
+#     x-google-jwks_uri: "https://www.googleapis.com/oauth2/v3/certs"
+#     x-google-audiences: "YOUR_CLIENT_ID" # Replace with your Client ID
+# security:
+#   - google_id_token: []
+
+# Define common response schemas
+definitions:
+  ErrorResponse:
+    type: object
+    properties:
+      error:
+        type: string
+        description: Error message
+      status:
+        type: string
+        enum: [error]
+      status_code:
+        type: integer
+        description: HTTP status code
+  SuccessMessage:
+    type: object
+    properties:
+      message:
+        type: string
+        description: Success message
+      success:
+        type: boolean
+        default: true
+  ArticleMetadata:
+    type: object
+    properties:
+      id:
+        type: string
+        description: Unique identifier for the article
+      title:
+        type: string
+      description:
+        type: string
+      link:
+        type: string
+        format: url
+      pub_date:
+        type: string
+        # format: date-time # Consider using date-time if format is consistent ISO 8601
+      topic:
+        type: string
+      source:
+        type: string
+      summary:
+        type: string
+        description: AI-generated summary
+      image_url:
+        type: string
+        format: url
+      has_full_content:
+        type: boolean
+      reading_time:
+        type: integer
+      relevance_score:
+        type: number
+        format: float
+      is_recent:
+        type: boolean
+  Article:
+    type: object
+    properties:
+      id:
+        type: string
+      metadata:
+        $ref: '#/definitions/ArticleMetadata'
+  PaginatedArticles:
+    type: object
+    properties:
+      articles:
+        type: array
+        items:
+          $ref: '#/definitions/Article'
+      total:
+        type: integer
+        description: Total number of articles matching the query
+      page:
+        type: integer
+        description: Current page number
+      per_page:
+        type: integer
+        description: Number of articles per page
+      total_pages:
+        type: integer
+        description: Total number of pages
+      query_time: # Included from /api/articles implementation
+        type: number
+        format: float
+        description: Time taken for the query (placeholder)
+  Source:
+    type: object
+    properties:
+      name:
+        type: string
+      count:
+        type: integer
+      url:
+        type: string
+        format: url
+      logo_url:
+        type: string
+        format: url
+  TopicStat:
+    type: object
+    properties:
+      topic:
+        type: string
+      count:
+        type: integer
+      percentage:
+        type: number
+        format: float
+      trend:
+        type: string
+        enum: [increasing, decreasing, stable]
+      growth_rate:
+        type: number
+        format: float
+      recent_count:
+        type: integer
+  UpdateStatus:
+    type: object
+    properties:
+      in_progress:
+        type: boolean
+      last_update:
+        type: number # Unix timestamp
+        format: double
+      status:
+        type: string
+        enum: [idle, starting, running, completed, completed_with_errors, completed_with_repair, completed_with_warnings, failed, cancelling, cancelled, error]
+      progress:
+        type: number
+        format: float
+      message:
+        type: string
+      error:
+        type: string
+        nullable: true
+      sources_processed:
+        type: integer
+      total_sources:
+        type: integer
+      articles_found:
+        type: integer
+      errors:
+        type: array
+        items:
+          type: string # Assuming errors are strings, adjust if different
+      started_at:
+        type: number # Unix timestamp
+        format: double
+        nullable: true
+      estimated_completion_time:
+        type: number # Unix timestamp
+        format: double
+        nullable: true
+      can_be_cancelled:
+        type: boolean
+      is_running: # Added from /api/update/status logic
+        type: boolean
+  RagSource:
+    type: object
+    properties:
+      title:
+        type: string
+      url:
+        type: string
+        format: url
+      # Add other source properties if available from AI service
+  RagResponse:
+    type: object
+    properties:
+      query:
+        type: string
+      response:
+        type: string
+        description: The generated RAG response text
+      sources:
+        type: array
+        items:
+          $ref: '#/definitions/RagSource'
+      timestamp:
+        type: string
+        format: date-time
+      confidence:
+        type: number
+        format: float
+  AnalysisResult:
+    type: object
+    properties:
+      text:
+        type: string
+      sources:
+        type: array
+        items:
+          $ref: '#/definitions/RagSource' # Assuming analysis sources are similar to RAG sources
+      confidence:
+        type: number
+        format: float
+      timestamp:
+        type: string
+        format: date-time
+      # Add other fields returned by ai_service.generate_comprehensive_analysis if any
+  SavedAnalysis:
+    type: object
+    properties:
+      id:
+        type: string
+      query:
+        type: string
+      response:
+        type: string
+      analysis_type:
+        type: string
+      confidence:
+        type: number
+        format: float
+      timestamp:
+        type: string
+        format: date-time
+      sources:
+        type: array
+        items:
+          $ref: '#/definitions/RagSource'
+      created_at: # Added from Firestore save logic
+        type: string
+        format: date-time
+        description: Timestamp when the analysis was saved
+  PaginatedSavedAnalyses:
+    type: object
+    properties:
+      analyses:
+        type: array
+        items:
+          $ref: '#/definitions/SavedAnalysis'
+      total:
+        type: integer
+      limit:
+        type: integer
+      offset:
+        type: integer
+
 
 paths:
-  /api/update/status:
+  /:
     get:
-      operationId: getUpdateStatus
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
+      summary: Get articles for the main page (HTML response)
+      description: Renders the main index page with articles, supporting pagination, search, topic filtering, and sorting. Returns HTML.
+      operationId: index
+      parameters:
+        - name: search
+          in: query
+          type: string
+          required: false
+          description: Search term for article titles/descriptions.
+        - name: topic
+          in: query
+          type: string
+          required: false
+          default: All
+          description: Filter articles by topic.
+        - name: page
+          in: query
+          type: integer
+          required: false
+          default: 1
+          minimum: 1
+          description: Page number for pagination.
+        - name: per_page
+          in: query
+          type: integer
+          required: false
+          default: 10
+          minimum: 1
+          maximum: 50
+          description: Number of articles per page.
+        - name: sort_by
+          in: query
+          type: string
+          required: false
+          enum: [pub_date, title, source, topic]
+          default: pub_date
+          description: Field to sort articles by.
+        - name: sort_order
+          in: query
+          type: string
+          required: false
+          enum: [asc, desc]
+          default: desc
+          description: Sort order (ascending or descending).
       responses:
         '200':
-          description: Update status response
+          description: HTML content of the index page.
+          schema:
+            type: string
+            format: html
+        '400':
+          description: Invalid query parameters (e.g., bad topic, invalid pagination).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '429':
+          description: Rate limit exceeded.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+          description: Service unavailable (e.g., maintenance mode).
+
+  /_ah/health:
+    get:
+      summary: Health check endpoint
+      description: Provides health status of the application and its dependencies.
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy or degraded but operational.
           schema:
             type: object
             properties:
               status:
                 type: string
-              last_update:
+                enum: [healthy, degraded]
+              timestamp:
                 type: string
-
-  /api/update/start:
-    post:
-      operationId: startUpdate
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        path_translation: APPEND_PATH_TO_ADDRESS
-        deadline: 30.0
-      responses:
-        '200':
-          description: Update started successfully
+                format: date-time
+              version:
+                type: string
+              services:
+                type: object
+                properties:
+                  database:
+                    type: string
+                    enum: [healthy, unhealthy]
+                  cache:
+                    type: string
+                    enum: [healthy, unhealthy]
+                  ai:
+                    type: string
+                    enum: [healthy, unhealthy]
+              metrics:
+                type: object
+                properties:
+                  request_queue_size:
+                    type: integer
+                  memory_usage:
+                    type: number
+                    format: float
+                  cpu_percent:
+                    type: number
+                    format: float
+        '500':
+          description: Health check failed or service is unhealthy.
           schema:
             type: object
             properties:
-              message:
+              status:
                 type: string
+                enum: [unhealthy]
+              error:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
 
-  /api/articles:
+  /_ah/warmup:
     get:
-      operationId: getArticles
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
-      parameters:
-        - name: topic
-          in: query
-          type: string
-          required: false
-        - name: limit
-          in: query
-          type: integer
-          required: false
+      summary: Warmup endpoint for Cloud Run
+      description: Used by Google Cloud Run to initialize instances.
+      operationId: warmup
       responses:
         '200':
-          description: List of articles
+          description: Instance warmed up.
           schema:
-            type: array
-            items:
-              type: object
-              properties:
-                id:
-                  type: string
-                title:
-                  type: string
-                url:
-                  type: string
-                date:
-                  type: string
-                source:
-                  type: string
-                topic:
-                  type: string
+            type: object
+            properties:
+              status:
+                type: string
+                enum: [warmed_up]
 
-  /api/topics:
-    get:
-      operationId: getTopics
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
-      responses:
-        '200':
-          description: List of topics
-          schema:
-            type: array
-            items:
-              type: string
-
-  /api/rag:
+  /update: # Legacy route
     post:
-      operationId: queryRag
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
+      summary: Legacy route to start background update (Redirects)
+      description: Redirects to `/api/update/start` and flashes a message. Primarily for UI interaction.
+      operationId: updateArticlesLegacyUI
+      responses:
+        '302':
+          description: Redirects to the index page.
+        # Note: Actual response is a redirect, not JSON.
+
+  /summarize: # Used by test_summary.html?
+    post:
+      summary: Generate summary for a single article
+      description: Takes article description, topic, and link, returns an AI-generated summary.
+      operationId: summarizeArticle
       parameters:
-        - name: query
+        - name: body
           in: body
           required: true
           schema:
             type: object
+            required: [description, link]
             properties:
-              query:
+              description:
                 type: string
+              topic:
+                type: string
+              link:
+                type: string
+                format: url
       responses:
         '200':
-          description: RAG query response
+          description: Successfully generated summary.
           schema:
             type: object
             properties:
-              answer:
+              summary:
                 type: string
-              sources:
+        '400':
+          description: Bad request (e.g., missing description or link).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '429':
+          description: Rate limit exceeded.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error or summary generation failed.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+          description: AI service unavailable.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /generate-summaries: # UI Triggered?
+    post:
+      summary: Generate summaries for articles missing them (UI Triggered)
+      description: Starts a background task to generate summaries for articles without one. Redirects on completion.
+      operationId: generateSummaries
+      responses:
+        '302':
+          description: Redirects to the index page after attempting summary generation.
+        '429':
+          description: Rate limit exceeded or generation already in progress.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during generation.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+          description: AI service unavailable.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /test_summary: # Debug route
+    get:
+      summary: Debug route to test summary generation UI
+      description: Renders a simple HTML page for testing the `/summarize` endpoint.
+      operationId: testSummaryUI
+      responses:
+        '200':
+          description: HTML content of the test page.
+          schema:
+            type: string
+            format: html
+
+  /similar-articles/{article_id}:
+    get:
+      summary: Get similar articles
+      description: Finds articles similar to the specified article ID.
+      operationId: getSimilarArticles
+      parameters:
+        - name: article_id
+          in: path
+          required: true
+          type: string
+          description: ID of the article to find similar ones for.
+      responses:
+        '200':
+          description: List of similar articles.
+          schema:
+            type: object
+            properties:
+              articles:
+                type: array
+                items:
+                  $ref: '#/definitions/Article' # Assuming similar articles have the same structure
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /similar-articles/: # Handles trailing slash and no ID
+    get:
+      summary: Get recent articles (fallback for similar)
+      description: Returns recent articles if no specific article ID is provided to the similar articles path.
+      operationId: getRecentArticlesFallback
+      responses:
+        '200':
+          description: List of recent articles.
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+              articles:
+                type: array
+                items:
+                  $ref: '#/definitions/Article' # Assuming recent articles have the same structure
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /rag: # HTML Interface
+    get:
+      summary: RAG Interface (HTML response)
+      description: Renders the HTML interface for interacting with the RAG API.
+      operationId: ragInterface
+      responses:
+        '200':
+          description: HTML content of the RAG interface page.
+          schema:
+            type: string
+            format: html
+
+  # --- API Routes (/api/*) ---
+
+  /api/update/status:
+    get:
+      summary: Get background update task status
+      description: Retrieves the current status of the background article scraping and processing task.
+      operationId: getUpdateStatus
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: Current update status.
+          schema:
+            $ref: '#/definitions/UpdateStatus'
+        # 500 is handled implicitly by Flask error handlers, but good to document
+        '500':
+          description: Error checking status.
+          schema:
+             $ref: '#/definitions/ErrorResponse' # Or a fallback status object
+
+  /api/update/start:
+    post:
+      summary: Start background update task
+      description: Initiates the background task to scrape and process new articles.
+      operationId: startUpdate
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: Update successfully started or status if already running.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              status:
+                 $ref: '#/definitions/UpdateStatus'
+        '500':
+          description: Error starting the update task.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                default: false
+              message:
+                type: string
+              error:
+                type: string
+
+  /api/update/cancel:
+    post:
+      summary: Cancel ongoing background update task
+      description: Attempts to initiate the cancellation of the currently running update task.
+      operationId: cancelUpdate
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: Cancellation status.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              status:
+                 $ref: '#/definitions/UpdateStatus'
+        '500':
+          description: Error cancelling the update task.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                default: false
+              message:
+                type: string
+              error:
+                type: string
+
+  /api/update: # Legacy API route
+    post:
+      summary: Legacy API route to start background update
+      description: Redirects to `/api/update/start`. Use `/api/update/start` directly.
+      operationId: apiUpdateArticlesLegacy
+      produces:
+        - application/json
+      responses:
+        # This effectively mirrors /api/update/start responses
+        '200':
+          description: Update successfully started or status if already running.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              status:
+                 $ref: '#/definitions/UpdateStatus'
+        '500':
+          description: Error starting the update task.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                default: false
+              message:
+                type: string
+              error:
+                type: string
+
+  /api/articles:
+    get:
+      summary: Get articles with filtering and pagination
+      description: Retrieves a paginated list of articles, allowing filtering by topic, search query, and sorting. Supports basic and enhanced search modes.
+      operationId: getArticles
+      parameters:
+        - name: page
+          in: query
+          type: integer
+          default: 1
+          minimum: 1
+          required: false
+          description: Page number for pagination.
+        - name: limit # Renamed from per_page in index route
+          in: query
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 50 # Max limit enforced? Check app.py
+          required: false
+          description: Number of articles per page.
+        - name: topic
+          in: query
+          type: string
+          default: All
+          required: false
+          description: Filter by topic (e.g., 'Cardiology', 'Oncology'). 'All' retrieves all topics.
+        - name: search
+          in: query
+          type: string
+          required: false
+          description: Search query string.
+        - name: sort_by
+          in: query
+          type: string
+          default: pub_date
+          required: false
+          enum: [pub_date, title, source, topic] # Confirm valid fields
+          description: Field to sort by.
+        - name: sort_order
+          in: query
+          type: string
+          default: desc
+          required: false
+          enum: [asc, desc]
+          description: Sort order.
+        - name: searchType # Parameter for enhanced search
+          in: query
+          type: string
+          required: false
+          enum: [auto, semantic, keyword] # Assuming these are the types
+          description: Type of search to perform when 'search' query is present.
+        - name: threshold # Parameter for enhanced search
+          in: query
+          type: number
+          format: float
+          required: false
+          description: Relevance threshold for enhanced search.
+        - name: fields # Parameter for enhanced search
+          in: query
+          type: string # Comma-separated?
+          required: false
+          description: Comma-separated list of fields to search within for enhanced search.
+      responses:
+        '200':
+          description: A paginated list of articles.
+          schema:
+            $ref: '#/definitions/PaginatedArticles'
+        '400':
+          description: Invalid query parameters.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/topics:
+    get:
+      summary: Get list of topics with article counts
+      description: Retrieves a list of all available topics along with the number and percentage of articles for each.
+      operationId: getTopics
+      responses:
+        '200':
+          description: List of topics with counts and percentages.
+          schema:
+            type: object
+            properties:
+              topics:
                 type: array
                 items:
                   type: object
                   properties:
-                    title:
+                    topic:
                       type: string
-                    url:
-                      type: string
+                    count:
+                      type: integer
+                    percentage:
+                      type: number
+                      format: float
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
-  /api/admin/cleanup-duplicates:
-    post:
-      operationId: adminCleanupDuplicates
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
+  /api/topics/stats:
+    get:
+      summary: Get enhanced topic statistics
+      description: Retrieves detailed statistics for each topic, including trends, growth rates, and recent counts.
+      operationId: getTopicStats
       responses:
         '200':
-          description: Cleanup duplicates operation completed
+          description: Enhanced statistics for topics.
           schema:
             type: object
+            properties:
+              topics:
+                type: array
+                items:
+                  $ref: '#/definitions/TopicStat'
+        '500':
+          description: Internal server error.
+          schema:
+            type: object # Allow fallback response defined in app.py
+            properties:
+              error:
+                type: string
+              topics:
+                type: array
+                items: {}
+              status:
+                 type: string
+                 enum: [error]
+
+
+  /api/rag:
+    post:
+      summary: Perform a RAG query
+      description: Submits a query to the Retrieval-Augmented Generation service, returning an answer based on relevant articles.
+      operationId: ragQuery
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [query]
+            properties:
+              query:
+                type: string
+              use_history:
+                type: boolean
+                default: true
+              show_sources:
+                type: boolean
+                default: true
+      responses:
+        '200':
+          description: RAG query response.
+          schema:
+            $ref: '#/definitions/RagResponse'
+        '400':
+          description: Bad request (e.g., missing query).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '429':
+          description: Rate limit exceeded.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during RAG generation.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+          description: AI service unavailable or configuration error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '504':
+          description: Request timed out.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/rag/stream:
+    post:
+      summary: Perform a RAG query with streaming response (POST)
+      description: Submits a query for RAG and streams the response back chunk by chunk using JSON objects. Includes metadata and sources.
+      operationId: streamRagQueryPost
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [query]
+            properties:
+              query:
+                type: string
+              use_history:
+                type: boolean
+                default: true
+              insight_mode: # Added based on app.py
+                type: boolean
+                default: false
+              time_aware: # Added based on app.py
+                type: boolean
+                default: true
+              analysis_type: # Added based on app.py
+                type: string
+                nullable: true # Assuming it can be omitted
+      produces:
+        - application/json # Stream of JSON objects, newline delimited
+      responses:
+        '200':
+          description: Streaming response containing chunks, metadata, sources, and errors.
+          schema:
+            # OpenAPI v2 doesn't formally support streaming descriptions well.
+            # Describe the structure of individual streamed objects.
+            type: object # Represents one message in the stream
+            properties:
+              type:
+                type: string
+                enum: [metadata, content, sources, error]
+              # Add other potential fields based on type (content, status, confidence, sources, error, done, etc.)
+        '400':
+          description: Bad request (e.g., missing query).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '429':
+          description: Rate limit exceeded.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+          description: AI service unavailable.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during streaming.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    get:
+      summary: Perform a RAG query with streaming response (GET for EventSource)
+      description: Submits a query for RAG and streams the response using Server-Sent Events (SSE) format.
+      operationId: streamRagQueryGet
+      parameters:
+        - name: query
+          in: query
+          required: true
+          type: string
+        - name: use_history
+          in: query
+          required: false
+          type: boolean
+          default: true
+      produces:
+        - text/event-stream
+      responses:
+        '200':
+          description: Server-Sent Events stream. Each event's data is a JSON object.
+          schema:
+            # Describe the 'data' part of an SSE event
+            type: object
+            properties:
+               chunk:
+                 type: string
+               done:
+                 type: boolean
+               sources:
+                 type: array
+                 items:
+                   $ref: '#/definitions/RagSource'
+               full_response: # Included in final message
+                 type: string
+               error: # Included on error
+                 type: string
+        '400':
+          description: Bad request (e.g., missing query).
+          # SSE doesn't typically return structured errors easily here
+        '429':
+          description: Rate limit exceeded.
+        '500':
+          description: Internal server error during streaming.
+        '503':
+          description: AI service unavailable.
+
+  /api/rag/history:
+    get:
+      summary: Get RAG conversation history
+      description: Retrieves the recent history of RAG interactions for the current session or user.
+      operationId: getRagHistory
+      responses:
+        '200':
+          description: List of past RAG queries and responses.
+          schema:
+            type: object
+            properties:
+              history:
+                type: array
+                items:
+                  type: object # Define structure if known (e.g., {query: string, response: string, timestamp: string})
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+    delete:
+      summary: Clear RAG conversation history
+      description: Clears the stored RAG conversation history.
+      operationId: clearRagHistory
+      responses:
+        '200':
+          description: History cleared successfully.
+          schema:
+            $ref: '#/definitions/SuccessMessage'
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/backup: # Requires GCS setup
+    post:
+      summary: Backup data to GCS
+      description: Triggers a backup of application data (articles, cache) to Google Cloud Storage. Requires GCS configuration.
+      operationId: backupData
+      responses:
+        '200':
+          description: Backup initiated successfully.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              articles_url:
+                type: string
+                format: url
+              cache_url:
+                type: string
+                format: url
+                nullable: true
+        '500':
+          description: Backup failed.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/backups: # Requires GCS setup
+    get:
+      summary: List GCS backups
+      description: Lists available backups stored in Google Cloud Storage. Requires GCS configuration.
+      operationId: listBackups
+      responses:
+        '200':
+          description: List of backup file names.
+          schema:
+            type: object
+            properties:
+              backups:
+                type: array
+                items:
+                  type: string # Or object if more detail is returned
+        '500':
+          description: Failed to list backups.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/restore: # Requires GCS setup
+    post:
+      summary: Restore data from GCS backup
+      description: Restores application data from a specified backup file in Google Cloud Storage. Requires GCS configuration.
+      operationId: restoreBackup
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [filename]
+            properties:
+              filename:
+                type: string
+                description: The name of the backup file to restore.
+      responses:
+        '200':
+          description: Restore completed successfully.
+          schema:
+            $ref: '#/definitions/SuccessMessage'
+        '400':
+          description: Bad request (e.g., missing filename, unrecognized type).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Restore failed.
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              success:
+                type: boolean
+                default: false
+
+  /api/search/suggestions:
+    get:
+      summary: Get search suggestions
+      description: Provides type-ahead search suggestions based on article titles, topics, etc.
+      operationId: getSearchSuggestions
+      parameters:
+        - name: q
+          in: query
+          required: true
+          type: string
+          minLength: 2 # Enforced in app.py
+          description: The partial search query.
+      responses:
+        '200':
+          description: List of search suggestions.
+          schema:
+            type: object
+            properties:
+              suggestions:
+                type: array
+                items:
+                  type: string
+        '500':
+          description: Internal server error.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/topic-analysis:
+    post:
+      summary: Perform in-depth topic analysis
+      description: Generates a detailed analysis for a given pharmaceutical topic using AI.
+      operationId: topicAnalysis
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [topic]
+            properties:
+              topic:
+                type: string
+      responses:
+        '200':
+          description: Topic analysis results.
+          schema:
+            type: object
+            properties:
+              topic:
+                type: string
+              analysis:
+                type: string # The main analysis text
+              sources:
+                type: array
+                items:
+                  $ref: '#/definitions/RagSource'
+              confidence:
+                type: number
+                format: float
+              timestamp:
+                type: string
+                format: date-time
+        '400':
+          description: Bad request (e.g., missing topic).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  # --- KumbyAI Specific Endpoints ---
+  /api/kumby/regulatory:
+    post:
+      summary: Analyze regulatory impact
+      description: Analyzes provided content for its regulatory impact in the pharmaceutical domain.
+      operationId: analyzeRegulatoryImpact
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [content]
+            properties:
+              content:
+                type: string
+      responses:
+        '200':
+          description: Regulatory analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing content).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/market:
+    post:
+      summary: Generate market insight
+      description: Generates pharmaceutical market insights based on a topic and timeframe.
+      operationId: generateMarketInsight
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [topic]
+            properties:
+              topic:
+                type: string
+              timeframe:
+                type: string
+                default: recent
+                description: Timeframe for the insight (e.g., 'recent', 'last_quarter').
+      responses:
+        '200':
+          description: Market insight result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing topic).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during generation.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/drug:
+    post:
+      summary: Analyze drug development
+      description: Analyzes the development progress for a specified drug name.
+      operationId: analyzeDrugDevelopment
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [drug_name]
+            properties:
+              drug_name:
+                type: string
+      responses:
+        '200':
+          description: Drug development analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing drug name).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/competitive:
+    post:
+      summary: Generate competitive analysis
+      description: Generates a competitive analysis for a given pharmaceutical company.
+      operationId: generateCompetitiveAnalysis
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [company_name]
+            properties:
+              company_name:
+                type: string
+      responses:
+        '200':
+          description: Competitive analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing company name).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/clinical-trial:
+    post:
+      summary: Analyze clinical trial data
+      description: Analyzes provided clinical trial data.
+      operationId: analyzeClinicalTrial
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [trial_data]
+            properties:
+              trial_data:
+                type: string # Or object if structured data is expected
+                description: The clinical trial data to analyze.
+      responses:
+        '200':
+          description: Clinical trial analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing trial data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/patent:
+    post:
+      summary: Analyze patent information
+      description: Analyzes provided patent data.
+      operationId: analyzePatent
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [patent_data]
+            properties:
+              patent_data:
+                type: string # Or object if structured data is expected
+                description: The patent data to analyze.
+      responses:
+        '200':
+          description: Patent analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing patent data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/manufacturing:
+    post:
+      summary: Analyze manufacturing data
+      description: Analyzes manufacturing and supply chain data.
+      operationId: analyzeManufacturing
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [manufacturing_data]
+            properties:
+              manufacturing_data:
+                type: string # Or object if structured data is expected
+                description: The manufacturing data to analyze.
+      responses:
+        '200':
+          description: Manufacturing analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/market-access:
+    post:
+      summary: Analyze market access data
+      description: Analyzes market access and pricing data.
+      operationId: analyzeMarketAccess
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [market_data]
+            properties:
+              market_data:
+                type: string # Or object if structured data is expected
+                description: The market access data to analyze.
+      responses:
+        '200':
+          description: Market access analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/safety:
+    post:
+      summary: Analyze safety data
+      description: Analyzes safety and pharmacovigilance data.
+      operationId: analyzeSafety
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [safety_data]
+            properties:
+              safety_data:
+                type: string # Or object if structured data is expected
+                description: The safety data to analyze.
+      responses:
+        '200':
+          description: Safety analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/pipeline:
+    post:
+      summary: Analyze pipeline data
+      description: Analyzes pharmaceutical pipeline data.
+      operationId: analyzePipeline
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [pipeline_data]
+            properties:
+              pipeline_data:
+                type: string # Or object if structured data is expected
+                description: The pipeline data to analyze.
+      responses:
+        '200':
+          description: Pipeline analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/therapeutic-area:
+    post:
+      summary: Analyze therapeutic area landscape
+      description: Analyzes the landscape for a given therapeutic area.
+      operationId: analyzeTherapeuticArea
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [therapeutic_area]
+            properties:
+              therapeutic_area:
+                type: string
+                description: The therapeutic area to analyze.
+      responses:
+        '200':
+          description: Therapeutic area analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/regulatory-strategy:
+    post:
+      summary: Analyze regulatory strategy
+      description: Analyzes provided regulatory strategy data.
+      operationId: analyzeRegulatoryStrategy
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [regulatory_data]
+            properties:
+              regulatory_data:
+                type: string # Or object if structured data is expected
+                description: The regulatory data to analyze.
+      responses:
+        '200':
+          description: Regulatory strategy analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/digital-health:
+    post:
+      summary: Analyze digital health integration
+      description: Analyzes provided digital health integration data.
+      operationId: analyzeDigitalHealth
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [digital_data]
+            properties:
+              digital_data:
+                type: string # Or object if structured data is expected
+                description: The digital health data to analyze.
+      responses:
+        '200':
+          description: Digital health analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumby/value-evidence:
+    post:
+      summary: Analyze value and evidence data
+      description: Analyzes provided value and evidence data.
+      operationId: analyzeValueEvidence
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [value_data]
+            properties:
+              value_data:
+                type: string # Or object if structured data is expected
+                description: The value/evidence data to analyze.
+      responses:
+        '200':
+          description: Value/evidence analysis result.
+          schema:
+            type: object # Define specific response structure if known
+        '400':
+          description: Bad request (e.g., missing data).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+           description: AI service unavailable.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+
+  /api/kumbyai/chat:
+    post:
+      summary: KumbyAI Chat Endpoint
+      description: General purpose chat endpoint for KumbyAI, potentially using context from recent articles.
+      operationId: kumbyaiChat
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [message]
             properties:
               message:
                 type: string
-
-  /api/admin/export-csv:
-    get:
-      operationId: adminExportCsv
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
       responses:
         '200':
-          description: CSV export completed
+          description: Chat response from KumbyAI.
           schema:
             type: object
             properties:
-              url:
+              response:
+                type: string # Or object if response is structured
+              success:
+                type: boolean
+        '400':
+          description: Bad request (e.g., missing message).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during chat processing.
+          schema:
+            type: object
+            properties:
+              error:
                 type: string
+              success:
+                type: boolean
+                default: false
+        '503':
+           description: AI service unavailable.
+           schema:
+             type: object
+             properties:
+              error:
+                type: string
+              success:
+                type: boolean
+                default: false
+
+  # --- Admin Routes ---
+  /api/admin/export-csv:
+    get: # Changed from POST in original file, GET seems more appropriate for export
+      summary: Export articles to CSV
+      description: Exports all articles currently in the database to a CSV file.
+      operationId: adminExportCsv
+      produces:
+        - text/csv # Correct MIME type
+      responses:
+        '200':
+          description: CSV file containing article data.
+          schema:
+            type: string
+            format: binary # Indicate file download
+          headers:
+            Content-Disposition:
+              type: string
+              description: Suggests filename for download (e.g., attachment; filename=...)
+        '404':
+          description: No articles found to export.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Failed to export data.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
   /api/admin/force-sync:
     post:
+      summary: Force sync with all sources (Potentially buggy)
+      description: Triggers an immediate update/sync from all configured news sources. Warning: Implementation in app.py seems broken (uses undefined 'news_service').
       operationId: adminForceSync
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
       responses:
         '200':
-          description: Force sync operation completed
+          description: Sync completed (if implemented correctly).
           schema:
             type: object
             properties:
+              success:
+                type: boolean
               message:
                 type: string
+              articles_synced:
+                type: integer
+        '500':
+          description: Failed to sync data (likely NameError in current implementation).
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              success:
+                type: boolean
+                default: false
+
+  /api/admin/cleanup-duplicates:
+    post:
+      summary: Clean up duplicate articles
+      description: Removes duplicate articles from the database based on their URL.
+      operationId: adminCleanupDuplicates
+      responses:
+        '200':
+          description: Duplicate cleanup completed.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              removed_count:
+                type: integer
+        '404':
+          description: No articles found to clean up.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Failed to clean up duplicates.
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              success:
+                type: boolean
+                default: false
+
+  # --- Storage/DB Specific API routes ---
+  /api/storage/sync: # Marked as deprecated in app.py
+    post:
+      summary: Sync CSV to Firestore (Deprecated)
+      description: Legacy endpoint intended to sync data from a CSV file to Firestore. No longer needed as data is saved directly.
+      operationId: syncCsvToDatabase
+      parameters:
+        - name: body
+          in: body
+          required: false # Optional payload
+          schema:
+            type: object
+            properties:
+              force:
+                type: boolean
+                default: false
+      responses:
+        '200':
+          description: Information message indicating the endpoint is deprecated.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              info:
+                type: string
+        '500':
+          description: Internal server error (though unlikely as logic is minimal).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/storage/export:
+    post:
+      summary: Export Firestore data to CSV
+      description: Exports articles from the Firestore database to a specified CSV file path (on the server).
+      operationId: exportDatabaseToCsv
+      parameters:
+        - name: body
+          in: body
+          required: false # Optional payload
+          schema:
+            type: object
+            properties:
+              limit:
+                type: integer
+                default: 0
+                description: Maximum number of articles to export (0 for all).
+              file_path:
+                type: string
+                description: Path on the server where the CSV should be saved. Defaults to configured path.
+      responses:
+        '200':
+          description: Export operation status.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              stats:
+                type: object # Contains details like total_exported
+        '500':
+          description: Failed to export data.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/storage/cleanup:
+    post:
+      summary: Cleanup duplicate articles in Firestore
+      description: Runs a cleanup operation directly on the Firestore database to remove duplicate articles.
+      operationId: cleanupDuplicateArticlesDb
+      responses:
+        '200':
+          description: Cleanup operation status.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              message:
+                type: string
+              stats:
+                type: object # Contains details like duplicates_removed, total_articles
+        '500':
+          description: Failed to cleanup duplicates.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
   /api/articles/{article_id}/analyze:
     post:
+      summary: Generate structured analysis for an article
+      description: Performs a specified type of AI analysis on a given article and returns structured results.
       operationId: analyzeArticle
       parameters:
         - name: article_id
           in: path
           required: true
           type: string
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Article analysis completed
-          schema:
-            type: object
-
-  /api/kumby/clinical-trial:
-    post:
-      operationId: analyzeClinicalTrial
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Clinical trial analysis completed
-          schema:
-            type: object
-
-  /api/kumby/digital-health:
-    post:
-      operationId: analyzeDigitalHealth
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Digital health analysis completed
-          schema:
-            type: object
-
-  /api/kumby/drug:
-    post:
-      operationId: analyzeDrugDevelopment
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Drug development analysis completed
-          schema:
-            type: object
-
-  /api/kumby/manufacturing:
-    post:
-      operationId: analyzeManufacturing
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Manufacturing analysis completed
-          schema:
-            type: object
-
-  /api/kumby/market-access:
-    post:
-      operationId: analyzeMarketAccess
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Market access analysis completed
-          schema:
-            type: object
-
-  /api/kumby/patent:
-    post:
-      operationId: analyzePatent
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Patent analysis completed
-          schema:
-            type: object
-
-  /api/kumby/pipeline:
-    post:
-      operationId: analyzePipeline
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Pipeline analysis completed
-          schema:
-            type: object
-
-  /api/kumby/regulatory:
-    post:
-      operationId: analyzeRegulatoryImpact
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Regulatory impact analysis completed
-          schema:
-            type: object
-
-  /api/kumby/regulatory-strategy:
-    post:
-      operationId: analyzeRegulatoryStrategy
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Regulatory strategy analysis completed
-          schema:
-            type: object
-
-  /api/kumby/safety:
-    post:
-      operationId: analyzeSafety
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Safety analysis completed
-          schema:
-            type: object
-
-  /api/kumby/therapeutic-area:
-    post:
-      operationId: analyzeTherapeuticArea
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Therapeutic area analysis completed
-          schema:
-            type: object
-
-  /api/kumby/value-evidence:
-    post:
-      operationId: analyzeValueEvidence
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Value evidence analysis completed
-          schema:
-            type: object
-
-  /api/update:
-    post:
-      operationId: updateArticles
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Articles update completed
-          schema:
-            type: object
-
-  /api/update/cancel:
-    post:
-      operationId: cancelUpdate
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
-      responses:
-        '200':
-          description: Update cancelled successfully
+          description: The ID of the article to analyze.
+        - name: body
+          in: body
+          required: false # Optional parameters
           schema:
             type: object
             properties:
-              message:
+              analysis_type:
                 type: string
-
-  /api/analysis/saved:
-    get:
-      operationId: getSavedAnalyses
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
+                default: general
+                description: Type of analysis (e.g., 'clinical_trial', 'patent', 'market').
+              output_format:
+                type: string
+                default: default # Or json, markdown, etc.
+                description: Desired output format for the analysis result.
       responses:
         '200':
-          description: List of saved analyses
+          description: Structured analysis result.
           schema:
-            type: array
-            items:
-              type: object
+            type: object
+            properties:
+              article_id:
+                type: string
+              title:
+                type: string
+              analysis_type:
+                type: string
+              output_format:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
+              result:
+                type: object # Contains the analysis result from AI service
+                properties:
+                  text:
+                    type: string
+                  sources:
+                     type: array
+                     items:
+                       $ref: '#/definitions/RagSource'
+                  confidence:
+                     type: number
+                     format: float
+                  timestamp:
+                     type: string
+                     format: date-time
+                  parsed_json: # Conditionally added if output_format is json
+                    type: object
+                    nullable: true
+        '400':
+          description: Bad request (e.g., invalid analysis type).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Article not found.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Internal server error during analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '503':
+          description: AI service unavailable.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+  /api/analysis/save:
+    post:
+      summary: Save analysis results
+      description: Saves the results of an AI analysis (e.g., from RAG or article analysis) to the database.
+      operationId: saveAnalysis
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            required: [query, response, timestamp, analysis_type]
+            properties:
+              id:
+                type: string
+                description: Optional ID for the analysis; one will be generated if missing.
+              query:
+                type: string
+              response:
+                type: string # Or object if structured
+              analysis_type:
+                type: string
+              confidence:
+                type: number
+                format: float
+                default: 0.5
+              timestamp:
+                type: string
+                format: date-time
+              sources:
+                type: array
+                items:
+                  $ref: '#/definitions/RagSource'
+      responses:
+        '200':
+          description: Analysis saved successfully.
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+              id:
+                type: string
+              message:
+                type: string
+        '400':
+          description: Bad request (e.g., missing required fields).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Failed to save analysis to database.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
   /api/analysis/saved/{analysis_id}:
     get:
+      summary: Get saved analysis by ID
+      description: Retrieves a previously saved analysis result using its ID.
       operationId: getSavedAnalysis
       parameters:
         - name: analysis_id
           in: path
           required: true
           type: string
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
+          description: The ID of the saved analysis to retrieve.
       responses:
         '200':
-          description: Saved analysis details
+          description: Saved analysis details.
           schema:
-            type: object
+            $ref: '#/definitions/SavedAnalysis' # Using the definition
+        '404':
+          description: Analysis not found.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Failed to retrieve saved analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
     delete:
+      summary: Delete saved analysis by ID
+      description: Deletes a previously saved analysis result using its ID.
       operationId: deleteSavedAnalysis
       parameters:
         - name: analysis_id
           in: path
           required: true
           type: string
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
+          description: The ID of the saved analysis to delete.
       responses:
         '200':
-          description: Analysis deleted successfully
+          description: Analysis deleted successfully.
           schema:
-            type: object
+            $ref: '#/definitions/SuccessMessage'
+        '400':
+           description: Analysis ID is required.
+           schema:
+             $ref: '#/definitions/ErrorResponse'
+        '404':
+          description: Analysis not found.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Failed to delete analysis.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
-  /api/analysis/save:
-    post:
-      operationId: saveAnalysis
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
-      responses:
-        '200':
-          description: Analysis saved successfully
-          schema:
-            type: object
-
-  /api/rag/stream:
-    post:
-      operationId: streamRagQuery
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: Streaming RAG query response
-          schema:
-            type: object
+  /api/analysis/saved:
     get:
-      operationId: streamRagQueryGet
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
+      summary: Get list of saved analyses
+      description: Retrieves a paginated list of saved analysis results.
+      operationId: getSavedAnalyses
+      parameters:
+        - name: limit
+          in: query
+          type: integer
+          default: 10
+          minimum: 1
+          required: false
+          description: Maximum number of analyses to return.
+        - name: offset
+          in: query
+          type: integer
+          default: 0
+          minimum: 0
+          required: false
+          description: Number of analyses to skip for pagination.
+        - name: sort_by
+          in: query
+          type: string
+          default: created_at
+          required: false
+          # Add enum if specific sort fields are known/enforced
+          description: Field to sort analyses by.
+        - name: sort_order
+          in: query
+          type: string
+          default: desc
+          required: false
+          enum: [asc, desc]
+          description: Sort order.
       responses:
         '200':
-          description: Streaming RAG query response
+          description: A paginated list of saved analyses.
+          schema:
+            $ref: '#/definitions/PaginatedSavedAnalyses'
+        '500':
+          description: Failed to retrieve saved analyses.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+
+
+  /api/articles/validate:
+    post:
+      summary: Validate existence of article IDs
+      description: Checks if a list of provided article IDs exist in the database.
+      operationId: validateArticlesExist
+      parameters:
+        - name: body
+          in: body
+          required: true
           schema:
             type: object
-
-  /api/rag/history:
-    get:
-      operationId: getRagHistory
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
+            required: [article_ids]
+            properties:
+              article_ids:
+                type: array
+                items:
+                  type: string
+                description: A list of article IDs to validate.
       responses:
         '200':
-          description: RAG query history
-          schema:
-            type: array
-            items:
-              type: object
-    delete:
-      operationId: clearRagHistory
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
-      responses:
-        '200':
-          description: RAG history cleared
+          description: Validation results for each article ID.
           schema:
             type: object
             properties:
-              message:
-                type: string
+              results:
+                type: object
+                additionalProperties:
+                  type: boolean
+                description: Dictionary mapping article ID to boolean (true if exists).
+              count:
+                type: object
+                properties:
+                  total:
+                    type: integer
+                  valid:
+                    type: integer
+                  invalid:
+                    type: integer
+        '400':
+          description: Bad request (e.g., not JSON, article_ids not a list).
+          schema:
+            $ref: '#/definitions/ErrorResponse'
+        '500':
+          description: Failed to validate articles.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
   /api/sources:
     get:
+      summary: Get news sources
+      description: Retrieves a list of news sources along with metadata and article count for each.
       operationId: getSources
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
       responses:
         '200':
-          description: List of sources
+          description: List of sources.
           schema:
-            type: array
-            items:
-              type: string
+            type: object
+            properties:
+              sources:
+                type: array
+                items:
+                  $ref: '#/definitions/Source'
+        '500':
+          description: Failed to get sources.
+          schema:
+            $ref: '#/definitions/ErrorResponse'
 
-  /api/topics/stats:
+  /api/status:
     get:
-      operationId: getTopicStats
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 10.0
+      summary: Get service status overview
+      description: Provides a quick overview of the status of key application components (API, Storage, AI).
+      operationId: getServiceStatus
       responses:
         '200':
-          description: Topic statistics
+          description: Service status details.
           schema:
             type: object
-
-  /api/kumbyai/chat:
-    post:
-      operationId: kumbyaiChat
-      x-google-backend:
-        address: https://newsletter-aggregator-857170198287.us-central1.run.app
-        deadline: 30.0
-      responses:
-        '200':
-          description: KumbyAI chat response
+            properties:
+              status:
+                type: string
+                enum: [ok, error] # Based on implementation
+              services:
+                type: object
+                properties:
+                  api:
+                    type: boolean
+                  storage:
+                    type: boolean
+                  ai:
+                    type: boolean
+                  ai_healthy: # Added based on implementation
+                    type: boolean
+                    nullable: true
+                  ai_error: # Added based on implementation
+                    type: string
+                    nullable: true
+              timestamp:
+                type: string
+                format: date-time
+        '500':
+          description: Error checking service status.
           schema:
             type: object
+            properties:
+              status:
+                type: string
+                enum: [error]
+              message:
+                type: string
+              timestamp:
+                type: string
+                format: date-time
 
- 
+</rewritten_file> 
