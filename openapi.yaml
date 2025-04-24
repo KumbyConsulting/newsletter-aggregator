@@ -3,13 +3,13 @@ info:
   title: Newsletter Aggregator API
   description: API for the Newsletter Aggregator service
   version: 1.0.0
-host: newsletter-aggregator-ukm23f55ra-uc.a.run.app
+host: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev
 schemes:
   - https
 produces:
   - application/json
 x-google-backend:
-  address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+  address: https://newsletter-aggregator-857170198287.us-central1.run.app
   protocol: h2
 x-google-management:
   metrics:
@@ -25,7 +25,7 @@ x-google-management:
         values:
           STANDARD: 1000
 x-google-endpoints:
-  - name: newsletter-aggregator-ukm23f55ra-uc.a.run.app
+  - name: newsletter-aggregator-857170198287.us-central1.run.app
     allowCors: true
 
 paths:
@@ -35,7 +35,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -47,22 +47,6 @@ paths:
                 type: string
               last_update:
                 type: string
-    options:
-      summary: CORS support for update status
-      operationId: corsUpdateStatus
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/update/start:
     post:
@@ -70,7 +54,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         path_translation: APPEND_PATH_TO_ADDRESS
         deadline: 30.0
       responses:
@@ -81,23 +65,6 @@ paths:
             properties:
               message:
                 type: string
-    options:
-      summary: CORS support
-      operationId: corsStartUpdate
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        path_translation: APPEND_PATH_TO_ADDRESS
-        deadline: 30.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/articles:
     get:
@@ -105,7 +72,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       parameters:
         - name: topic
@@ -136,22 +103,6 @@ paths:
                   type: string
                 topic:
                   type: string
-    options:
-      summary: CORS support for articles
-      operationId: corsArticles
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/topics:
     get:
@@ -159,7 +110,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -168,22 +119,6 @@ paths:
             type: array
             items:
               type: string
-    options:
-      summary: CORS support for topics
-      operationId: corsTopics
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/rag:
     post:
@@ -191,7 +126,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       parameters:
         - name: query
@@ -219,22 +154,6 @@ paths:
                       type: string
                     url:
                       type: string
-    options:
-      summary: CORS support for RAG queries
-      operationId: corsRag
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/admin/cleanup-duplicates:
     post:
@@ -242,7 +161,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
@@ -252,22 +171,6 @@ paths:
             properties:
               message:
                 type: string
-    options:
-      summary: CORS support for cleanup duplicates
-      operationId: corsCleanupDuplicates
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/admin/export-csv:
     get:
@@ -275,7 +178,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
@@ -285,22 +188,6 @@ paths:
             properties:
               url:
                 type: string
-    options:
-      summary: CORS support for export CSV
-      operationId: corsExportCsv
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/admin/force-sync:
     post:
@@ -308,7 +195,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
@@ -318,22 +205,6 @@ paths:
             properties:
               message:
                 type: string
-    options:
-      summary: CORS support for force sync
-      operationId: corsForceSync
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/articles/{article_id}/analyze:
     post:
@@ -346,34 +217,13 @@ paths:
           required: true
           type: string
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Article analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for article analysis
-      operationId: corsAnalyzeArticle
-      parameters:
-        - name: article_id
-          in: path
-          required: true
-          type: string
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/clinical-trial:
     post:
@@ -381,29 +231,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Clinical trial analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for clinical trial analysis
-      operationId: corsClinicalTrial
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/digital-health:
     post:
@@ -411,29 +245,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Digital health analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for digital health analysis
-      operationId: corsDigitalHealth
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/drug:
     post:
@@ -441,29 +259,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Drug development analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for drug development analysis
-      operationId: corsDrugDevelopment
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/manufacturing:
     post:
@@ -471,29 +273,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Manufacturing analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for manufacturing analysis
-      operationId: corsManufacturing
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/market-access:
     post:
@@ -501,29 +287,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Market access analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for market access analysis
-      operationId: corsMarketAccess
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/patent:
     post:
@@ -531,29 +301,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Patent analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for patent analysis
-      operationId: corsPatent
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/pipeline:
     post:
@@ -561,29 +315,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Pipeline analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for pipeline analysis
-      operationId: corsPipeline
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/regulatory:
     post:
@@ -591,29 +329,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Regulatory impact analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for regulatory impact analysis
-      operationId: corsRegulatory
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/regulatory-strategy:
     post:
@@ -621,29 +343,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Regulatory strategy analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for regulatory strategy analysis
-      operationId: corsRegulatoryStrategy
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/safety:
     post:
@@ -651,29 +357,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Safety analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for safety analysis
-      operationId: corsSafety
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/therapeutic-area:
     post:
@@ -681,29 +371,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Therapeutic area analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for therapeutic area analysis
-      operationId: corsTherapeuticArea
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumby/value-evidence:
     post:
@@ -711,29 +385,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Value evidence analysis completed
           schema:
             type: object
-    options:
-      summary: CORS support for value evidence analysis
-      operationId: corsValueEvidence
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/update:
     post:
@@ -741,29 +399,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Articles update completed
           schema:
             type: object
-    options:
-      summary: CORS support for articles update
-      operationId: corsUpdateArticles
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/update/cancel:
     post:
@@ -771,7 +413,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -781,22 +423,6 @@ paths:
             properties:
               message:
                 type: string
-    options:
-      summary: CORS support for cancel update
-      operationId: corsCancelUpdate
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/analysis/saved:
     get:
@@ -804,7 +430,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -813,22 +439,6 @@ paths:
             type: array
             items:
               type: object
-    options:
-      summary: CORS support for saved analyses list
-      operationId: corsSavedAnalyses
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/analysis/saved/{analysis_id}:
     get:
@@ -841,7 +451,7 @@ paths:
           required: true
           type: string
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -858,34 +468,13 @@ paths:
           required: true
           type: string
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
           description: Analysis deleted successfully
           schema:
             type: object
-    options:
-      summary: CORS support for saved analysis operations
-      operationId: corsSavedAnalysis
-      parameters:
-        - name: analysis_id
-          in: path
-          required: true
-          type: string
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/analysis/save:
     post:
@@ -893,29 +482,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
           description: Analysis saved successfully
           schema:
             type: object
-    options:
-      summary: CORS support for saving analysis
-      operationId: corsSaveAnalysis
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/rag/stream:
     post:
@@ -923,7 +496,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
@@ -935,29 +508,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: Streaming RAG query response
           schema:
             type: object
-    options:
-      summary: CORS support for RAG streaming
-      operationId: corsRagStream
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/rag/history:
     get:
@@ -965,7 +522,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -979,7 +536,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -989,22 +546,6 @@ paths:
             properties:
               message:
                 type: string
-    options:
-      summary: CORS support for RAG history
-      operationId: corsRagHistory
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/sources:
     get:
@@ -1012,7 +553,7 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
@@ -1021,22 +562,6 @@ paths:
             type: array
             items:
               type: string
-    options:
-      summary: CORS support for sources
-      operationId: corsSources
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/topics/stats:
     get:
@@ -1044,29 +569,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
       responses:
         '200':
           description: Topic statistics
           schema:
             type: object
-    options:
-      summary: CORS support for topic stats
-      operationId: corsTopicStats
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
   /api/kumbyai/chat:
     post:
@@ -1074,29 +583,13 @@ paths:
       security:
         - api_key: []
       x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
+        address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
       responses:
         '200':
           description: KumbyAI chat response
           schema:
             type: object
-    options:
-      summary: CORS support for KumbyAI chat
-      operationId: corsKumbyAiChat
-      x-google-backend:
-        address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app
-        deadline: 10.0
-      responses:
-        '204':
-          description: CORS headers returned successfully
-          headers:
-            Access-Control-Allow-Origin:
-              type: string
-            Access-Control-Allow-Methods:
-              type: string
-            Access-Control-Allow-Headers:
-              type: string
 
 securityDefinitions:
   api_key:
