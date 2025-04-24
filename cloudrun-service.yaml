@@ -1,0 +1,111 @@
+# cloudrun-service.yaml - Base declarative definition for the Cloud Run service
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  # The name of the Cloud Run service (Cloud Deploy will manage revisions)
+  name: newsletter-aggregator
+  # Annotations can be used for labels or other metadata if needed
+  # annotations:
+  #   cloud.googleapis.com/location: us-central1 # Location is managed by the Target
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scaling Configuration
+        autoscaling.knative.dev/minScale: "2"
+        autoscaling.knative.dev/maxScale: "15"
+        # Execution Environment & Performance
+        run.googleapis.com/execution-environment: "gen2"
+        run.googleapis.com/cpu-boost: "true"
+        run.googleapis.com/use-http2: "true"
+        run.googleapis.com/cpu-throttling: "true" # true = CPU always allocated (matches --cpu-throttling)
+        # Networking & Database
+        # *** Replace YOUR_PROJECT_ID and INSTANCE_NAME below ***
+        run.googleapis.com/cloudsql-instances: "newsletter-450510:us-central1:newsletter-aggregator"
+        run.googleapis.com/vpc-access-connector: "projects/newsletter-450510/locations/us-central1/connectors/newsletter-aggregator-vpc"
+      # labels:
+      #   app: newsletter-aggregator
+    spec:
+      # *** Replace YOUR_PROJECT_ID and SA_NAME below ***
+      serviceAccountName: newsletter-aggregator-sa@newsletter-450510.iam.gserviceaccount.com
+      containerConcurrency: 40
+      timeoutSeconds: 300
+      containers:
+        - image: newsletter-aggregator # Placeholder - Skaffold/Cloud Deploy injects the specific image URI
+          ports:
+            # Port the container listens on (matches Gunicorn --bind)
+            - containerPort: 8080
+              name: http1 # Default port for Cloud Run requests
+            # Additional port for Prometheus metrics (matches Gunicorn --bind)
+            - containerPort: 8000
+              name: http-metrics
+          # Override the container's entrypoint/command
+          command:
+            - "/bin/sh"
+          args:
+            - "-c"
+            - "python -m gunicorn --bind :8080 --bind :8000 app:app"
+          env:
+            # Base environment variables - some will be patched by Skaffold profiles
+            # NOTE: Relies on Skaffold patching for FLASK_ENV and GCS_BUCKET_NAME
+            - name: FLASK_ENV
+              value: "production" # Base value, overridden by profile patches
+            - name: GCS_BUCKET_NAME
+              value: "newsletter-aggregator" # Base value, overridden by profile patches
+            # Other env vars from original command
+            - name: USE_GCS_BACKUP
+              value: "true"
+            - name: USE_VERTEX_AI
+              value: "true"
+            - name: USE_CLOUD_LOGGING
+              value: "true"
+            - name: STORAGE_BACKEND
+              value: "firestore"
+            - name: USE_SECRET_MANAGER
+              value: "true"
+            - name: SKIP_CHROMADB_INIT
+              value: "true"
+            - name: API_GATEWAY_ENABLED
+              value: "true"
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: GUNICORN_WORKERS
+              value: "8"
+            - name: GUNICORN_THREADS
+              value: "8"
+            - name: GUNICORN_WORKER_CLASS
+              value: "gthread"
+            - name: GUNICORN_MAX_REQUESTS
+              value: "1000"
+            - name: GUNICORN_MAX_REQUESTS_JITTER
+              value: "50"
+            - name: GUNICORN_TIMEOUT
+              value: "300"
+            - name: ENABLE_PROMETHEUS
+              value: "true"
+            - name: PROMETHEUS_PORT
+              value: "8000"
+            - name: MONITORING_ENABLED
+              value: "true"
+            # GCP_PROJECT_ID: Rely on GOOGLE_CLOUD_PROJECT env var available in Cloud Run runtime
+            # Secret Reference
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  # *** Ensure this secret exists in Secret Manager ***
+                  name: GEMINI_API_KEY
+                  key: "latest" # Or a specific version
+
+          resources:
+            limits:
+              # Corresponds to --memory=4Gi and --cpu=2
+              memory: "4Gi"
+              cpu: "2"
+            # requests: # You can optionally specify requests if needed
+            #   memory: "1Gi"
+            #   cpu: "1"
+  # Traffic routing - send 100% to the latest ready revision
+  traffic:
+    - percent: 100
+      latestRevision: true 

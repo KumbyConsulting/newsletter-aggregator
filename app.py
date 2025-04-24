@@ -21,6 +21,9 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import uuid
 from google.cloud import firestore
+from queue import Queue
+from werkzeug.exceptions import ServiceUnavailable
+import psutil
 
 # Import services
 from services.config_service import ConfigService
@@ -33,6 +36,7 @@ from newsLetter import scrape_news, RateLimitException, generate_missing_summari
 from services.constants import TOPICS
 from services.ai_service import KumbyAI, AIServiceException, GeminiAPIException
 from io import StringIO
+from services.circuit_breaker import CircuitBreakerService
 
 # Only import Google Cloud Storage if it's enabled
 if os.environ.get('USE_GCS_BACKUP') == 'true':
@@ -65,6 +69,9 @@ rate_limiting_service = RateLimitingService()
 rate_limiting_service.configure_limit("api", calls=100, period=60)  # 100 calls per minute
 rate_limiting_service.configure_limit("scrape", calls=1, period=300)  # 1 scrape per 5 minutes
 rate_limiting_service.configure_limit("summarize", calls=10, period=60)  # 10 summaries per minute
+
+# Initialize circuit breaker service
+circuit_breaker_service = CircuitBreakerService()
 
 # Define async route decorator
 def async_route(f):
@@ -418,9 +425,63 @@ def min_value(a, b):
     return min(a, b)
 
 @app.route('/_ah/health')
-def health_check():
-    """Health check endpoint for Cloud Run"""
-    return jsonify({"status": "healthy"}), 200
+async def health_check():
+    """Enhanced health check endpoint with service status"""
+    try:
+        health_status = {
+            'status': 'healthy',
+            'timestamp': datetime.utcnow().isoformat(),
+            'version': os.environ.get('VERSION', 'unknown'),
+            'services': {
+                'database': 'healthy',
+                'cache': 'healthy',
+                'ai': 'healthy'
+            },
+            'metrics': {
+                'request_queue_size': request_queue.qsize(),
+                'memory_usage': psutil.Process().memory_info().rss / 1024 / 1024,  # MB
+                'cpu_percent': psutil.Process().cpu_percent()
+            }
+        }
+        
+        # Check database connection
+        try:
+            await storage_service.ping()
+        except Exception as e:
+            health_status['services']['database'] = 'unhealthy'
+            logging.error(f"Database health check failed: {e}")
+            
+        # Check cache service
+        try:
+            cache_service.ping()
+        except Exception as e:
+            health_status['services']['cache'] = 'unhealthy'
+            logging.error(f"Cache health check failed: {e}")
+            
+        # Check AI service
+        if ai_service:
+            try:
+                await ai_service.ping()
+            except Exception as e:
+                health_status['services']['ai'] = 'unhealthy'
+                logging.error(f"AI service health check failed: {e}")
+                
+        # Overall status determination
+        if any(status == 'unhealthy' for status in health_status['services'].values()):
+            health_status['status'] = 'degraded'
+            response_code = 500
+        else:
+            response_code = 200
+            
+        return jsonify(health_status), response_code
+        
+    except Exception as e:
+        logging.error(f"Health check failed: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
 
 @app.route('/_ah/warmup')
 def warmup():
@@ -857,7 +918,30 @@ def update_callback(progress, message, sources_processed=None, total_sources=Non
     if articles_found is not None:
         update_status["articles_found"] = articles_found
 
+# Request queue configuration
+request_queue = Queue(maxsize=1000)
+QUEUE_TIMEOUT = 5  # seconds
+
+# Add queue management decorator
+def manage_request_queue(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        try:
+            # Try to put request in queue with timeout
+            if not request_queue.put(True, timeout=QUEUE_TIMEOUT):
+                raise ServiceUnavailable("Server is experiencing high load. Please try again later.")
+            try:
+                return f(*args, **kwargs)
+            finally:
+                request_queue.get()
+                request_queue.task_done()
+        except queue.Full:
+            raise ServiceUnavailable("Request queue is full. Please try again later.")
+    return decorated_function
+
 @app.route('/api/update/start', methods=['POST'])
+@circuit_breaker_service.circuit_breaker('update')
+@manage_request_queue
 def start_update():
     """Enhanced API endpoint to start a background update"""
     global update_thread, update_status
@@ -1085,6 +1169,8 @@ async def summarize_article():
         abort(500, description="An unexpected error occurred")
 
 @app.route('/generate-summaries', methods=['POST'], endpoint='generate_summaries_endpoint')
+@circuit_breaker_service.circuit_breaker('summary')
+@manage_request_queue
 @monitoring_service.time_async_function("generate_summaries")
 @rate_limiting_service.rate_limit_decorator(key="summarize")
 @async_route
@@ -1132,7 +1218,8 @@ def test_summary():
     return render_template('test_summary.html')
 
 @app.route('/api/rag', methods=['POST'], endpoint='rag_query_endpoint')
-@async_route
+@circuit_breaker_service.circuit_breaker('rag')
+@manage_request_queue
 @monitoring_service.time_async_function("rag_query")
 @rate_limiting_service.rate_limit_decorator(key="rag")
 async def rag_query():

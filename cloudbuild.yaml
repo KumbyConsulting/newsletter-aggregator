@@ -1,168 +1,36 @@
 steps:
-  # Build the container image
+  # Build the container image using the commit SHA as the tag
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/newsletter-aggregator:v1', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID', '.']
+    id: 'Build Backend Image'
 
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:v1']
+    args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID']
+    id: 'Push Backend Image'
 
-  # Deploy container image to Cloud Run
+  # Create a Cloud Deploy release for the backend service
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
+    entrypoint: gcloud # Explicitly set the entrypoint
     args:
-      - 'run'
       - 'deploy'
-      - 'newsletter-aggregator'
-      - '--image=gcr.io/$PROJECT_ID/newsletter-aggregator:v1'
+      - 'releases'
+      - 'create'
+      # Release name: Use a timestamp or short SHA for uniqueness
+      - 'rel-${SHORT_SHA}-${BUILD_ID}'
+      - '--delivery-pipeline=newsletter-aggregator-backend-pipeline' # Matches the pipeline name in clouddeploy.yaml
       - '--region=us-central1'
-      - '--platform=managed'
-      - '--allow-unauthenticated'
-      - '--memory=2Gi'
-      - '--cpu=2'
-      - '--min-instances=1'
-      - '--max-instances=10'
-      - '--timeout=600s'
-      - '--cpu-boost'
-      - '--concurrency=80'
-      - '--set-secrets=GEMINI_API_KEY=GEMINI_API_KEY:latest'
-      - '--set-env-vars=GCP_PROJECT_ID=$PROJECT_ID,GCS_BUCKET_NAME=newsletter-aggregator,USE_GCS_BACKUP=true,USE_VERTEX_AI=true,USE_CLOUD_LOGGING=true,STORAGE_BACKEND=firestore,FLASK_ENV=production,USE_SECRET_MANAGER=true,SKIP_CHROMADB_INIT=true,API_GATEWAY_ENABLED=true,PYTHONUNBUFFERED=1,GUNICORN_WORKERS=4,GUNICORN_THREADS=4,GUNICORN_WORKER_CLASS=gthread'
-      - '--port=8080'
-      - '--cpu-throttling'
+      # Point to the image built and pushed in earlier steps
+      - '--images=newsletter-aggregator=gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID'
+      # Optional: Add annotations if needed
+      # - '--annotations=commit_id=$COMMIT_SHA'
+      - '--description=Backend release triggered by commit $SHORT_SHA'
+      # Ensure skaffold.yaml exists in the root directory or specify path with --skaffold-file
+    id: 'Create Cloud Deploy Release'
 
-  # Create a tagged production version
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['tag', 'gcr.io/$PROJECT_ID/newsletter-aggregator:v1', 'gcr.io/$PROJECT_ID/newsletter-aggregator:latest']
-
-  # Push the latest tag
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:latest']
-
-  # Create a service account for API Gateway if it doesn't exist
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        if ! gcloud iam service-accounts describe newsletter-aggregator-sa@$PROJECT_ID.iam.gserviceaccount.com 2>/dev/null; then
-          gcloud iam service-accounts create newsletter-aggregator-sa \
-            --display-name="Newsletter Aggregator Service Account"
-        fi
-        # Grant the service account permission to invoke Cloud Run
-        gcloud run services add-iam-policy-binding newsletter-aggregator \
-          --member="serviceAccount:newsletter-aggregator-sa@$PROJECT_ID.iam.gserviceaccount.com" \
-          --role="roles/run.invoker" \
-          --region=us-central1
-
-  # Get the project number and update the OpenAPI spec
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
-        sed -i "s/SERVICE_PROJECT_NUMBER/$$PROJECT_NUMBER/g" openapi.yaml
-
-  # Create API Gateway API if it doesn't exist
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        if ! gcloud api-gateway apis describe newsletter-aggregator-api --project=$PROJECT_ID 2>/dev/null; then
-          echo "Creating API Gateway API: newsletter-aggregator-api"
-          gcloud api-gateway apis create newsletter-aggregator-api \
-            --project=$PROJECT_ID
-        else
-          echo "API Gateway API newsletter-aggregator-api already exists."
-        fi
-
-  # Create API Gateway Config if it doesn't exist
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        # NOTE: API Configs are immutable. If the spec changes, you need a new config name (e.g., v2).
-        if ! gcloud api-gateway api-configs describe newsletter-aggregator-config-v1 --api=newsletter-aggregator-api --project=$PROJECT_ID 2>/dev/null; then
-          echo "Creating API Gateway Config: newsletter-aggregator-config-v1"
-          gcloud api-gateway api-configs create newsletter-aggregator-config-v1 \
-            --api=newsletter-aggregator-api \
-            --openapi-spec=openapi.yaml \
-            --project=$PROJECT_ID \
-            --backend-auth-service-account=newsletter-aggregator-sa@$PROJECT_ID.iam.gserviceaccount.com
-        else
-          echo "API Gateway Config newsletter-aggregator-config-v1 already exists."
-        fi
-
-  # Create or update API Gateway and store URL
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        if gcloud api-gateway gateways describe newsletter-aggregator-gateway --location=us-central1 --project=$PROJECT_ID 2>/dev/null; then
-          echo "Updating existing API Gateway..."
-          gcloud api-gateway gateways update newsletter-aggregator-gateway \
-            --api=newsletter-aggregator-api \
-            --api-config=newsletter-aggregator-config-v1 \
-            --location=us-central1 \
-            --project=$PROJECT_ID
-        else
-          echo "Creating new API Gateway..."
-          gcloud api-gateway gateways create newsletter-aggregator-gateway \
-            --api=newsletter-aggregator-api \
-            --api-config=newsletter-aggregator-config-v1 \
-            --location=us-central1 \
-            --project=$PROJECT_ID
-        fi
-        
-        echo "API Gateway deployment complete. Fetching URL..."
-        GATEWAY_URL=$(gcloud api-gateway gateways describe newsletter-aggregator-gateway --location=us-central1 --project=$PROJECT_ID --format='value(defaultHostname)')
-        
-        if [ -z "$$GATEWAY_URL" ]; then
-          echo "Error: Failed to retrieve Gateway URL." >&2
-          exit 1
-        fi
-
-        FULL_GATEWAY_URL="https://$$GATEWAY_URL"
-        echo "Gateway URL: $$FULL_GATEWAY_URL"
-        
-        # Store the URL for frontend build
-        echo "$$FULL_GATEWAY_URL" > /workspace/gateway_url.txt
-        echo "NEXT_PUBLIC_API_GATEWAY_URL=$$FULL_GATEWAY_URL" > /workspace/frontend/.env.production
-
-  # Build and deploy frontend
-  - name: 'node:18'
-    dir: 'frontend'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "Installing frontend dependencies..."
-        npm install
-        echo "Building frontend..."
-        npm run build
-        
-  # Deploy frontend to Cloud Storage (optional, if you're using GCS for static hosting)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    dir: 'frontend'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        if gsutil ls gs://newsletter-aggregator-frontend 2>/dev/null; then
-          echo "Deploying frontend to Cloud Storage..."
-          gsutil -m cp -r .next/static/* gs://newsletter-aggregator-frontend/static/
-          gsutil -m cp -r public/* gs://newsletter-aggregator-frontend/public/
-        else
-          echo "Creating frontend bucket and deploying..."
-          gsutil mb -l us-central1 gs://newsletter-aggregator-frontend
-          gsutil web set -m index.html gs://newsletter-aggregator-frontend
-          gsutil -m cp -r .next/static/* gs://newsletter-aggregator-frontend/static/
-          gsutil -m cp -r public/* gs://newsletter-aggregator-frontend/public/
-        fi
-
+# List the specific image artifact produced by this build.
 images:
-  - 'gcr.io/$PROJECT_ID/newsletter-aggregator:v1'
-  - 'gcr.io/$PROJECT_ID/newsletter-aggregator:latest' 
+  - 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID'
+
+# Optional: Set build timeout
+# timeout: '600s' 

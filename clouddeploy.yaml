@@ -1,0 +1,82 @@
+# clouddeploy.yaml - Defines the delivery pipeline and targets for the backend service
+
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: newsletter-aggregator-backend-pipeline
+description: Delivers the backend service and updates API Gateway
+# Defines the sequence of stages/targets for deployment
+serialPipeline:
+  stages:
+    # 1. Deploy to Staging Cloud Run
+    - targetId: staging-run
+      profiles: [staging] # Use 'staging' Skaffold profile
+
+    # 2. Update Staging API Gateway (Placeholder - requires custom target or hooks)
+    #    This step might run custom logic after staging-run succeeds.
+    #    For now, it's a separate target. Consider using postdeploy hooks later.
+    # - targetId: update-staging-gateway
+    #   profiles: [staging]
+
+    # 3. Deploy to Production Cloud Run (Requires Approval)
+    - targetId: prod-run
+      profiles: [production] # Use 'production' Skaffold profile
+      strategy:
+        standard:
+          verify: false # Set to true to enable deployment verification later
+
+    # 4. Update Production API Gateway (Placeholder - Requires Approval)
+    #    Similar to staging gateway update, but for production.
+    # - targetId: update-prod-gateway
+    #   profiles: [production]
+
+---
+# Target definition for Staging Cloud Run
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: staging-run
+description: Staging Cloud Run environment (e.g., dev or test project)
+# Annotations could differentiate staging/prod if they are in the same project
+# annotations:
+#   environment: staging
+run:
+  # Location format: projects/{project_id}/locations/{region}
+  # *** Replace YOUR_STAGING_PROJECT_ID with your actual staging project ID ***
+  location: projects/newsletter-450510/locations/us-central1
+
+---
+# Target definition for Production Cloud Run
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: prod-run
+description: Production Cloud Run environment
+requireApproval: true # Require manual approval before promoting to production
+# annotations:
+#   environment: production
+run:
+  # *** Replace YOUR_PROD_PROJECT_ID with your actual production project ID ***
+  location: projects/newsletter-450510/locations/us-central1
+
+# -- Placeholder Targets for API Gateway Updates --
+# Uncomment and configure these later if using separate targets for gateway updates.
+# Requires custom target types or deploy hooks defined in skaffold.yaml.
+# ---
+# apiVersion: deploy.cloud.google.com/v1
+# kind: Target
+# metadata:
+#   name: update-staging-gateway
+# description: Updates the Staging API Gateway config
+# custom: # Example using custom target - needs corresponding CustomTargetType
+#   customTargetType: api-gateway-updater
+
+# ---
+# apiVersion: deploy.cloud.google.com/v1
+# kind: Target
+# metadata:
+#   name: update-prod-gateway
+# description: Updates the Production API Gateway config
+# requireApproval: true
+# custom:
+#   customTargetType: api-gateway-updater 

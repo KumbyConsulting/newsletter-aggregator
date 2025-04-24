@@ -32,7 +32,7 @@ google-cloud-storage==2.13.0
 google-cloud-firestore==2.13.1
 google-cloud-aiplatform==1.71.1
 google-cloud-logging==3.8.0
-google-cloud-monitoring==2.15.1
+google-cloud-monitoring==2.14.1
 google-cloud-secret-manager==2.16.4
 vertexai>=1.71.1
 grpcio==1.59.3
@@ -52,3 +52,11 @@ uvicorn==0.27.1
 
 # Added from the code block
 newspaper3k>=0.2.8
+
+# Added from the code block
+psutil==5.9.5
+prometheus-client==0.17.1
+circuitbreaker==1.4.0
+cachetools==5.3.1
+werkzeug>=2.3.7
+gunicorn==21.2.0
