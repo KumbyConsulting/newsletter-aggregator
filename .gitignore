@@ -71,3 +71,4 @@ temp/
 *.bak
 backups/
 node_modules
+.vercel

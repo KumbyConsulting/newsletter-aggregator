@@ -32,8 +32,6 @@ paths:
   /api/update/status:
     get:
       operationId: getUpdateStatus
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -51,8 +49,6 @@ paths:
   /api/update/start:
     post:
       operationId: startUpdate
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         path_translation: APPEND_PATH_TO_ADDRESS
@@ -69,8 +65,6 @@ paths:
   /api/articles:
     get:
       operationId: getArticles
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -107,8 +101,6 @@ paths:
   /api/topics:
     get:
       operationId: getTopics
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -123,8 +115,6 @@ paths:
   /api/rag:
     post:
       operationId: queryRag
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -158,8 +148,6 @@ paths:
   /api/admin/cleanup-duplicates:
     post:
       operationId: adminCleanupDuplicates
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -175,8 +163,6 @@ paths:
   /api/admin/export-csv:
     get:
       operationId: adminExportCsv
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -192,8 +178,6 @@ paths:
   /api/admin/force-sync:
     post:
       operationId: adminForceSync
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -209,8 +193,6 @@ paths:
   /api/articles/{article_id}/analyze:
     post:
       operationId: analyzeArticle
-      security:
-        - api_key: []
       parameters:
         - name: article_id
           in: path
@@ -228,8 +210,6 @@ paths:
   /api/kumby/clinical-trial:
     post:
       operationId: analyzeClinicalTrial
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -242,8 +222,6 @@ paths:
   /api/kumby/digital-health:
     post:
       operationId: analyzeDigitalHealth
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -256,8 +234,6 @@ paths:
   /api/kumby/drug:
     post:
       operationId: analyzeDrugDevelopment
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -270,8 +246,6 @@ paths:
   /api/kumby/manufacturing:
     post:
       operationId: analyzeManufacturing
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -284,8 +258,6 @@ paths:
   /api/kumby/market-access:
     post:
       operationId: analyzeMarketAccess
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -298,8 +270,6 @@ paths:
   /api/kumby/patent:
     post:
       operationId: analyzePatent
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -312,8 +282,6 @@ paths:
   /api/kumby/pipeline:
     post:
       operationId: analyzePipeline
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -326,8 +294,6 @@ paths:
   /api/kumby/regulatory:
     post:
       operationId: analyzeRegulatoryImpact
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -340,8 +306,6 @@ paths:
   /api/kumby/regulatory-strategy:
     post:
       operationId: analyzeRegulatoryStrategy
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -354,8 +318,6 @@ paths:
   /api/kumby/safety:
     post:
       operationId: analyzeSafety
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -368,8 +330,6 @@ paths:
   /api/kumby/therapeutic-area:
     post:
       operationId: analyzeTherapeuticArea
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -382,8 +342,6 @@ paths:
   /api/kumby/value-evidence:
     post:
       operationId: analyzeValueEvidence
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -396,8 +354,6 @@ paths:
   /api/update:
     post:
       operationId: updateArticles
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -410,8 +366,6 @@ paths:
   /api/update/cancel:
     post:
       operationId: cancelUpdate
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -427,8 +381,6 @@ paths:
   /api/analysis/saved:
     get:
       operationId: getSavedAnalyses
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -443,8 +395,6 @@ paths:
   /api/analysis/saved/{analysis_id}:
     get:
       operationId: getSavedAnalysis
-      security:
-        - api_key: []
       parameters:
         - name: analysis_id
           in: path
@@ -460,8 +410,6 @@ paths:
             type: object
     delete:
       operationId: deleteSavedAnalysis
-      security:
-        - api_key: []
       parameters:
         - name: analysis_id
           in: path
@@ -479,8 +427,6 @@ paths:
   /api/analysis/save:
     post:
       operationId: saveAnalysis
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -493,8 +439,6 @@ paths:
   /api/rag/stream:
     post:
       operationId: streamRagQuery
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -505,8 +449,6 @@ paths:
             type: object
     get:
       operationId: streamRagQueryGet
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -519,8 +461,6 @@ paths:
   /api/rag/history:
     get:
       operationId: getRagHistory
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -533,8 +473,6 @@ paths:
               type: object
     delete:
       operationId: clearRagHistory
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -550,8 +488,6 @@ paths:
   /api/sources:
     get:
       operationId: getSources
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -566,8 +502,6 @@ paths:
   /api/topics/stats:
     get:
       operationId: getTopicStats
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 10.0
@@ -580,8 +514,6 @@ paths:
   /api/kumbyai/chat:
     post:
       operationId: kumbyaiChat
-      security:
-        - api_key: []
       x-google-backend:
         address: https://newsletter-aggregator-857170198287.us-central1.run.app
         deadline: 30.0
@@ -590,11 +522,5 @@ paths:
           description: KumbyAI chat response
           schema:
             type: object
-
-securityDefinitions:
-  api_key:
-    type: apiKey
-    name: x-api-key
-    in: header
 
  
