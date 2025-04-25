@@ -28,4 +28,4 @@ COPY . .
 ENV GUNICORN_CMD_ARGS="--workers=8 --threads=8 --worker-class=gthread --worker-tmp-dir /dev/shm --bind=0.0.0.0:$PORT --timeout=300 --max-requests=1000 --max-requests-jitter=50 --keep-alive=5 --access-logfile=- --error-logfile=- --log-level=info"
 
 # Run the application
-CMD exec gunicorn app:app 
+CMD exec gunicorn $GUNICORN_CMD_ARGS app:app 
