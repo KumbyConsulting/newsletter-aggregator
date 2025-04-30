@@ -1,7 +1,7 @@
 'use client';
 // This is now a Client Component since it uses Ant Design UI components
 
-import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from 'react';
+import { useEffect, useState, useRef, Suspense } from 'react';
 import {
   Layout,
   Typography,
@@ -96,6 +96,16 @@ function SearchParamsWrapper({ children }: { children: (params: URLSearchParams)
   return <>{children(searchParams)}</>;
 }
 
+// Helper for stable, sorted stringification
+function stableStringify(obj: any) {
+  return JSON.stringify(
+    Object.keys(obj).sort().reduce((acc, key) => {
+      acc[key] = obj[key];
+      return acc;
+    }, {} as any)
+  );
+}
+
 // Main page component - Now a Client Component
 export default function Home() {
   const router = useRouter();
@@ -106,59 +116,44 @@ export default function Home() {
   const [fetchError, setFetchError] = useState<ApiErrorResponse | null>(null);
   const [searchValue, setSearchValue] = useState('');
   const [advancedSearchVisible, setAdvancedSearchVisible] = useState(false);
-  const [searchCache, setSearchCache] = useState<Record<string, CacheEntry>>({});
-  
-  // Initial values (will be updated from SearchParamsWrapper)
-  const [currentPage, setCurrentPage] = useState(1);
-  const [currentLimit, setCurrentLimit] = useState(10);
-  const [currentTopic, setCurrentTopic] = useState('All');
-  const [currentSearch, setCurrentSearch] = useState('');
-  const [currentSortBy, setCurrentSortBy] = useState('pub_date');
-  const [currentSortOrder, setCurrentSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [searchCache, setSearchCache] = useState<Map<string, CacheEntry>>(new Map());
   const [searchParamsObj, setSearchParamsObj] = useState<URLSearchParams | null>(null);
 
-  // Cache expiration check
-  const isCacheValid = useCallback((cacheKey: string): boolean => {
-    if (!searchCache[cacheKey]) return false;
-    
-    // Cache expires after 2 minutes
+  // --- Derive all search/filter/sort state from searchParamsObj ---
+  const currentPage = safeParseInt(searchParamsObj?.get('page') || '1', 1);
+  const currentLimit = safeParseInt(searchParamsObj?.get('limit') || '10', 10);
+  const currentTopic = searchParamsObj?.get('topic') || 'All';
+  const currentSearch = searchParamsObj?.get('search') || '';
+  const currentSortBy = searchParamsObj?.get('sort_by') || 'pub_date';
+  const currentSortOrder = getValidSortOrder(searchParamsObj?.get('sort_order') || 'desc');
+
+  // --- Cache expiration check ---
+  const isCacheValid = (cacheKey: string): boolean => {
+    const entry = searchCache.get(cacheKey);
+    if (!entry) return false;
     const now = Date.now();
-    const cacheAge = now - searchCache[cacheKey].timestamp;
-    return cacheAge < 120000; // 2 minutes in milliseconds
-  }, [searchCache]);
+    const cacheAge = now - entry.timestamp;
+    return cacheAge < 120000; // 2 minutes
+  };
 
-  // Update search parameters from URL
-  const updateSearchParams = useCallback((params: URLSearchParams) => {
-    setCurrentPage(safeParseInt(params.get('page') || '1', 1));
-    setCurrentLimit(safeParseInt(params.get('limit') || '10', 10));
-    setCurrentTopic(params.get('topic') || 'All');
-    setCurrentSearch(params.get('search') || '');
-    setCurrentSortBy(params.get('sort_by') || 'pub_date');
-    setCurrentSortOrder(getValidSortOrder(params.get('sort_order') || 'desc'));
-    setSearchParamsObj(params);
-  }, []);
+  // --- Keep a ref to latest searchParamsObj for debounce ---
+  const searchParamsRef = useRef<URLSearchParams | null>(searchParamsObj);
+  useEffect(() => { searchParamsRef.current = searchParamsObj; }, [searchParamsObj]);
 
-  // Initialize search value from URL on mount
+  // --- Update search value from URL on mount or change ---
   useEffect(() => {
-    if (currentSearch) {
-      setSearchValue(currentSearch);
-    }
+    setSearchValue(currentSearch);
   }, [currentSearch]);
 
-  // Modified fetch data with caching to support single page loading
-  const fetchDataWithCache = useCallback(async (options: { page?: number } = {}) => {
-    if (!searchParamsObj) return Promise.resolve();
-
+  // --- Fetch data with cache ---
+  async function fetchDataWithCache(options: { page?: number } = {}) {
+    if (!searchParamsObj) return;
     const { page = currentPage } = options;
-    
-    // --- Start Read Advanced Params from URL ---
     const searchType = searchParamsObj.get('searchType') || undefined;
     const thresholdParam = searchParamsObj.get('threshold');
     const threshold = thresholdParam ? parseFloat(thresholdParam) : undefined;
     const fieldsParam = searchParamsObj.get('fields');
     const fields = fieldsParam ? fieldsParam.split(',') : undefined;
-    // --- End Read Advanced Params from URL ---
-    
     const params = {
       page,
       limit: currentLimit,
@@ -166,20 +161,13 @@ export default function Home() {
       search: currentSearch,
       sort_by: currentSortBy,
       sort_order: currentSortOrder,
-      // --- Start Add Advanced Params to request object ---
       searchType,
       threshold,
       fields
-      // --- End Add Advanced Params to request object ---
     };
-    
-    // Create a cache key from the search parameters
-    const cacheKey = JSON.stringify(params);
-    console.log(`Fetching data with cache key: ${cacheKey}`);
-    
-    // Check if we have a valid cached result
+    const cacheKey = stableStringify(params);
     if (isCacheValid(cacheKey)) {
-      const cached = searchCache[cacheKey];
+      const cached = searchCache.get(cacheKey)!;
       setArticles(cached.articles);
       setTopics(cached.topics);
       setPagination({
@@ -188,60 +176,32 @@ export default function Home() {
         total_pages: Math.max(1, cached.pagination.total_pages || 1)
       });
       setFetchError(null);
-      return Promise.resolve();
+      setIsLoading(false);
+      return;
     }
-    
-    // Not in cache or cache expired, fetch from API
     setIsLoading(true);
-    
     try {
-      // Get articles from service API - pass advanced params
       const articlesData = await fetchArticlesService(
-        params.page, 
-        params.limit, 
-        params.search, 
+        params.page,
+        params.limit,
+        params.search,
         params.topic !== 'All' ? params.topic : '',
-        params.sort_by, 
+        params.sort_by,
         params.sort_order,
-        '', // source - not used here
-        '', // dateFrom - not used here
-        '', // dateTo - not used here
-        '', // readingTime - not used here
-        false, // hasSummary - not used here
-        false, // hasFullContent - not used here
-        // --- Pass Advanced Params to API Call ---
+        '', '', '', '', false, false,
         params.searchType,
         params.threshold,
         params.fields
-        // --- End Pass Advanced Params to API Call ---
       );
-      
-      // Set a default empty topics array in case topics API fails
       let topicsData = { topics: [] as TopicStat[] };
       try {
-        // Get topics stats - with error handling
         topicsData = await getTopicStats();
       } catch (topicError) {
-        console.error("Error fetching topic stats:", topicError);
-        // Continue with empty topics - non-critical failure
+        // Non-critical
       }
-      
-      // Make sure we have valid data before updating state
       if (articlesData && articlesData.articles) {
-        // Calculate total_pages if not provided or invalid
-        const total_pages = articlesData.total_pages || 
-                          Math.max(1, Math.ceil((articlesData.total || articlesData.articles.length) / params.limit));
-        
-        console.log('API response pagination:', {
-          page: articlesData.page,
-          total: articlesData.total,
-          total_pages: articlesData.total_pages,
-          calculated_total_pages: total_pages,
-          articles_count: articlesData.articles.length
-        });
-        
-        // Cache the results
-        const cacheEntry = {
+        const total_pages = articlesData.total_pages || Math.max(1, Math.ceil((articlesData.total || articlesData.articles.length) / params.limit));
+        const cacheEntry: CacheEntry = {
           articles: articlesData.articles,
           topics: topicsData.topics,
           pagination: {
@@ -251,13 +211,16 @@ export default function Home() {
           },
           timestamp: Date.now()
         };
-        
-        setSearchCache(prev => ({
-          ...prev,
-          [cacheKey]: cacheEntry
-        }));
-        
-        // Update state with new data
+        setSearchCache(prev => {
+          const newCache = new Map(prev);
+          newCache.set(cacheKey, cacheEntry);
+          // Prune cache to 20 entries
+          if (newCache.size > 20) {
+            const firstKey = newCache.keys().next().value;
+            newCache.delete(firstKey);
+          }
+          return newCache;
+        });
         setArticles(articlesData.articles);
         setTopics(topicsData.topics);
         setPagination({
@@ -267,20 +230,17 @@ export default function Home() {
         });
         setFetchError(null);
       } else {
-        throw new Error('Invalid API response format');
+        setFetchError({ error: 'Invalid API response format', status_code: 500 });
+        setArticles([]);
+        setPagination({ page: 1, total: 0, total_pages: 1 });
       }
     } catch (error: any) {
-      console.error("Error fetching data for Home page:", error);
-      
-      // More robust error handling to handle different error formats
       let errorMessage = 'An unexpected error occurred while loading data.';
       let statusCode = 500;
-      
       if (error.message && error.message.includes('timed out')) {
         errorMessage = 'The server took too long to respond. Please try again later.';
-        statusCode = 504; // Gateway timeout
+        statusCode = 504;
       } else if (typeof error === 'object' && error !== null) {
-        // Handle various error object formats that might come from different API implementations
         if ('apiError' in error && error.apiError) {
           errorMessage = error.apiError.error || error.apiError.message || errorMessage;
           statusCode = error.apiError.status_code || error.statusCode || statusCode;
@@ -294,177 +254,103 @@ export default function Home() {
           else if (error.message.includes('failed with status 504')) statusCode = 504;
         }
       }
-      
-      setFetchError({
-        error: errorMessage,
-        status_code: statusCode
-      });
-      
-      // Provide an empty fallback state to prevent UI breakage
-      if (!articles.length) {
-        setArticles([]);
-        setPagination({
-          page: 1,
-          total: 0,
-          total_pages: 1
-        });
-      }
-      
-      // Re-throw the error so the calling code can handle it
-      throw error;
+      setFetchError({ error: errorMessage, status_code: statusCode });
+      setArticles([]);
+      setPagination({ page: 1, total: 0, total_pages: 1 });
     } finally {
-      // Always reset loading state regardless of success or failure
       setIsLoading(false);
     }
-  }, [currentPage, currentLimit, currentTopic, currentSearch, currentSortBy, currentSortOrder, searchParamsObj, isCacheValid, searchCache, articles.length]);
+  }
 
-  // Initial data fetch on mount or when search criteria change
+  // --- Fetch on mount or when search criteria change ---
   useEffect(() => {
     if (searchParamsObj) {
-      console.log('Search criteria changed, fetching page:', currentPage);
-      fetchDataWithCache({ page: currentPage })
-        .catch(error => {
-          console.error('Failed to fetch articles:', error);
-          // Loading state is reset in the finally block of fetchDataWithCache
-        });
+      fetchDataWithCache({ page: currentPage });
     }
-  }, [currentTopic, currentSearch, currentSortBy, currentSortOrder, currentLimit, currentPage, fetchDataWithCache, searchParamsObj]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTopic, currentSearch, currentSortBy, currentSortOrder, currentLimit, currentPage, searchParamsObj]);
 
-  // Debounced search handler
-  const debouncedSearch = useMemo(
-    () => debounce((value: string, options: SearchOptions = {}) => {
-      if (!searchParamsObj) return;
-      
-      const params = new URLSearchParams(searchParamsObj.toString());
-      if (value) {
-        params.set('search', value);
-        // Add search type if specified
-        if (options.searchType && options.searchType !== 'auto') {
-          params.set('searchType', options.searchType);
-        } else {
-          params.delete('searchType');
-        }
-        // Add threshold if specified
-        if (options.threshold) {
-          params.set('threshold', options.threshold.toString());
-        }
-        // Add fields if specified
-        if (options.fields?.length) {
-          params.set('fields', options.fields.join(','));
-        }
+  // --- Handlers ---
+  function handleSearchInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSearchValue(e.target.value);
+  }
+
+  function handleSearch(value: string, options: SearchOptions = {}) {
+    const params = new URLSearchParams((searchParamsRef.current || new URLSearchParams()).toString());
+    if (value) {
+      params.set('search', value);
+      if (options.searchType && options.searchType !== 'auto') {
+        params.set('searchType', options.searchType);
       } else {
-        params.delete('search');
         params.delete('searchType');
-        params.delete('threshold');
-        params.delete('fields');
       }
-      params.set('page', '1'); // Reset to first page on new search
-      router.push(`/?${params.toString()}`);
-    }, 300),
-    [searchParamsObj, router]
-  );
+      if (options.threshold) {
+        params.set('threshold', options.threshold.toString());
+      }
+      if (options.fields?.length) {
+        params.set('fields', options.fields.join(','));
+      }
+    } else {
+      params.delete('search');
+      params.delete('searchType');
+      params.delete('threshold');
+      params.delete('fields');
+    }
+    params.set('page', '1');
+    router.push(`/?${params.toString()}`);
+  }
 
-  // Update handleSearch to support enhanced search and use debounced version
-  const handleSearch = useCallback((value: string, options: SearchOptions = {}) => {
-    setSearchValue(value);
-    debouncedSearch(value, options);
-  }, [debouncedSearch]);
-
-  // Handle topic change
-  const handleTopicChange = useCallback((value: string) => {
-    if (!searchParamsObj) return;
-    
-    const params = new URLSearchParams(searchParamsObj.toString());
+  function handleTopicChange(value: string) {
+    const params = new URLSearchParams((searchParamsRef.current || new URLSearchParams()).toString());
     if (value && value !== 'All') {
       params.set('topic', value);
     } else {
       params.delete('topic');
     }
-    params.set('page', '1'); // Reset to first page
+    params.set('page', '1');
     router.push(`/?${params.toString()}`);
-  }, [searchParamsObj, router]);
+  }
 
-  // Handle sort change
-  const handleSortChange = useCallback((value: string) => {
-    if (!searchParamsObj) return;
-    
-    const params = new URLSearchParams(searchParamsObj.toString());
+  function handleSortChange(value: string) {
+    const params = new URLSearchParams((searchParamsRef.current || new URLSearchParams()).toString());
     params.set('sort_by', value);
     router.push(`/?${params.toString()}`);
-  }, [searchParamsObj, router]);
+  }
 
-  // Toggle sort order
-  const toggleSortOrder = useCallback(() => {
-    if (!searchParamsObj) return;
-    
-    const params = new URLSearchParams(searchParamsObj.toString());
+  function toggleSortOrder() {
+    const params = new URLSearchParams((searchParamsRef.current || new URLSearchParams()).toString());
     const newOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
     params.set('sort_order', newOrder);
     router.push(`/?${params.toString()}`);
-  }, [currentSortOrder, searchParamsObj, router]);
+  }
 
-  // Reset all filters
-  const resetFilters = useCallback(() => {
-    // Clear cache when resetting filters
-    setSearchCache({});
+  function resetFilters() {
+    setSearchCache(new Map());
     router.push('/');
-  }, [router]);
-  
-  // Toggle advanced search visibility
-  const toggleAdvancedSearch = useCallback(() => {
-    setAdvancedSearchVisible(!advancedSearchVisible);
-  }, [advancedSearchVisible]);
+  }
 
-  // Memoize components for better performance
-  const memoizedArticlesGrid = useMemo(() => (
-    <ArticlesGrid articles={articles} loading={isLoading} />
-  ), [articles, isLoading]);
+  function toggleAdvancedSearch() {
+    setAdvancedSearchVisible(v => !v);
+  }
 
-  const memoizedTopicDistribution = useMemo(() => (
-    <TopicDistribution topics={topics} />
-  ), [topics]);
+  // --- Memoized components (only for expensive renders) ---
+  // (Removed unnecessary useMemo for simple components)
 
-  const memoizedPaginationControls = useMemo(() => {
-    // Log pagination data for debugging
-    console.log('Pagination data:', {
-      page: pagination.page,
-      total: pagination.total,
-      total_pages: pagination.total_pages,
-      currentLimit
-    });
-    
-    // Ensure totalPages is at least 1 to always show pagination controls
-    const totalPages = Math.max(1, pagination.total_pages);
-    
-    return (
-      <div style={{ margin: '32px 0' }}>
-        <PaginationControls
-          currentPage={pagination.page}
-          totalPages={totalPages}
-          totalItems={pagination.total}
-          itemsPerPage={currentLimit}
-          disabled={isLoading}
-        />
-      </div>
-    );
-  }, [pagination, currentLimit, isLoading]);
+  // --- Skeleton loading logic ---
+  const skeletonCount = Math.max(currentLimit, 6);
 
   return (
     <Layout className="newsletter-layout">
-      {/* ClientInteractions handles update button, status polling etc. */}
       <ClientInteractions />
-      
-      {/* Wrap the search params logic in a Suspense boundary */}
       <Suspense fallback={<div className="p-8 text-center"><Spin size="large" /></div>}>
         <SearchParamsWrapper>
           {(searchParams) => {
-            // Always update params from URL on each render
-            updateSearchParams(searchParams);
-            
+            useEffect(() => {
+              setSearchParamsObj(searchParams);
+            }, [searchParams]);
             return (
               <Content className="main-content">
                 <div className="container" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-                  {/* Header Card */}
                   <Card className="header-card mb-6">
                     <Row justify="space-between" align="middle" gutter={[16, 16]}>
                       <Col xs={24} md={16}>
@@ -475,11 +361,8 @@ export default function Home() {
                           Stay updated with the latest industry news, research, and regulatory developments across various business sectors.
                         </Paragraph>
                       </Col>
-                      {/* Update status shown in ClientInteractions */}
                     </Row>
                   </Card>
-
-                  {/* Search Form */}
                   <Card className="search-form mb-6">
                     <div className="search-form-header mb-4 flex justify-between items-center">
                       <div>
@@ -494,7 +377,6 @@ export default function Home() {
                         {advancedSearchVisible ? 'Simple Search' : 'Advanced Search'}
                       </Button>
                     </div>
-
                     <Row gutter={16}>
                       <Col xs={24} md={18} lg={20}>
                         <Search
@@ -503,11 +385,11 @@ export default function Home() {
                           enterButton={<><SearchOutlined /> Search</>}
                           size="large"
                           value={searchValue}
-                          onChange={(e) => setSearchValue(e.target.value)}
-                          onSearch={(value) => handleSearch(value, {
-                            searchType: searchParams.get('searchType') as any || 'auto',
-                            threshold: parseFloat(searchParams.get('threshold') || '0.6'),
-                            fields: searchParams.get('fields')?.split(',')
+                          onChange={handleSearchInputChange}
+                          onSearch={value => handleSearch(value, {
+                            searchType: (searchParams.get('searchType') as any) || 'auto',
+                            threshold: parseFloat((searchParams.get('threshold') ?? '0.6')),
+                            fields: (searchParams.get('fields') ?? '').split(',').filter(Boolean)
                           })}
                           loading={isLoading}
                         />
@@ -519,7 +401,6 @@ export default function Home() {
                           )}
                         </div>
                       </Col>
-
                       <Col xs={24} md={6} lg={4} style={{ display: 'flex', alignItems: 'flex-start' }}>
                         <Button 
                           icon={<ReloadOutlined />} 
@@ -531,8 +412,6 @@ export default function Home() {
                         </Button>
                       </Col>
                     </Row>
-
-                    {/* Advanced Search Controls */}
                     {advancedSearchVisible && (
                       <DynamicAdvancedSearchControls 
                         visible={advancedSearchVisible}
@@ -540,10 +419,7 @@ export default function Home() {
                         currentSearchValue={searchValue}
                       />
                     )}
-
-                    {/* Filter Controls */}
                     <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-                      {/* Topic Filter */}
                       <Col xs={24} sm={12} md={6}>
                         <div>
                           <Text strong>Topic</Text>
@@ -563,8 +439,6 @@ export default function Home() {
                           </Select>
                         </div>
                       </Col>
-
-                      {/* Sort Controls */}
                       <Col xs={24} sm={12} md={6}>
                         <div>
                           <Text strong>Sort By</Text>
@@ -580,15 +454,13 @@ export default function Home() {
                               <Option value="relevance">Relevance</Option>
                             </Select>
                             <Button 
-                              icon={currentSortOrder === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />}
+                              icon={currentSortOrder === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />} 
                               onClick={toggleSortOrder}
                             />
                           </div>
                         </div>
                       </Col>
                     </Row>
-
-                    {/* Active Filters */}
                     {(currentTopic !== 'All' || currentSearch || searchParams.get('searchType')) && (
                       <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {currentSearch && (
@@ -620,8 +492,6 @@ export default function Home() {
                       </div>
                     )}
                   </Card>
-
-                  {/* Topic Distribution */}
                   <Card className="mb-6">
                     <Title level={4}>Topic Distribution</Title>
                     <Paragraph type="secondary" style={{ marginBottom: 16 }}>
@@ -632,31 +502,25 @@ export default function Home() {
                         <Skeleton active paragraph={{ rows: 5 }} />
                       </div>
                     ) : (
-                      memoizedTopicDistribution
+                      <TopicDistribution topics={topics} />
                     )}
                   </Card>
-
-                  {/* Display error if fetching failed */}
                   {fetchError && (
                     <ErrorDisplay 
                       error={fetchError.error} 
                       statusCode={fetchError.status_code} 
                     />
                   )}
-
-                  {/* Articles Section */}
                   <div className="articles-section">
                     <Title level={4}>
                       {pagination.total} Articles Found
                       {currentSearch && <span> for "{currentSearch}"</span>}
                       {currentTopic !== 'All' && <span> in {currentTopic}</span>}
                     </Title>
-                    
-                    {/* Skeleton Loading for Articles */}
                     {isLoading ? (
                       <div className="article-skeletons">
                         <Row gutter={[16, 16]}>
-                          {Array.from({ length: currentLimit }).map((_, index) => (
+                          {Array.from({ length: skeletonCount }).map((_, index) => (
                             <Col xs={24} sm={12} md={8} key={index}>
                               <Card>
                                 <Skeleton active avatar paragraph={{ rows: 3 }} />
@@ -666,12 +530,18 @@ export default function Home() {
                         </Row>
                       </div>
                     ) : (
-                      memoizedArticlesGrid
+                      <ArticlesGrid articles={articles} loading={isLoading} />
                     )}
                   </div>
-
-                  {/* Pagination Controls - passes pagination data */}
-                  {memoizedPaginationControls}
+                  <div style={{ margin: '32px 0' }}>
+                    <PaginationControls
+                      currentPage={pagination.page}
+                      totalPages={Math.max(1, pagination.total_pages)}
+                      totalItems={pagination.total}
+                      itemsPerPage={currentLimit}
+                      disabled={isLoading}
+                    />
+                  </div>
                 </div>
               </Content>
             );
