@@ -19,13 +19,16 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && apt-get remove -y build-essential \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy application code
 COPY . .
 
-# Set up Gunicorn config
-ENV GUNICORN_CMD_ARGS="--workers=8 --threads=8 --worker-class=gthread --worker-tmp-dir /dev/shm --bind=0.0.0.0:$PORT --timeout=300 --max-requests=1000 --max-requests-jitter=50 --keep-alive=5 --access-logfile=- --error-logfile=- --log-level=info"
+# Set up default port for local dev
+ENV PORT=8080
 
-# Run the application
-CMD exec gunicorn $GUNICORN_CMD_ARGS app:app 
+# Run the application with Uvicorn (ASGI server)
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080} 

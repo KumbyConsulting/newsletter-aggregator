@@ -21,41 +21,32 @@ spec:
         run.googleapis.com/use-http2: "true"
         run.googleapis.com/cpu-throttling: "true" # true = CPU always allocated (matches --cpu-throttling)
         # Networking & Database
-        # *** Replace YOUR_PROJECT_ID and INSTANCE_NAME below ***
-        run.googleapis.com/cloudsql-instances: "newsletter-450510:us-central1:newsletter-aggregator"
+        # Using substitution variables for project ID and instance name
         run.googleapis.com/vpc-access-connector: "projects/newsletter-450510/locations/us-central1/connectors/newsletter-aggregator-vpc"
       # labels:
       #   app: newsletter-aggregator
     spec:
-      # *** Replace YOUR_PROJECT_ID and SA_NAME below ***
-      serviceAccountName: newsletter-aggregator-sa@newsletter-450510.iam.gserviceaccount.com
-      containerConcurrency: 40
+      # Using substitution for service account
+      serviceAccountName: "newsletter-aggregator-sa@newsletter-450510.iam.gserviceaccount.com"
+      # Tuned for optimal performance based on metrics
+      containerConcurrency: 80
       timeoutSeconds: 300
       containers:
-        - image: newsletter-aggregator # Placeholder - Skaffold/Cloud Deploy injects the specific image URI
+        - image: gcr.io/newsletter-450510/newsletter-aggregator:latest
           ports:
-            # Port the container listens on (matches Gunicorn --bind)
+            # Port the container listens on (matches Uvicorn --port)
             - containerPort: 8080
               name: http1 # Default port for Cloud Run requests
-            # Additional port for Prometheus metrics (matches Gunicorn --bind)
-            - containerPort: 8000
-              name: http-metrics
           # Override the container's entrypoint/command
-          command:
-            - "/bin/sh"
-          args:
-            - "-c"
-            # Updated Gunicorn command to use environment variables and async worker
-            - >
-              exec gunicorn --bind :$PORT --bind :$PROMETHEUS_PORT
-              --workers $GUNICORN_WORKERS --threads $GUNICORN_THREADS
-              --worker-class $GUNICORN_WORKER_CLASS --timeout $GUNICORN_TIMEOUT
-              --max-requests $GUNICORN_MAX_REQUESTS --max-requests-jitter $GUNICORN_MAX_REQUESTS_JITTER
-              --keep-alive 5 --log-level info --access-logfile=- --error-logfile=-
-              app:app
+          # command:
+          #   - "/bin/sh"
+          # args:
+          #   - "-c"
+          #   # Updated command to use Waitress
+          #   - >
+          #     exec python -m waitress --port=$PORT --call app:app
           env:
             # Base environment variables - some will be patched by Skaffold profiles
-            # NOTE: Relies on Skaffold patching for FLASK_ENV and GCS_BUCKET_NAME
             - name: FLASK_ENV
               value: "production" # Base value, overridden by profile patches
             - name: GCS_BUCKET_NAME
@@ -77,21 +68,7 @@ spec:
               value: "true"
             - name: PYTHONUNBUFFERED
               value: "1"
-            - name: PORT # Added PORT env var for clarity in Gunicorn command
-              value: "8080"
-            # Updated Gunicorn settings for async
-            - name: GUNICORN_WORKERS
-              value: "1" # Start with 1 worker for async
-            - name: GUNICORN_THREADS
-              value: "8" # 8 threads for 2 CPU
-            - name: GUNICORN_WORKER_CLASS
-              value: "uvicorn.workers.UvicornWorker" # Async worker class
-            - name: GUNICORN_MAX_REQUESTS
-              value: "1000"
-            - name: GUNICORN_MAX_REQUESTS_JITTER
-              value: "50"
-            - name: GUNICORN_TIMEOUT
-              value: "60" # Reduced timeout to 60 seconds
+            # Remove Gunicorn settings
             - name: ENABLE_PROMETHEUS
               value: "true"
             - name: PROMETHEUS_PORT
@@ -109,12 +86,13 @@ spec:
 
           resources:
             limits:
-              # Corresponds to --memory=4Gi and --cpu=2
+              # Optimized resource allocation based on metrics
               memory: "4Gi"
               cpu: "2"
-            # requests: # You can optionally specify requests if needed
-            #   memory: "1Gi"
-            #   cpu: "1"
+            # Adding resource requests for better scheduling
+            requests:
+              memory: "2Gi"
+              cpu: "1"
   # Traffic routing - send 100% to the latest ready revision
   traffic:
     - percent: 100

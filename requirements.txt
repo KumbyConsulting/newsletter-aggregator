@@ -1,8 +1,7 @@
 # Core dependencies
-Flask==3.0.0
-Flask-CORS==4.0.0
-# uwsgi removed, using gunicorn instead
-waitress==3.0.2
+quart
+flask
+werkzeug
 pandas==2.1.4
 numpy>=1.26.0  # Adding numpy since pandas usually requires it
 requests==2.31.0
@@ -24,7 +23,6 @@ pydantic-settings>=2.0.0
 # Async support
 aiohttp==3.8.5
 aiofiles>=23.2.1
-asyncio==3.4.3
 tenacity>=8.2.3
 
 # Google Cloud dependencies
@@ -40,29 +38,21 @@ grpcio-tools==1.59.3
 grpcio-status==1.59.3
 
 # Development/Debug tools
-flask-debugtoolbar>=0.13.1
+# flask-debugtoolbar>=0.13.1  # Flask only
 watchdog>=2.1.9
 dynaconf==3.2.4
 
 # Security
 certifi==2023.7.22
 
-# Added from the code block
+# ASGI server
 uvicorn==0.27.1
 
-# Added from the code block
+# News scraping
 newspaper3k>=0.2.8
 
-# Added from the code block
 psutil==5.9.5
 prometheus-client==0.17.1
 circuitbreaker==1.4.0
 cachetools==5.3.1
-werkzeug>=2.3.7
-gunicorn==21.2.0
-
-# Added from the code block
-Flask-SQLAlchemy
-Flask-Migrate
-Flask-CORS
-psycopg2-binary
+quart_cors

@@ -1,58 +1,25 @@
+# Local environment
+.env
+
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+env/
+venv/
+
 # Version control
 .git
 .gitignore
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-*.egg-info/
-.installed.cfg
-*.egg
-.pytest_cache/
-.coverage
-htmlcov/
-.venv/
-venv/
-
-# Local environment
-.env
-.env.*
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Node/JS
-node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Logs
-logs/
-*.log
-.DS_Store
-
-# Google Cloud components we don't need in the container
-google-cloud-cli-*.tar.gz
-google-cloud-sdk/
+# Databases
+*.db
 
 # Docker
 .dockerignore
 Dockerfile
-docker-compose.yml 
+docker-compose.yml

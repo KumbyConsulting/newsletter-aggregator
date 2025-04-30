@@ -11,7 +11,7 @@ produces:
 consumes: # Added consumes for POST/PUT/PATCH requests
   - application/json
 x-google-backend:
-  address: https://newsletter-aggregator-857170198287.us-central1.run.app # Backend service address
+  address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app # Backend service address
   protocol: h2
 # Optional: Add security definitions if using API Gateway authentication (e.g., Google ID token)
 # securityDefinitions:

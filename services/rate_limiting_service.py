@@ -6,6 +6,7 @@ import threading
 from datetime import datetime, timedelta
 import logging
 from services.config_service import ConfigService
+from functools import wraps
 
 class RateLimitingService:
     """Thread-safe rate limiting service with support for multiple rate limits."""
@@ -139,25 +140,13 @@ class RateLimitingService:
                 self._last_call[key] = time.time()
     
     def rate_limit_decorator(self, key: str = "default"):
-        """Decorator for rate limiting function calls."""
+        """Decorator for rate limiting async function calls in Quart."""
         def decorator(func):
+            if not asyncio.iscoroutinefunction(func):
+                raise TypeError("rate_limit_decorator can only be applied to async functions in Quart.")
+            @wraps(func)
             async def async_wrapper(*args, **kwargs):
                 await self.acquire(key)
                 return await func(*args, **kwargs)
-            
-            def sync_wrapper(*args, **kwargs):
-                try:
-                    # Try to get existing event loop
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    # Create new event loop if none exists in this thread
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                
-                # Use the loop to run the coroutine to acquire the token
-                loop.run_until_complete(self.acquire(key))
-                # Execute the function after acquiring the token
-                return func(*args, **kwargs)
-            
-            return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+            return async_wrapper
         return decorator 

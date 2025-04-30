@@ -164,7 +164,7 @@ class GeminiDirectModel(AIModelInterface):
                 logging.info(f"Gemini API key configured: {masked_key}")
             
             # Initialize the model settings
-            self.model_name = "gemini-1.5-pro-latest"  # Using the latest model version
+            self.model_name = "gemini-2.0-pro-preview-03-25"  # Using the latest model version
             self.api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
             logging.info(f"Using Gemini model: {self.model_name}")
             
@@ -396,7 +396,7 @@ class VertexAIModel(AIModelInterface):
             
             # Define prioritized models to try
             model_candidates = [
-                "models/gemini-1.5-pro-latest",
+                "models/gemini-2.0-flash",
                 "models/gemini-1.5-pro",
                 "models/gemini-1.5-flash",
                 "models/gemini-1.5-flash-latest",
@@ -1657,10 +1657,11 @@ URL: {chunk['url']}
             # Use more articles for topic analysis (8 instead of 5)
             context = await self._build_context(articles)
             
-            # Use the topic analysis template
+            # Use the topic analysis template, now including output_format
             prompt = PromptTemplate.TOPIC_ANALYSIS.value.format(
                 topic=topic,
-                context=context
+                context=context,
+                output_format=PromptLibrary.get_output_format("default")
             )
             
             # Generate the analysis
@@ -2272,6 +2273,97 @@ class PromptLibrary:
         )
     
     # Continue this pattern for other prompt templates...
+
+    DIGITAL_HEALTH = """
+    As a digital health expert, analyze the following data:
+
+    Digital Health Data: {digital_data}
+
+    Provide a comprehensive analysis including:
+    1. Key digital health interventions and technologies used
+    2. Impact on patient outcomes and engagement
+    3. Regulatory and privacy considerations
+    4. Market trends and adoption barriers
+    5. Future outlook for digital health in this context
+
+    {output_format}
+    """
+
+    MARKET_ACCESS = """
+    As a market access expert, analyze the following data:
+
+    Market Access Data: {market_data}
+
+    Provide a comprehensive analysis including:
+    1. Market access challenges and opportunities
+    2. Pricing and reimbursement landscape
+    3. Payer and stakeholder perspectives
+    4. Barriers to adoption and strategies to overcome them
+    5. Regulatory and policy considerations
+    6. Future outlook for market access in this context
+
+    {output_format}
+    """
+
+    SAFETY_ANALYSIS = """
+    As a safety and pharmacovigilance expert, analyze the following data:
+
+    Safety Data: {safety_data}
+
+    Provide a comprehensive analysis including:
+    1. Key safety findings and adverse events
+    2. Risk mitigation strategies
+    3. Regulatory safety requirements and reporting
+    4. Impact on patient outcomes and clinical practice
+    5. Recommendations for ongoing safety monitoring
+
+    {output_format}
+    """
+
+    PIPELINE_ANALYSIS = """
+    As a pharmaceutical pipeline expert, analyze the following data:
+
+    Pipeline Data: {pipeline_data}
+
+    Provide a comprehensive analysis including:
+    1. Overview of pipeline assets and development stages
+    2. Competitive landscape and differentiation
+    3. Key milestones and upcoming catalysts
+    4. Risks and opportunities in the pipeline
+    5. Strategic recommendations for portfolio management
+
+    {output_format}
+    """
+
+    THERAPEUTIC_LANDSCAPE = """
+    As a therapeutic area expert, analyze the following data:
+
+    Therapeutic Area: {therapeutic_area}
+
+    Provide a comprehensive analysis including:
+    1. Disease burden and unmet needs
+    2. Current standard of care and emerging therapies
+    3. Key players and competitive dynamics
+    4. Regulatory and market access considerations
+    5. Future trends and innovation opportunities
+
+    {output_format}
+    """
+
+    REGULATORY_STRATEGY = """
+    As a regulatory affairs expert, analyze the following data:
+
+    Regulatory Data: {regulatory_data}
+
+    Provide a comprehensive analysis including:
+    1. Key regulatory requirements and pathways
+    2. Recent changes in regulatory policy
+    3. Impact on product development and approval timelines
+    4. Risk mitigation and compliance strategies
+    5. Recommendations for successful regulatory submissions
+
+    {output_format}
+    """
 
 class KumbyAI(AIService):
     """Enhanced AI service with specialized pharmaceutical industry capabilities"""

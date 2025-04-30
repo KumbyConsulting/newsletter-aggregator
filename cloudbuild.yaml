@@ -1,36 +1,57 @@
 steps:
-  # Build the container image using the commit SHA as the tag
+  # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID', '.']
-    id: 'Build Backend Image'
+    id: 'Build Image'
 
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID']
-    id: 'Push Backend Image'
+    id: 'Push Image'
 
-  # Create a Cloud Deploy release for the backend service
+  # Prepare the service yaml file with the correct image and env vars
+  # The following step for env var injection is deprecated. Use Cloud Run's built-in env var management instead.
+  # - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  #   entrypoint: 'bash'
+  #   args:
+  #     - '-c'
+  #     - |
+  #       # Replace the image placeholder
+  #       sed -i "s|gcr.io/PROJECT_ID/newsletter-aggregator:TAG|gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID|g" service.yaml
+  #       # Process environment variables from env.yaml
+  #       echo "Processing environment variables..."
+  #       # Start the env section in service.yaml
+  #       sed -i '/# The actual env vars will be managed by the Cloud Build configuration/a\          env:' service.yaml
+  #       # Add each environment variable from env.yaml
+  #       cat env.yaml | grep -v "^#" | grep -v "^$" | while read line; do
+  #         key=$(echo $line | cut -d: -f1 | tr -d ' ')
+  #         value=$(echo $line | cut -d: -f2- | tr -d ' ')
+  #         if [ ! -z "$key" ] && [ ! -z "$value" ]; then
+  #           echo "Adding env var: $key"
+  #           sed -i "/env:/a\            - name: $key\n              value: $value" service.yaml
+  #         fi
+  #       done
+  #   id: 'Prepare Service Config'
+
+  # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud # Explicitly set the entrypoint
+    entrypoint: 'gcloud'
     args:
-      - 'deploy'
-      - 'releases'
-      - 'create'
-      # Release name: Use a timestamp or short SHA for uniqueness
-      - 'rel-${SHORT_SHA}-${BUILD_ID}'
-      - '--delivery-pipeline=newsletter-aggregator-backend-pipeline' # Matches the pipeline name in clouddeploy.yaml
-      - '--region=us-central1'
-      # Point to the image built and pushed in earlier steps
-      - '--images=newsletter-aggregator=gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID'
-      # Optional: Add annotations if needed
-      # - '--annotations=commit_id=$COMMIT_SHA'
-      - '--description=Backend release triggered by commit $SHORT_SHA'
-      # Ensure skaffold.yaml exists in the root directory or specify path with --skaffold-file
-    id: 'Create Cloud Deploy Release'
+      - 'run'
+      - 'services'
+      - 'replace'
+      - 'service.yaml'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+    id: 'Deploy to Cloud Run'
 
-# List the specific image artifact produced by this build.
+# Variables
+substitutions:
+  _REGION: 'us-central1'  # Default region
+
+# Images to be pushed to Container Registry
 images:
   - 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID'
 
-# Optional: Set build timeout
-# timeout: '600s' 
+# Set build timeout to 15 minutes
+timeout: '900s' 

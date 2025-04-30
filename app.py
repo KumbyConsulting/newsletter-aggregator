@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional, Any, Union, Tuple
-from flask import Flask, render_template, request, jsonify, make_response, abort, redirect, url_for, session, flash, Response
-from flask_cors import CORS
+from quart import Quart, render_template, request, jsonify, make_response, abort, redirect, url_for, session, flash, Response
+from quart_cors import cors
 import pandas as pd
 import json
 import logging
@@ -24,6 +24,7 @@ from google.cloud import firestore
 from queue import Queue
 from werkzeug.exceptions import ServiceUnavailable
 import psutil
+import queue
 
 # Import services
 from services.config_service import ConfigService
@@ -97,8 +98,11 @@ def async_route(f):
     return wrapped
 
 # Initialize Flask app
-app = Flask(__name__)
-CORS(app)  # Enable CORS
+app = Quart(__name__)
+app.config.setdefault("PROVIDE_AUTOMATIC_OPTIONS", True)
+cors(app)  # Enable CORS without reassigning app
+print("App type:", type(app))
+print("Config keys:", list(app.config.keys()))
 app.secret_key = config.flask_secret_key
 
 # Initialize services
@@ -214,6 +218,13 @@ def register_error_handlers(app):
             }), 500
         return render_template('errors/500.html', error=error), 500
 
+    @app.errorhandler(ServiceUnavailable)
+    def handle_service_unavailable(error):
+        return jsonify({
+            "error": str(error),
+            "status": "error"
+        }), 503
+
 # Register error handlers now that the function is defined
 register_error_handlers(app)
 
@@ -256,54 +267,85 @@ def validate_query_params(*required_params):
     return decorator
 
 def validate_pagination(f):
-    """Decorator to validate and normalize pagination parameters"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        try:
-            page = max(1, request.args.get('page', 1, type=int))
-            per_page = min(50, max(10, request.args.get('per_page', 10, type=int)))
-        except ValueError:
-            raise APIError("Invalid pagination parameters", status_code=400)
-        
-        # Add validated parameters to request object
-        request.pagination = {
-            'page': page,
-            'per_page': per_page,
-            'offset': (page - 1) * per_page
-        }
-        return f(*args, **kwargs)
-    return decorated_function
-
-def validate_sort_params(valid_fields, valid_orders=None):
-    """Decorator to validate sorting parameters"""
-    if valid_orders is None:
-        valid_orders = {'asc', 'desc'}
-    
-    def decorator(f):
+    """Decorator to validate and normalize pagination parameters (async-compatible)"""
+    if asyncio.iscoroutinefunction(f):
+        @wraps(f)
+        async def decorated_function(*args, **kwargs):
+            try:
+                page = max(1, request.args.get('page', 1, type=int))
+                per_page = min(50, max(10, request.args.get('per_page', 10, type=int)))
+            except ValueError:
+                raise APIError("Invalid pagination parameters", status_code=400)
+            request.pagination = {
+                'page': page,
+                'per_page': per_page,
+                'offset': (page - 1) * per_page
+            }
+            return await f(*args, **kwargs)
+        return decorated_function
+    else:
         @wraps(f)
         def decorated_function(*args, **kwargs):
-            sort_by = request.args.get('sort_by')
-            sort_order = request.args.get('sort_order', 'desc').lower()
-            
-            if sort_by and sort_by not in valid_fields:
-                raise APIError(
-                    f"Invalid sort field. Must be one of: {', '.join(valid_fields)}", 
-                    status_code=400
-                )
-            
-            if sort_order not in valid_orders:
-                raise APIError(
-                    f"Invalid sort order. Must be one of: {', '.join(valid_orders)}", 
-                    status_code=400
-                )
-            
-            # Add validated parameters to request object
-            request.sort = {
-                'field': sort_by,
-                'order': sort_order
+            try:
+                page = max(1, request.args.get('page', 1, type=int))
+                per_page = min(50, max(10, request.args.get('per_page', 10, type=int)))
+            except ValueError:
+                raise APIError("Invalid pagination parameters", status_code=400)
+            request.pagination = {
+                'page': page,
+                'per_page': per_page,
+                'offset': (page - 1) * per_page
             }
             return f(*args, **kwargs)
         return decorated_function
+
+def validate_sort_params(valid_fields, valid_orders=None):
+    """Decorator to validate sorting parameters (async-compatible)"""
+    if valid_orders is None:
+        valid_orders = {'asc', 'desc'}
+    def decorator(f):
+        if asyncio.iscoroutinefunction(f):
+            @wraps(f)
+            async def decorated_function(*args, **kwargs):
+                sort_by = request.args.get('sort_by')
+                sort_order = request.args.get('sort_order', 'desc').lower()
+                if sort_by and sort_by not in valid_fields:
+                    raise APIError(
+                        f"Invalid sort field. Must be one of: {', '.join(valid_fields)}", 
+                        status_code=400
+                    )
+                if sort_order not in valid_orders:
+                    raise APIError(
+                        f"Invalid sort order. Must be one of: {', '.join(valid_orders)}", 
+                        status_code=400
+                    )
+                request.sort = {
+                    'field': sort_by,
+                    'order': sort_order
+                }
+                return await f(*args, **kwargs)
+            return decorated_function
+        else:
+            @wraps(f)
+            def decorated_function(*args, **kwargs):
+                sort_by = request.args.get('sort_by')
+                sort_order = request.args.get('sort_order', 'desc').lower()
+                if sort_by and sort_by not in valid_fields:
+                    raise APIError(
+                        f"Invalid sort field. Must be one of: {', '.join(valid_fields)}", 
+                        status_code=400
+                    )
+                if sort_order not in valid_orders:
+                    raise APIError(
+                        f"Invalid sort order. Must be one of: {', '.join(valid_orders)}", 
+                        status_code=400
+                    )
+                request.sort = {
+                    'field': sort_by,
+                    'order': sort_order
+                }
+                return f(*args, **kwargs)
+            return decorated_function
     return decorator
 
 # Schema validation helper
@@ -424,10 +466,23 @@ def max_value(a, b):
 def min_value(a, b):
     return min(a, b)
 
+# Log port binding and startup info
+logging.basicConfig(level=logging.INFO)
+logging.info(f"Starting app on host 0.0.0.0, port {os.environ.get('PORT', 8080)} (ASGI/Quart)")
+
+# Log resource usage at startup
+def log_resource_usage():
+    process = psutil.Process(os.getpid())
+    logging.info(f"Memory usage: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+    logging.info(f"CPU usage: {process.cpu_percent()}%")
+
+log_resource_usage()
+
 @app.route('/_ah/health')
 async def health_check():
-    """Enhanced health check endpoint with service status"""
+    """Enhanced health check endpoint with service status and resource usage"""
     try:
+        process = psutil.Process(os.getpid())
         health_status = {
             'status': 'healthy',
             'timestamp': datetime.utcnow().isoformat(),
@@ -439,8 +494,8 @@ async def health_check():
             },
             'metrics': {
                 'request_queue_size': request_queue.qsize(),
-                'memory_usage': psutil.Process().memory_info().rss / 1024 / 1024,  # MB
-                'cpu_percent': psutil.Process().cpu_percent()
+                'memory_usage_mb': process.memory_info().rss / 1024 / 1024,  # MB
+                'cpu_percent': process.cpu_percent()
             }
         }
         
@@ -476,7 +531,7 @@ async def health_check():
         return jsonify(health_status), response_code
         
     except Exception as e:
-        logging.error(f"Health check failed: {e}")
+        logging.error(f"Health check failed: {e}", exc_info=True)
         return jsonify({
             'status': 'unhealthy',
             'error': str(e),
@@ -536,7 +591,6 @@ def strip_html_tags(raw_html):
         return str(raw_html)
 
 @app.route('/', methods=['GET', 'POST'], endpoint='index')
-@async_route
 @cache_service.cache_decorator(namespace="index", ttl=300)  # Cache for 5 minutes
 @rate_limiting_service.rate_limit_decorator(key="api")
 @validate_pagination
@@ -643,7 +697,7 @@ async def index():
         # Record metrics
         monitoring_service.record_count("page_views", labels={"page": "index"})
         
-        return render_template('index.html', **template_data)
+        return await render_template('index.html', **template_data)
         
     except APIError as e:
         # Let the error handler handle API errors
@@ -783,12 +837,11 @@ def get_update_status_safely():
         # Return a deep copy to prevent external modification
         return dict(update_status)
 
-def async_update(app_context):
-    """Enhanced background task for updating articles"""
-    global update_status, update_thread
-    
+# Refactor async_update to be async and use async with app.app_context()
+async def async_update():
+    global update_status
     try:
-        with app_context:
+        async with app.app_context():
             update_status_safely({
                 "status": "running",
                 "progress": 0,
@@ -796,25 +849,15 @@ def async_update(app_context):
                 "started_at": time.time(),
                 "can_be_cancelled": True
             })
-            
-            # Create a new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
             try:
                 # Run the update process with a fresh coroutine
-                success = loop.run_until_complete(scrape_news(status_callback=update_callback))
-                
+                success = await scrape_news(status_callback=update_callback)
                 if success:
-                    # Verify database consistency with a fresh coroutine
                     update_status_safely({
                         "progress": 85,
                         "message": "Verifying database consistency..."
                     })
-                    
-                    # Create a new coroutine for verification
-                    verify_success, stats = loop.run_until_complete(verify_database_consistency())
-                    
+                    verify_success, stats = await verify_database_consistency()
                     if verify_success:
                         if stats["repaired"] > 0:
                             final_status = {
@@ -831,11 +874,7 @@ def async_update(app_context):
                             "status": "completed_with_warnings",
                             "message": "Articles updated but verification failed."
                         }
-                    
-                    # Invalidate caches
                     invalidate_caches()
-                    
-                    # Record success metric
                     monitoring_service.record_count("article_updates_completed", labels={"success": "true"})
                 else:
                     final_status = {
@@ -843,7 +882,6 @@ def async_update(app_context):
                         "message": "Some errors occurred while updating articles."
                     }
                     monitoring_service.record_count("article_updates_completed", labels={"success": "false"})
-                
                 final_status.update({
                     "progress": 100,
                     "last_update": time.time(),
@@ -851,7 +889,6 @@ def async_update(app_context):
                     "can_be_cancelled": False
                 })
                 update_status_safely(final_status)
-                
             except asyncio.CancelledError:
                 update_status_safely({
                     "status": "cancelled",
@@ -861,9 +898,6 @@ def async_update(app_context):
                     "can_be_cancelled": False
                 })
                 monitoring_service.record_count("article_updates_completed", labels={"success": "false", "reason": "cancelled"})
-            finally:
-                loop.close()
-                
     except Exception as e:
         logging.error(f"Error in background update: {e}", exc_info=True)
         update_status_safely({
@@ -875,11 +909,6 @@ def async_update(app_context):
             "can_be_cancelled": False
         })
         monitoring_service.record_count("article_updates_completed", labels={"success": "false", "error": "exception"})
-    finally:
-        # Clear thread reference
-        with update_thread_lock:
-            global update_thread
-            update_thread = None
 
 def invalidate_caches():
     """Invalidate all caches after articles are updated"""
@@ -919,43 +948,43 @@ def update_callback(progress, message, sources_processed=None, total_sources=Non
         update_status["articles_found"] = articles_found
 
 # Request queue configuration
-request_queue = Queue(maxsize=1000)
+request_queue = asyncio.Queue(maxsize=1000)
 QUEUE_TIMEOUT = 5  # seconds
 
 # Add queue management decorator
-def manage_request_queue(f):
+def manage_request_queue_async(f):
     @wraps(f)
-    def decorated_function(*args, **kwargs):
+    async def decorated_function(*args, **kwargs):
         try:
-            # Try to put request in queue with timeout
-            if not request_queue.put(True, timeout=QUEUE_TIMEOUT):
-                raise ServiceUnavailable("Server is experiencing high load. Please try again later.")
+            logging.info(f"Request queue size before: {request_queue.qsize()}")
             try:
-                return f(*args, **kwargs)
+                await asyncio.wait_for(request_queue.put(True), timeout=QUEUE_TIMEOUT)
+            except asyncio.TimeoutError:
+                logging.warning("Request queue is full! Returning 503.")
+                raise ServiceUnavailable("Request queue is full. Please try again later.")
+            try:
+                return await f(*args, **kwargs)
             finally:
-                request_queue.get()
-                request_queue.task_done()
-        except queue.Full:
-            raise ServiceUnavailable("Request queue is full. Please try again later.")
+                request_queue.get_nowait()
+                logging.info(f"Request queue size after: {request_queue.qsize()}")
+        except Exception as e:
+            logging.error(f"Error in manage_request_queue_async: {e}")
+            raise
     return decorated_function
 
+# In start_update, use asyncio.create_task to start the update
 @app.route('/api/update/start', methods=['POST'])
 @circuit_breaker_service.circuit_breaker('update')
-@manage_request_queue
-def start_update():
-    """Enhanced API endpoint to start a background update"""
-    global update_thread, update_status
-    
+@manage_request_queue_async
+async def start_update():
+    global update_status
     try:
-        # Thread-safe check if update is already running
         if is_update_running():
             return jsonify({
                 "success": False,
                 "message": "Update already in progress",
                 "status": get_update_status_safely()
             })
-        
-        # Reset status with thread safety
         update_status_safely({
             "in_progress": True,
             "last_update": None,
@@ -971,25 +1000,14 @@ def start_update():
             "estimated_completion_time": None,
             "can_be_cancelled": True
         })
-        
-        # Start background update with thread safety
-        with update_thread_lock:
-            update_thread = threading.Thread(
-                target=async_update,
-                args=(app.app_context(),),
-                daemon=True
-            )
-            update_thread.start()
-        
-        # Record metric
+        # Start background update as an async task
+        asyncio.create_task(async_update())
         monitoring_service.record_count("article_updates_started")
-        
         return jsonify({
             "success": True,
             "message": "Update started in background",
             "status": get_update_status_safely()
         })
-        
     except Exception as e:
         logging.error(f"Error starting update: {e}", exc_info=True)
         update_status_safely({
@@ -1043,7 +1061,6 @@ def cancel_update():
         }), 500
 
 @app.route('/api/update/status', methods=['GET'])
-@async_route
 @cache_service.cache_decorator(namespace="update_status", ttl=2)  # Cache for 2 seconds
 @rate_limiting_service.rate_limit_decorator(key="api")
 async def get_update_status():
@@ -1106,27 +1123,25 @@ def api_update_articles():
     return start_update()
 
 
-@app.route('/summarize', methods=['POST'])
-@async_route
-@rate_limiting_service.rate_limit_decorator(key="summarize")
+@app.route('/summarize-article', methods=['POST'])
+@rate_limiting_service.rate_limit_decorator(key="summarize-article")
 async def summarize_article():
     """Generate a summary for an article."""
     try:
         # Validate input
-        data = request.get_json()
+        data = await request.get_json()
         if not data:
             abort(400, description="No data provided")
-            
         description = data.get('description', '').strip()
         topic = data.get('topic', '').strip()
         article_link = data.get('link', '').strip()
         
         if not description:
             abort(400, description="No description provided")
-            
+        
         if not article_link:
             abort(400, description="No article link provided")
-            
+        
         # Check cache first
         cache_key = f"summary:{article_link}"
         cached_summary = cache_service.get(cache_key)
@@ -1170,10 +1185,9 @@ async def summarize_article():
 
 @app.route('/generate-summaries', methods=['POST'], endpoint='generate_summaries_endpoint')
 @circuit_breaker_service.circuit_breaker('summary')
-@manage_request_queue
+@manage_request_queue_async
 @monitoring_service.time_async_function("generate_summaries")
 @rate_limiting_service.rate_limit_decorator(key="summarize")
-@async_route
 async def generate_summaries():
     """Generate summaries for articles that don't have them."""
     try:
@@ -1219,24 +1233,23 @@ def test_summary():
 
 @app.route('/api/rag', methods=['POST'], endpoint='rag_query_endpoint')
 @circuit_breaker_service.circuit_breaker('rag')
-@manage_request_queue
+@manage_request_queue_async
 @monitoring_service.time_async_function("rag_query")
 @rate_limiting_service.rate_limit_decorator(key="rag")
 async def rag_query():
     """Handle RAG-based queries."""
     try:
         # Validate input
-        data = request.get_json()
+        data = await request.get_json()
         if not data:
             abort(400, description="No data provided")
-            
         query = data.get('query', '').strip()
         use_history = data.get('use_history', True)
         show_sources = data.get('show_sources', True)
         
         if not query:
             abort(400, description="No query provided")
-            
+        
         # Check cache first
         cache_key = f"rag:{query}:{use_history}"
         cached_response = cache_service.get(cache_key)
@@ -1316,17 +1329,15 @@ async def rag_query():
         abort(500, description="An unexpected error occurred")
 
 @app.route('/api/rag/stream', methods=['POST'], endpoint='stream_rag_query_endpoint')
-@async_route
 @monitoring_service.time_async_function("rag_stream_query")
 @rate_limiting_service.rate_limit_decorator(key="rag")
 async def stream_rag_query():
     """Handle RAG-based queries with streaming response."""
     try:
         # Validate input
-        data = request.get_json()
+        data = await request.get_json()
         if not data:
             return jsonify({"error": "No data provided", "status": "error"}), 400
-            
         query = data.get('query', '').strip()
         use_history = data.get('use_history', True)
         insight_mode = data.get('insight_mode', False)
@@ -1335,7 +1346,7 @@ async def stream_rag_query():
         
         if not query:
             return jsonify({"error": "No query provided", "status": "error"}), 400
-            
+        
         # Check AI service health before proceeding
         if not await ai_service.is_healthy():
             return jsonify({"error": "AI service is currently unavailable", "status": "error"}), 503
@@ -1498,7 +1509,6 @@ async def stream_rag_query():
         return jsonify({"error": "Internal server error", "status": "error"}), 500
 
 @app.route('/api/rag/stream', methods=['GET'], endpoint='stream_rag_query_get_endpoint')
-@async_route
 @monitoring_service.time_async_function("rag_stream_query_get")
 @rate_limiting_service.rate_limit_decorator(key="rag")
 async def stream_rag_query_get():
@@ -1654,7 +1664,6 @@ def get_rag_history():
         return jsonify({"error": str(e), "history": []}), 500
 
 @app.route('/api/rag/history', methods=['DELETE'])
-@async_route
 async def clear_rag_history():
     """Clear conversation history"""
     try:
@@ -1727,7 +1736,6 @@ async def restore_backup():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/similar-articles/<article_id>', methods=['GET'])
-@async_route
 async def get_similar_articles(article_id):
     """Get similar articles to the given article ID"""
     try:
@@ -1739,7 +1747,6 @@ async def get_similar_articles(article_id):
 
 @app.route('/similar-articles/', methods=['GET'])
 @app.route('/similar-articles', methods=['GET'])
-@async_route
 async def get_recent_articles():
     """Get recent articles when no specific article ID is provided"""
     try:
@@ -1969,7 +1976,6 @@ async def cleanup_duplicate_articles():
         }), 500
 
 @app.route('/api/search/suggestions', methods=['GET'])
-@async_route
 async def get_search_suggestions():
     try:
         query = request.args.get('q', '').strip()
@@ -2044,7 +2050,7 @@ async def get_search_suggestions():
 async def topic_analysis():
     """API endpoint for in-depth pharmaceutical topic analysis with time awareness"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         topic = data.get('topic')
         
         if not topic:
@@ -2070,7 +2076,7 @@ async def topic_analysis():
 async def analyze_regulatory_impact():
     """Analyze regulatory impact of pharmaceutical content"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         content = data.get('content')
         
         if not content:
@@ -2088,7 +2094,7 @@ async def analyze_regulatory_impact():
 async def generate_market_insight():
     """Generate pharmaceutical market insights"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         topic = data.get('topic')
         timeframe = data.get('timeframe', 'recent')
         
@@ -2107,7 +2113,7 @@ async def generate_market_insight():
 async def analyze_drug_development():
     """Analyze drug development progress"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         drug_name = data.get('drug_name')
         
         if not drug_name:
@@ -2125,7 +2131,7 @@ async def analyze_drug_development():
 async def generate_competitive_analysis():
     """Generate competitive analysis for pharmaceutical companies"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         company_name = data.get('company_name')
         
         if not company_name:
@@ -2143,7 +2149,7 @@ async def generate_competitive_analysis():
 async def analyze_clinical_trial():
     """Analyze clinical trial data"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         trial_data = data.get('trial_data')
         
         if not trial_data:
@@ -2161,7 +2167,7 @@ async def analyze_clinical_trial():
 async def analyze_patent():
     """Analyze patent information"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         patent_data = data.get('patent_data')
         
         if not patent_data:
@@ -2179,7 +2185,7 @@ async def analyze_patent():
 async def analyze_manufacturing():
     """Analyze manufacturing and supply chain data"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         manufacturing_data = data.get('manufacturing_data')
         
         if not manufacturing_data:
@@ -2197,7 +2203,7 @@ async def analyze_manufacturing():
 async def analyze_market_access():
     """Analyze market access and pricing data"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         market_data = data.get('market_data')
         
         if not market_data:
@@ -2215,7 +2221,7 @@ async def analyze_market_access():
 async def analyze_safety():
     """Analyze safety and pharmacovigilance data"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         safety_data = data.get('safety_data')
         
         if not safety_data:
@@ -2233,7 +2239,7 @@ async def analyze_safety():
 async def analyze_pipeline():
     """Analyze pharmaceutical pipeline data"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         pipeline_data = data.get('pipeline_data')
         
         if not pipeline_data:
@@ -2251,7 +2257,7 @@ async def analyze_pipeline():
 async def analyze_therapeutic_area():
     """Analyze therapeutic area landscape"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         therapeutic_area = data.get('therapeutic_area')
         
         if not therapeutic_area:
@@ -2269,7 +2275,7 @@ async def analyze_therapeutic_area():
 async def analyze_regulatory_strategy():
     """Analyze regulatory strategy"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         regulatory_data = data.get('regulatory_data')
         
         if not regulatory_data:
@@ -2287,7 +2293,7 @@ async def analyze_regulatory_strategy():
 async def analyze_digital_health():
     """Analyze digital health integration"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         digital_data = data.get('digital_data')
         
         if not digital_data:
@@ -2305,7 +2311,7 @@ async def analyze_digital_health():
 async def analyze_value_evidence():
     """Analyze value and evidence data"""
     try:
-        data = request.get_json()
+        data = await request.get_json()
         value_data = data.get('value_data')
         
         if not value_data:
@@ -2320,7 +2326,6 @@ async def analyze_value_evidence():
 
 # KumbyAI Chat Routes
 @app.route('/api/kumbyai/chat', methods=['POST'], endpoint='kumbyai_chat_endpoint')
-@async_route
 @monitoring_service.time_async_function("kumbyai_chat")
 async def kumbyai_chat():
     """KumbyAI chat endpoint"""
@@ -2366,7 +2371,6 @@ async def kumbyai_chat():
 
 # Admin Routes
 @app.route('/api/admin/export-csv', endpoint='admin_export_csv_endpoint')
-@async_route
 @monitoring_service.time_async_function("admin_export_csv")
 async def admin_export_csv():
     """Export articles as CSV"""
@@ -2410,7 +2414,6 @@ async def admin_export_csv():
         return jsonify({'error': 'Failed to export data'}), 500
 
 @app.route('/api/admin/force-sync', methods=['POST'], endpoint='admin_force_sync_endpoint')
-@async_route
 @monitoring_service.time_async_function("admin_force_sync")
 async def admin_force_sync():
     """Force sync with all sources"""
@@ -2431,7 +2434,6 @@ async def admin_force_sync():
         }), 500
 
 @app.route('/api/admin/cleanup-duplicates', methods=['POST'], endpoint='admin_cleanup_duplicates_endpoint')
-@async_route
 @monitoring_service.time_async_function("admin_cleanup_duplicates")
 async def admin_cleanup_duplicates():
     """Clean up duplicate articles"""
@@ -2604,7 +2606,6 @@ async def get_topic_stats():
         })
 
 @app.route('/api/articles/<article_id>/analyze', methods=['POST'], endpoint='analyze_article_endpoint')
-@async_route
 @rate_limiting_service.rate_limit_decorator(key="article_analysis")
 async def analyze_article(article_id):
     """
@@ -2622,7 +2623,7 @@ async def analyze_article(article_id):
             raise APIError("AI service is not available", status_code=503)
             
         # Validate request payload
-        data = request.get_json() or {}
+        data = await request.get_json() or {}
         analysis_type = data.get('analysis_type', 'general')
         output_format = data.get('output_format', 'default')
         
@@ -2708,7 +2709,6 @@ def cancel_update():
     return False
 
 @app.route('/api/analysis/save', methods=['POST'], endpoint='save_analysis_endpoint')
-@async_route
 @rate_limiting_service.rate_limit_decorator(key="analysis_save")
 async def save_analysis():
     """Save analysis results for future reference"""
@@ -2763,7 +2763,6 @@ async def save_analysis():
 
 
 @app.route('/api/analysis/saved/<analysis_id>', methods=['GET'], endpoint='get_saved_analysis_endpoint')
-@async_route
 async def get_saved_analysis(analysis_id):
     """Get a specific saved analysis by ID"""
     try:
@@ -2792,7 +2791,6 @@ async def get_saved_analysis(analysis_id):
 
 
 @app.route('/api/articles/validate', methods=['POST'], endpoint='validate_articles_endpoint')
-@async_route
 @rate_limiting_service.rate_limit_decorator(key="api") # Apply general API rate limiting
 async def validate_articles_endpoint():
     """Validate if a list of article IDs exist in the database."""
@@ -2828,7 +2826,6 @@ async def validate_articles_endpoint():
         return jsonify({"error": "Failed to validate articles"}), 500
 
 @app.route('/api/sources', methods=['GET'], endpoint='get_sources_endpoint')
-@async_route
 @cache_service.cache_decorator(namespace="sources", ttl=3600)  # Cache for 1 hour
 @rate_limiting_service.rate_limit_decorator(key="api")
 async def get_sources():
@@ -2977,12 +2974,27 @@ async def get_service_status():
             "timestamp": datetime.utcnow().isoformat()
         }), 500
 
+# Ensure all async route exceptions are logged with stack traces
+@app.errorhandler(Exception)
+def handle_general_exception(error): # Renamed for clarity, changed to sync def
+    logging.error(f"Unhandled exception: {error}", exc_info=True)
+    # Determine if API or HTML response is needed based on path or Accepts header
+    if request.path.startswith('/api/') or 'application/json' in request.accept_mimetypes:
+         return jsonify({'error': 'An unexpected error occurred', 'status': 'error'}), 500
+    else:
+         # Optionally render a generic error page for non-API requests
+         try:
+             return render_template('errors/500.html', error=error), 500
+         except Exception: # Fallback if template rendering fails
+             return "An unexpected error occurred", 500
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Newsletter Aggregator Application')
     parser.add_argument('--port', type=int, default=int(os.environ.get('PORT', 5000)), help='Port to run the application on')
     parser.add_argument('--import_articles', action='store_true', help='Import articles from CSV to database on startup')
     parser.add_argument('--verify_db', action='store_true', help='Verify and repair database consistency')
+    parser.add_argument('--waitress', action='store_true', help='Use Waitress WSGI server instead of Flask development server')
     args = parser.parse_args()
     
     # Run database verification if requested
@@ -3020,16 +3032,26 @@ if __name__ == "__main__":
     
     # Use debug mode only in development environment
     debug_mode = os.environ.get('FLASK_ENV', 'development').lower() != 'production'
-    logging.info(f"Starting Flask application on port {args.port} with debug={debug_mode}")
+    logging.info(f"Starting application on port {args.port} with debug={debug_mode}")
     
     # Log important configuration information
     logging.info(f"Environment: {os.environ.get('FLASK_ENV', 'development')}")
     logging.info(f"Storage backend: {os.environ.get('STORAGE_BACKEND', 'default')}")
     logging.info(f"Using Cloud Logging: {os.environ.get('USE_CLOUD_LOGGING', 'False')}")
     
-    # Run the app - when run directly (not through waitress/gunicorn)
+    # Run the app - either with Waitress or Flask's development server
     try:
-        app.run(debug=debug_mode, host='0.0.0.0', port=args.port)
+        if args.waitress or os.environ.get('USE_WAITRESS', 'False').lower() in ('true', '1', 't'):
+            try:
+                from waitress import serve
+                logging.info(f"Starting with Waitress WSGI server on port {args.port}")
+                serve(app, host='0.0.0.0', port=args.port)
+            except ImportError:
+                logging.error("Waitress not installed but requested. Falling back to Flask development server.")
+                app.run(debug=debug_mode, host='0.0.0.0', port=args.port)
+        else:
+            logging.info(f"Starting with Flask development server on port {args.port}")
+            app.run(debug=debug_mode, host='0.0.0.0', port=args.port)
     except Exception as e:
         logging.critical(f"Fatal error starting the application: {e}", exc_info=True)
         sys.exit(1)
