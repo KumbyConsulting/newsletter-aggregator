@@ -458,10 +458,8 @@ export default function Home() {
       <Suspense fallback={<div className="p-8 text-center"><Spin size="large" /></div>}>
         <SearchParamsWrapper>
           {(searchParams) => {
-            // Update params from URL on each render
-            if (!searchParamsObj) {
-              updateSearchParams(searchParams);
-            }
+            // Always update params from URL on each render
+            updateSearchParams(searchParams);
             
             return (
               <Content className="main-content">

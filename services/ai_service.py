@@ -164,7 +164,7 @@ class GeminiDirectModel(AIModelInterface):
                 logging.info(f"Gemini API key configured: {masked_key}")
             
             # Initialize the model settings
-            self.model_name = "gemini-2.0-pro-preview-03-25"  # Using the latest model version
+            self.model_name = "gemini-2.0-flash"  # Using the latest model version
             self.api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_name}:generateContent"
             logging.info(f"Using Gemini model: {self.model_name}")
             

@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional, Any, Union, Tuple
-from quart import Quart, render_template, request, jsonify, make_response, abort, redirect, url_for, session, flash, Response
+from quart import Quart, render_template, request, jsonify, make_response, abort, redirect, url_for, session, flash, Response, send_from_directory
 from quart_cors import cors
 import pandas as pd
 import json
@@ -2481,9 +2481,7 @@ def add_cors_headers(response):
     
     # List of allowed origins
     allowed_origins = [
-        'https://newsletter-aggregator-kvpb.vercel.app',
-        'https://newsletter-aggregator-knap-b125yaqk7-kumbyconsultings-projects.vercel.app',
-        'https://newsletter-aggregator-knap.vercel.app'  # Added new Vercel domain
+        'https://newsletter-aggregator-chi.vercel.app'
     ]
     
     # If the request origin is in our list of allowed origins, set it in the response
@@ -2987,6 +2985,10 @@ def handle_general_exception(error): # Renamed for clarity, changed to sync def
              return render_template('errors/500.html', error=error), 500
          except Exception: # Fallback if template rendering fails
              return "An unexpected error occurred", 500
+
+@app.route('/favicon.ico')
+async def favicon():
+    return await send_from_directory('static', 'favicon.ico')
 
 if __name__ == "__main__":
     # Parse command line arguments
