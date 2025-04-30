@@ -5,7 +5,7 @@
  */
 
 // Configure API base URL to use API Gateway
-const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'https://newsletter-aggregator-gateway-axs105xr.uc.gateway.dev';
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'https://newsletter-aggregator-857170198287.us-central1.run.app';
 const API_BASE_URL = `${API_GATEWAY_URL}/api`; // Append /api to match OpenAPI spec paths
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
