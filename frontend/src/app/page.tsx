@@ -17,7 +17,6 @@ import {
   Tag,
   Slider,
   Skeleton,
-  Alert,
 } from 'antd';
 import {
   ClockCircleOutlined,
@@ -37,8 +36,7 @@ import {
   getArticles as fetchArticlesService, 
   getTopicStats, 
   Article as ApiArticle,
-  mapCoreToArticle,
-  validateArticles,
+  mapCoreToArticle
 } from '@/services/api';
 import { Article, ArticlesApiResponse, TopicStat, TopicsApiResponse, ApiErrorResponse } from '@/types';
 
@@ -109,7 +107,6 @@ export default function Home() {
   const [searchValue, setSearchValue] = useState('');
   const [advancedSearchVisible, setAdvancedSearchVisible] = useState(false);
   const [searchCache, setSearchCache] = useState<Record<string, CacheEntry>>({});
-  const [invalidCount, setInvalidCount] = useState(0);
   
   // Initial values (will be updated from SearchParamsWrapper)
   const [currentPage, setCurrentPage] = useState(1);
@@ -219,21 +216,6 @@ export default function Home() {
         // --- End Pass Advanced Params to API Call ---
       );
       
-      // Validate articles with backend
-      let filteredArticles = articlesData.articles;
-      let invalid = 0;
-      if (filteredArticles.length > 0) {
-        try {
-          const validation = await validateArticles(filteredArticles.map(a => a.id));
-          filteredArticles = filteredArticles.filter(a => validation.results[a.id]);
-          invalid = articlesData.articles.length - filteredArticles.length;
-        } catch (e) {
-          // If validation fails, fallback to showing all
-          invalid = 0;
-        }
-      }
-      setInvalidCount(invalid);
-      
       // Set a default empty topics array in case topics API fails
       let topicsData = { topics: [] as TopicStat[] };
       try {
@@ -245,26 +227,26 @@ export default function Home() {
       }
       
       // Make sure we have valid data before updating state
-      if (filteredArticles) {
+      if (articlesData && articlesData.articles) {
         // Calculate total_pages if not provided or invalid
         const total_pages = articlesData.total_pages || 
-                          Math.max(1, Math.ceil((articlesData.total || filteredArticles.length) / params.limit));
+                          Math.max(1, Math.ceil((articlesData.total || articlesData.articles.length) / params.limit));
         
         console.log('API response pagination:', {
           page: articlesData.page,
           total: articlesData.total,
           total_pages: articlesData.total_pages,
           calculated_total_pages: total_pages,
-          articles_count: filteredArticles.length
+          articles_count: articlesData.articles.length
         });
         
         // Cache the results
         const cacheEntry = {
-          articles: filteredArticles,
+          articles: articlesData.articles,
           topics: topicsData.topics,
           pagination: {
             page: articlesData.page,
-            total: articlesData.total || filteredArticles.length,
+            total: articlesData.total || articlesData.articles.length,
             total_pages: total_pages
           },
           timestamp: Date.now()
@@ -276,11 +258,11 @@ export default function Home() {
         }));
         
         // Update state with new data
-        setArticles(filteredArticles);
+        setArticles(articlesData.articles);
         setTopics(topicsData.topics);
         setPagination({
           page: articlesData.page,
-          total: articlesData.total || filteredArticles.length,
+          total: articlesData.total || articlesData.articles.length,
           total_pages: total_pages
         });
         setFetchError(null);
@@ -435,19 +417,8 @@ export default function Home() {
 
   // Memoize components for better performance
   const memoizedArticlesGrid = useMemo(() => (
-    <>
-      {invalidCount > 0 && (
-        <Alert
-          message="Some articles were filtered out"
-          description={`${invalidCount} articles were removed because they no longer exist in the database.`}
-          type="warning"
-          showIcon
-          style={{ marginBottom: 16 }}
-        />
-      )}
-      <ArticlesGrid articles={articles} loading={isLoading} />
-    </>
-  ), [articles, isLoading, invalidCount]);
+    <ArticlesGrid articles={articles} loading={isLoading} />
+  ), [articles, isLoading]);
 
   const memoizedTopicDistribution = useMemo(() => (
     <TopicDistribution topics={topics} />
