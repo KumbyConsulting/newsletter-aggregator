@@ -3,16 +3,13 @@ info:
   title: Newsletter Aggregator API
   description: API for the Newsletter Aggregator service, providing access to aggregated news articles, AI-driven summaries, analysis, and RAG capabilities.
   version: 1.1.0 # Updated version
-host: newsletter-aggregator-gateway-axs105xr.uc.gateway.dev # Replace with your actual gateway host if different
+host: newsletter-aggregator-857170198287.us-central1.run.app # Now points directly to Cloud Run backend
 schemes:
   - https
 produces:
   - application/json
 consumes: # Added consumes for POST/PUT/PATCH requests
   - application/json
-x-google-backend:
-  address: https://newsletter-aggregator-ukm23f55ra-uc.a.run.app # Backend service address
-  protocol: h2
 # Optional: Add security definitions if using API Gateway authentication (e.g., Google ID token)
 # securityDefinitions:
 #   google_id_token:
