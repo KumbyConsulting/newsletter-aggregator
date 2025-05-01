@@ -136,24 +136,24 @@ interface CacheItem<T> {
 class APICache {
   private cache: Map<string, CacheItem<any>> = new Map();
   private pendingRequests: Map<string, Promise<any>> = new Map();
+  private localStorageKey = 'apiCache';
   
-  constructor(private defaultTTL: number = 60000) {} // Default TTL is 1 minute
+  constructor(private defaultTTL: number = 60000) {
+    this.loadFromLocalStorage();
+  }
 
   // Get data from cache
   get<T>(key: string): T | null {
     const item = this.cache.get(key);
-    
     if (!item) return null;
-    
-    // Check if item has expired
     if (Date.now() > item.expiry) {
       this.cache.delete(key);
+      this.saveToLocalStorage();
       return null;
     }
-    
     return item.data as T;
   }
-  
+
   // Store data in cache
   set<T>(key: string, data: T, ttl: number = this.defaultTTL): void {
     const timestamp = Date.now();
@@ -162,6 +162,7 @@ class APICache {
       timestamp,
       expiry: timestamp + ttl
     });
+    this.saveToLocalStorage();
   }
   
   // Check if a request is pending
@@ -187,11 +188,39 @@ class APICache {
   // Clear the cache
   clear(): void {
     this.cache.clear();
+    this.saveToLocalStorage();
   }
   
   // Clear a specific key
   clearKey(key: string): void {
     this.cache.delete(key);
+    this.saveToLocalStorage();
+  }
+
+  // Save cache to localStorage
+  saveToLocalStorage() {
+    try {
+      if (typeof window === 'undefined') return;
+      // Only store serializable data
+      const serializable = Array.from(this.cache.entries()).map(([key, value]) => [key, value]);
+      localStorage.setItem(this.localStorageKey, JSON.stringify(serializable));
+    } catch (e) {
+      // Ignore storage errors
+    }
+  }
+
+  // Load cache from localStorage
+  loadFromLocalStorage() {
+    try {
+      if (typeof window === 'undefined') return;
+      const data = localStorage.getItem(this.localStorageKey);
+      if (data) {
+        const parsed = JSON.parse(data);
+        this.cache = new Map(parsed);
+      }
+    } catch (e) {
+      // Ignore storage errors
+    }
   }
 }
 
@@ -246,7 +275,7 @@ async function apiRequest<T>(
   options: RequestInit = {}, 
   cacheKey: string = '', 
   cacheTTL: number = 60000,
-  timeoutMs: number = 30000,
+  timeoutMs: number = 120000,
   retryConfig = {
     retries: 3,
     initialDelay: 1000,
@@ -265,7 +294,7 @@ async function apiRequest<T>(
     ...options.headers,
   };
 
-  const actualTimeout = endpoint === '/update/status' ? 10000 : timeoutMs;
+  const actualTimeout = timeoutMs;
   
   const requestPromise = retryWithBackoff(
     async () => {
@@ -388,7 +417,7 @@ export async function getUpdateStatus(): Promise<UpdateStatus> {
       },
       'update_status',
       5000, // Cache for 5 seconds
-      10000, // Timeout after 10 seconds
+      120000, // Timeout after 120 seconds
       {
         retries: 2,
         initialDelay: 1000,

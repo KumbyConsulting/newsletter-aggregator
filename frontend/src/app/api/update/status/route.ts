@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_BASE_URL = process.env.INTERNAL_BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:5000';
 
 // Set a shorter timeout for status checks
-const STATUS_TIMEOUT = 10000; // 10 seconds
+const STATUS_TIMEOUT = 120000; // 120 seconds
 
 /**
  * API route handler for update status endpoint

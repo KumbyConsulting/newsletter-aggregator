@@ -118,6 +118,8 @@ export default function Home() {
   const [advancedSearchVisible, setAdvancedSearchVisible] = useState(false);
   const [searchCache, setSearchCache] = useState<Map<string, CacheEntry>>(new Map());
   const [searchParamsObj, setSearchParamsObj] = useState<URLSearchParams | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const MAX_RETRIES = 2;
 
   // --- Derive all search/filter/sort state from searchParamsObj ---
   const currentPage = safeParseInt(searchParamsObj?.get('page') || '1', 1);
@@ -148,118 +150,111 @@ export default function Home() {
   // --- Fetch data with cache ---
   async function fetchDataWithCache(options: { page?: number } = {}) {
     if (!searchParamsObj) return;
-    const { page = currentPage } = options;
-    const searchType = searchParamsObj.get('searchType') || undefined;
-    const thresholdParam = searchParamsObj.get('threshold');
-    const threshold = thresholdParam ? parseFloat(thresholdParam) : undefined;
-    const fieldsParam = searchParamsObj.get('fields');
-    const fields = fieldsParam ? fieldsParam.split(',') : undefined;
-    const params = {
-      page,
-      limit: currentLimit,
-      topic: currentTopic,
-      search: currentSearch,
-      sort_by: currentSortBy,
-      sort_order: currentSortOrder,
-      searchType,
-      threshold,
-      fields
-    };
-    const cacheKey = stableStringify(params);
-    if (isCacheValid(cacheKey)) {
-      const cached = searchCache.get(cacheKey)!;
-      setArticles(cached.articles);
-      setTopics(cached.topics);
-      setPagination({
-        page: cached.pagination.page,
-        total: cached.pagination.total,
-        total_pages: Math.max(1, cached.pagination.total_pages || 1)
-      });
-      setFetchError(null);
-      setIsLoading(false);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const articlesData = await fetchArticlesService(
-        params.page,
-        params.limit,
-        params.search,
-        params.topic !== 'All' ? params.topic : '',
-        params.sort_by,
-        params.sort_order,
-        '', '', '', '', false, false,
-        params.searchType,
-        params.threshold,
-        params.fields
-      );
-      let topicsData = { topics: [] as TopicStat[] };
+    let attempts = 0;
+    let lastError = null;
+    while (attempts <= MAX_RETRIES) {
       try {
-        topicsData = await getTopicStats();
-      } catch (topicError) {
-        // Non-critical
-      }
-      if (articlesData && articlesData.articles) {
-        const total_pages = articlesData.total_pages || Math.max(1, Math.ceil((articlesData.total || articlesData.articles.length) / params.limit));
-        const cacheEntry: CacheEntry = {
-          articles: articlesData.articles,
-          topics: topicsData.topics,
-          pagination: {
+        const { page = currentPage } = options;
+        const searchType = searchParamsObj.get('searchType') || undefined;
+        const thresholdParam = searchParamsObj.get('threshold');
+        const threshold = thresholdParam ? parseFloat(thresholdParam) : undefined;
+        const fieldsParam = searchParamsObj.get('fields');
+        const fields = fieldsParam ? fieldsParam.split(',') : undefined;
+        const params = {
+          page,
+          limit: currentLimit,
+          topic: currentTopic,
+          search: currentSearch,
+          sort_by: currentSortBy,
+          sort_order: currentSortOrder,
+          searchType,
+          threshold,
+          fields
+        };
+        const cacheKey = stableStringify(params);
+        if (isCacheValid(cacheKey)) {
+          const cached = searchCache.get(cacheKey)!;
+          setArticles(cached.articles);
+          setTopics(cached.topics);
+          setPagination({
+            page: cached.pagination.page,
+            total: cached.pagination.total,
+            total_pages: Math.max(1, cached.pagination.total_pages || 1)
+          });
+          setFetchError(null);
+          setIsLoading(false);
+          return;
+        }
+        setIsLoading(true);
+        const articlesData = await fetchArticlesService(
+          params.page,
+          params.limit,
+          params.search,
+          params.topic !== 'All' ? params.topic : '',
+          params.sort_by,
+          params.sort_order,
+          '', '', '', '', false, false,
+          params.searchType,
+          params.threshold,
+          params.fields
+        );
+        let topicsData = { topics: [] as TopicStat[] };
+        try {
+          topicsData = await getTopicStats();
+        } catch (topicError) {}
+        if (articlesData && articlesData.articles) {
+          const total_pages = articlesData.total_pages || Math.max(1, Math.ceil((articlesData.total || articlesData.articles.length) / params.limit));
+          const cacheEntry: CacheEntry = {
+            articles: articlesData.articles,
+            topics: topicsData.topics,
+            pagination: {
+              page: articlesData.page,
+              total: articlesData.total || articlesData.articles.length,
+              total_pages: total_pages
+            },
+            timestamp: Date.now()
+          };
+          setSearchCache(prev => {
+            const newCache = new Map(prev);
+            const firstKey = newCache.keys().next().value;
+            if (newCache.size > 20 && firstKey !== undefined) {
+              newCache.delete(firstKey);
+            }
+            newCache.set(cacheKey, cacheEntry);
+            return newCache;
+          });
+          setArticles(articlesData.articles);
+          setTopics(topicsData.topics);
+          setPagination({
             page: articlesData.page,
             total: articlesData.total || articlesData.articles.length,
             total_pages: total_pages
-          },
-          timestamp: Date.now()
-        };
-        setSearchCache(prev => {
-          const newCache = new Map(prev);
-          newCache.set(cacheKey, cacheEntry);
-          // Prune cache to 20 entries
-          if (newCache.size > 20) {
-            const firstKey = newCache.keys().next().value;
-            newCache.delete(firstKey);
-          }
-          return newCache;
-        });
-        setArticles(articlesData.articles);
-        setTopics(topicsData.topics);
-        setPagination({
-          page: articlesData.page,
-          total: articlesData.total || articlesData.articles.length,
-          total_pages: total_pages
-        });
-        setFetchError(null);
-      } else {
-        setFetchError({ error: 'Invalid API response format', status_code: 500 });
-        setArticles([]);
-        setPagination({ page: 1, total: 0, total_pages: 1 });
-      }
-    } catch (error: any) {
-      let errorMessage = 'An unexpected error occurred while loading data.';
-      let statusCode = 500;
-      if (error.message && error.message.includes('timed out')) {
-        errorMessage = 'The server took too long to respond. Please try again later.';
-        statusCode = 504;
-      } else if (typeof error === 'object' && error !== null) {
-        if ('apiError' in error && error.apiError) {
-          errorMessage = error.apiError.error || error.apiError.message || errorMessage;
-          statusCode = error.apiError.status_code || error.statusCode || statusCode;
-        } else if ('error' in error) {
-          errorMessage = error.error;
-          statusCode = error.status_code || statusCode;
-        } else if ('message' in error) {
-          errorMessage = error.message;
-          if (error.message.includes('failed with status 502')) statusCode = 502;
-          else if (error.message.includes('failed with status 503')) statusCode = 503;
-          else if (error.message.includes('failed with status 504')) statusCode = 504;
+          });
+          setFetchError(null);
+        } else {
+          setFetchError({ error: 'Invalid API response format', status_code: 500 });
+          setArticles([]);
+          setPagination({ page: 1, total: 0, total_pages: 1 });
         }
+        setIsLoading(false);
+        return;
+      } catch (error: any) {
+        lastError = error;
+        if (
+          error.message?.includes('timed out') ||
+          error.message?.includes('Network') ||
+          error.message?.includes('Failed to fetch')
+        ) {
+          attempts++;
+          if (attempts > MAX_RETRIES) break;
+          await new Promise(res => setTimeout(res, 1000 * attempts));
+          continue;
+        }
+        break;
       }
-      setFetchError({ error: errorMessage, status_code: statusCode });
-      setArticles([]);
-      setPagination({ page: 1, total: 0, total_pages: 1 });
-    } finally {
-      setIsLoading(false);
     }
+    setFetchError(lastError);
+    setIsLoading(false);
   }
 
   // --- Fetch on mount or when search criteria change ---
@@ -268,7 +263,7 @@ export default function Home() {
       fetchDataWithCache({ page: currentPage });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTopic, currentSearch, currentSortBy, currentSortOrder, currentLimit, currentPage, searchParamsObj]);
+  }, [currentTopic, currentSearch, currentSortBy, currentSortOrder, currentLimit, currentPage, searchParamsObj, retryCount]);
 
   // --- Handlers ---
   function handleSearchInputChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -331,6 +326,11 @@ export default function Home() {
 
   function toggleAdvancedSearch() {
     setAdvancedSearchVisible(v => !v);
+  }
+
+  // Handler for retry button in ErrorDisplay
+  function handleRetry() {
+    setRetryCount(c => c + 1);
   }
 
   // --- Memoized components (only for expensive renders) ---
@@ -509,6 +509,7 @@ export default function Home() {
                     <ErrorDisplay 
                       error={fetchError.error} 
                       statusCode={fetchError.status_code} 
+                      onRetry={handleRetry}
                     />
                   )}
                   <div className="articles-section">

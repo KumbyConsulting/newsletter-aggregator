@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_BASE_URL = process.env.INTERNAL_BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:5000';
 
 // Set a reasonable timeout for backend requests
-const FETCH_TIMEOUT = 10000; // 10 seconds
+const FETCH_TIMEOUT = 120000; // 120 seconds
 
 /**
  * Fetch with timeout utility

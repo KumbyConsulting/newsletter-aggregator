@@ -23,19 +23,24 @@ export default function ErrorDisplay({ error, statusCode, onRetry }: ErrorDispla
   
   // Format user-friendly message based on error type
   let userFriendlyMessage = errorMessage;
+  let showRetry = false;
   
   if (errorMessage.includes('timed out')) {
-    userFriendlyMessage = 'The request timed out. The server might be busy right now.';
+    userFriendlyMessage = 'The request timed out. The server might be busy or slow. Please try again in a moment.';
+    showRetry = true;
   } else if (errorMessage.includes('Network') || errorMessage.includes('Failed to fetch')) {
     userFriendlyMessage = 'Network error. Please check your internet connection and try again.';
+    showRetry = true;
   } else if (statusCode === 500 || errorMessage.includes('500')) {
     userFriendlyMessage = 'The server encountered an internal error. Our team has been notified.';
   } else if (statusCode === 404 || errorMessage.includes('404')) {
     userFriendlyMessage = 'The requested resource was not found.';
   } else if (errorMessage.includes('unavailable') || errorMessage.includes('Server error')) {
     userFriendlyMessage = 'The service is temporarily unavailable. Please try again later.';
+    showRetry = true;
   } else if (statusCode === 502 || statusCode === 503 || statusCode === 504) {
     userFriendlyMessage = 'The backend service is temporarily unavailable. This might indicate a deployment mismatch between frontend and backend services.';
+    showRetry = true;
   }
 
   return (
@@ -45,7 +50,7 @@ export default function ErrorDisplay({ error, statusCode, onRetry }: ErrorDispla
         <Space direction="vertical" style={{ width: '100%' }}>
           <Text>{userFriendlyMessage}</Text>
           {process.env.NODE_ENV === 'development' && <Text type="secondary" style={{ fontSize: '12px' }}>Raw error: {errorMessage}</Text>}
-          {onRetry && (
+          {showRetry && onRetry && (
             <Button type="primary" onClick={onRetry} size="small">
               Retry
             </Button>

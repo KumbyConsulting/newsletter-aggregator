@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_BASE_URL = process.env.INTERNAL_BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:5000';
 
 // Set a reasonable timeout for analysis requests
-const ANALYSIS_TIMEOUT = 45000; // 45 seconds
+const ANALYSIS_TIMEOUT = 120000; // 120 seconds
 
 /**
  * API route handler for article analysis endpoint
