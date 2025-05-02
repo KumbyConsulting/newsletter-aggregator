@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Base URL for the backend API - Remove trailing slash to fix URL construction
-const API_BASE_URL = process.env.INTERNAL_BACKEND_URL?.replace(/\/$/, '') || 'http://localhost:5000';
+// Use NEXT_PUBLIC_API_GATEWAY_URL for the backend API base URL
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL?.replace(/\/$/, '');
+if (!API_BASE_URL) {
+  throw new Error('NEXT_PUBLIC_API_GATEWAY_URL must be set in the environment');
+}
 
 // Set a reasonable timeout for analysis requests
 const ANALYSIS_TIMEOUT = 120000; // 120 seconds

@@ -1000,8 +1000,22 @@ async def start_update():
             "estimated_completion_time": None,
             "can_be_cancelled": True
         })
-        # Start background update as an async task
-        asyncio.create_task(async_update())
+        # Start background update as an async task with timeout
+        try:
+            await asyncio.wait_for(async_update(), timeout=300)  # 5 minutes
+        except asyncio.TimeoutError:
+            logging.error("Update process timed out after 5 minutes")
+            update_status_safely({
+                "status": "failed",
+                "message": "The update process took too long and was stopped.",
+                "in_progress": False,
+                "can_be_cancelled": False
+            })
+            return jsonify({
+                "success": False,
+                "message": "The update process took too long and was stopped. Please try again later.",
+                "status": get_update_status_safely()
+            }), 504
         monitoring_service.record_count("article_updates_started")
         return jsonify({
             "success": True,
@@ -1355,81 +1369,97 @@ async def stream_rag_query():
         async def async_generate():
             generator = None
             try:
-                # Create partial JSON content with metadata first
-                partial_metadata = {
-                    "type": "metadata",
-                    "status": "processing",
-                    "confidence": 0.0,
-                    "startTime": datetime.now().isoformat()
-                }
-                yield json.dumps(partial_metadata) + "\n"
-                
-                # Stream the response content
-                generator = ai_service.generate_streaming_response(query, use_history)
-                async for chunk in generator:
-                    # Send the content chunk
+                timeout = 60  # 60 seconds timeout for streaming
+                async def streaming_logic():
+                    # Create partial JSON content with metadata first
+                    partial_metadata = {
+                        "type": "metadata",
+                        "status": "processing",
+                        "confidence": 0.0,
+                        "startTime": datetime.now().isoformat()
+                    }
+                    yield json.dumps(partial_metadata) + "\n"
+                    # Stream the response content
+                    nonlocal generator
+                    generator = ai_service.generate_streaming_response(query, use_history)
+                    async for chunk in generator:
+                        yield json.dumps({
+                            "type": "content",
+                            "content": chunk,
+                            "done": False
+                        }) + "\n"
+                    # After streaming, fetch sources data for the response
+                    try:
+                        history = await storage_service.get_rag_history(limit=1)
+                        sources = []
+                        confidence = 0.0
+                        if history and len(history) > 0:
+                            latest_item = history[0]
+                            sources = latest_item.get('sources', [])
+                            confidence = latest_item.get('confidence', 0.0)
+                    except (AttributeError, Exception) as e:
+                        logging.warning(f"Error getting rag history: {e}, using fallback")
+                        sources = getattr(ai_service, 'relevant_articles', [])
+                        confidence = 0.7  # Default confidence value
+                    # Send sources data
+                    sources_data = {
+                        "type": "sources",
+                        "sources": sources
+                    }
+                    yield json.dumps(sources_data) + "\n"
+                    # Send final metadata
+                    final_metadata = {
+                        "type": "metadata",
+                        "status": "complete",
+                        "confidence": confidence,
+                        "endTime": datetime.now().isoformat()
+                    }
+                    yield json.dumps(final_metadata) + "\n"
+                    # Send done signal
                     yield json.dumps({
                         "type": "content",
-                        "content": chunk,
-                        "done": False
+                        "content": "",
+                        "done": True
                     }) + "\n"
-                
-                # After streaming, fetch sources data for the response
                 try:
-                    history = await storage_service.get_rag_history(limit=1)
-                    sources = []
-                    confidence = 0.0
-                    
-                    if history and len(history) > 0:
-                        latest_item = history[0]
-                        sources = latest_item.get('sources', [])
-                        confidence = latest_item.get('confidence', 0.0)
-                except (AttributeError, Exception) as e:
-                    # Fallback if method doesn't exist or fails
-                    logging.warning(f"Error getting rag history: {e}, using fallback")
-                    sources = getattr(ai_service, 'relevant_articles', [])
-                    confidence = 0.7  # Default confidence value
-                
-                # Send sources data
-                sources_data = {
-                    "type": "sources",
-                    "sources": sources
-                }
-                yield json.dumps(sources_data) + "\n"
-                        
-                # Send final metadata
-                final_metadata = {
-                    "type": "metadata",
-                    "status": "complete",
-                    "confidence": confidence,
-                    "endTime": datetime.now().isoformat()
-                }
-                yield json.dumps(final_metadata) + "\n"
-                
-                # Send done signal
-                yield json.dumps({
-                    "type": "content",
-                    "content": "",
-                    "done": True
-                }) + "\n"
-                
+                    async for chunk in asyncio.wait_for(streaming_logic(), timeout=timeout):
+                        yield chunk
+                except asyncio.TimeoutError:
+                    logging.error(f"Streaming request timed out after {timeout} seconds")
+                    # Send error message to client
+                    error_message = {
+                        "type": "error",
+                        "error": "The request timed out. Please try a shorter or more specific query.",
+                        "status": "error"
+                    }
+                    yield json.dumps(error_message) + "\n"
+                    # Try to get partial response on timeout
+                    try:
+                        partial_response = await ai_service.get_partial_response()
+                        if partial_response:
+                            yield json.dumps({
+                                "type": "content",
+                                "content": partial_response,
+                                "is_partial": True,
+                                "done": True
+                            }) + "\n"
+                    except Exception as partial_error:
+                        logging.error(f"Error getting partial response: {str(partial_error)}")
+                    return
             except Exception as e:
                 # Log the error
                 logging.error(f"Error in streaming response: {str(e)}", exc_info=True)
-                
                 # Send error message to client
                 error_message = {
                     "type": "error",
-                    "error": str(e),
+                    "error": "An unexpected error occurred while streaming the response.",
                     "status": "error"
                 }
                 yield json.dumps(error_message) + "\n"
-                
                 # Try to get partial response on error
                 try:
                     partial_response = await ai_service.get_partial_response()
                     if partial_response:
-                        # Send partial content
                         yield json.dumps({
                             "type": "content",
                             "content": partial_response,
