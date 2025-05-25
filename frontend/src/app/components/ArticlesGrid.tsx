@@ -1,8 +1,5 @@
 'use client';
 
-// This component can likely be a Server Component now, as data is passed via props.
-// Remove 'use client' if no client-side hooks (useState, useEffect) or event handlers are needed directly here.
-
 import { 
   Typography, 
   Row, 
@@ -20,6 +17,7 @@ import { ArticleCard, ArticleCardSkeleton } from './ArticleCard';
 import { SearchOutlined, InboxOutlined, SyncOutlined } from '@ant-design/icons';
 import useSyncArticles from '../hooks/useSyncArticles';
 import { useEffect } from 'react';
+import React from 'react';
 
 const { Title, Paragraph } = Typography;
 const { useBreakpoint } = Grid;
@@ -47,12 +45,24 @@ const ArticlesGridStyles = () => {
   return null;
 };
 
+// Highlight utility
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const safeQuery = query.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${safeQuery})`, 'gi');
+  const parts = text.split(regex);
+  return parts.map((part, i) =>
+    regex.test(part) ? <mark key={i}>{part}</mark> : part
+  );
+}
+
 interface ArticlesGridProps {
   articles: Article[];
   loading?: boolean;
   error?: string;
   emptyMessage?: string;
   syncWithBackend?: boolean;
+  currentSearch?: string;
 }
 
 export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
@@ -60,7 +70,8 @@ export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
   loading = false,
   error,
   emptyMessage = 'No articles found',
-  syncWithBackend = true
+  syncWithBackend = true,
+  currentSearch = '',
 }) => {
   const screens = useBreakpoint();
   
@@ -202,7 +213,10 @@ export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
       <Row gutter={[24, 24]} className="fade-in-up">
         {displayArticles.map((article, index) => (
           <Col key={article.id} span={getSpan()} style={{ animationDelay: `${0.05 * index}s` }}>
-            <ArticleCard article={article} />
+            <ArticleCard 
+              article={article} 
+              highlight={currentSearch}
+            />
           </Col>
         ))}
       </Row>

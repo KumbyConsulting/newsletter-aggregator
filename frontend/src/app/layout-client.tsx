@@ -1,22 +1,14 @@
 'use client';
 
-import { Inter } from "next/font/google";
 import { ConfigProvider, Layout } from 'antd';
 import "./globals.css";
 import dynamic from 'next/dynamic';
 import DOMPurify from 'isomorphic-dompurify';
 import { ThemeProvider } from 'next-themes';
+import { theme } from './theme';
 
 const Header = dynamic(() => import('./components/Header'), { ssr: false });
 const { Content, Footer } = Layout;
-
-// Initialize the Inter font with extended options
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-inter",
-});
 
 export default function RootLayout({
   children,
@@ -24,32 +16,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable}`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
-        <meta name="theme-color" content="#2b7de9" />
+        <meta name="theme-color" content="#00405e" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700;900&family=DM+Serif+Display:ital,wght@0,400;1,400&display=swap" rel="stylesheet" />
       </head>
-      <body className={`${inter.className} antialiased`} style={{ margin: 0, padding: 0 }}>
+      <body className="antialiased" style={{ margin: 0, padding: 0, fontFamily: 'DM Sans, Arial, Helvetica, sans-serif' }}>
         <ThemeProvider attribute="class">
-          <ConfigProvider
-            theme={{
-              token: {
-                colorPrimary: '#2b7de9',
-                borderRadius: 6,
-                fontFamily: inter.style.fontFamily,
-              },
-              components: {
-                Layout: {
-                  bodyBg: '#f5f5f5',
-                  headerBg: '#fff',
-                  footerBg: '#f5f5f5',
-                  headerPadding: '0 50px',
-                  headerHeight: 64,
-                },
-              },
-            }}
-          >
+          <ConfigProvider theme={theme}>
             <Layout style={{ minHeight: '100vh' }}>
               <Header />
               <Content style={{ padding: '24px', minHeight: 'calc(100vh - 64px - 70px)' }}>

@@ -5,7 +5,7 @@
  */
 
 // Configure API base URL to use API Gateway
-const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'https://newsletter-aggregator-857170198287.us-central1.run.app';
+const API_GATEWAY_URL = process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:5000'; //'https://newsletter-aggregator-857170198287.us-central1.run.app';
 const API_BASE_URL = `${API_GATEWAY_URL}/api`; // Append /api to match OpenAPI spec paths
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
@@ -266,6 +266,9 @@ const retryWithBackoff = async <T>(
   throw new Error('Max retries reached');
 };
 
+// --- Firebase Auth Integration ---
+import { getIdToken } from '@/utils/firebaseClient';
+
 /**
  * Make a request to the API with the configured base URL
  * Enhanced with caching and better error handling
@@ -285,14 +288,36 @@ async function apiRequest<T>(
 ): Promise<T> {
   const url = new URL(`${API_BASE_URL}${endpoint}`);
   
-  // Set up headers according to OpenAPI spec
-  const headers = {
+  let extraHeaders: Record<string, string> = {};
+  if (options.headers) {
+    if (options.headers instanceof Headers) {
+      extraHeaders = {};
+      options.headers.forEach((value, key) => {
+        extraHeaders[key] = value;
+      });
+    } else if (typeof options.headers === 'object' && !Array.isArray(options.headers)) {
+      extraHeaders = options.headers as Record<string, string>;
+    }
+  }
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-api-key': API_KEY,
     'Accept': 'application/json',
-    'Origin': window.location.origin,
-    ...options.headers,
+    'Origin': typeof window !== 'undefined' ? window.location.origin : '',
+    ...extraHeaders,
   };
+
+  // Attach Firebase ID token if available (client-side only)
+  if (typeof window !== 'undefined') {
+    try {
+      const token = await getIdToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch (e) {
+      // Ignore token errors, proceed unauthenticated
+    }
+  }
 
   const actualTimeout = timeoutMs;
   
@@ -530,6 +555,20 @@ export async function pollUpdateStatus(
   }
   
   throw new Error('Max polling attempts reached');
+  // Fallback: return a default status if all attempts fail (should not be reached)
+  return {
+    in_progress: false,
+    last_update: null,
+    status: 'unknown',
+    progress: 0,
+    message: 'Polling failed',
+    error: 'Max polling attempts reached',
+    sources_processed: 0,
+    total_sources: 0,
+    articles_found: 0,
+    estimated_completion_time: null,
+    can_be_cancelled: false
+  };
 }
 
 /**
@@ -1169,4 +1208,82 @@ export async function fetchTopics(): Promise<TopicsApiResponse> {
     console.error('Error fetching topics:', error);
     throw error;
   }
+}
+
+// --- New Dashboard API Functions ---
+
+export interface TLDRSource {
+  title: string;
+  url: string;
+  topic?: string;
+  source?: string;
+  pub_date?: string;
+  image_url?: string;
+}
+
+export interface TLDRData {
+  summary: string;
+  highlights: TLDRSource[];
+  sources: TLDRSource[];
+}
+
+export async function getTLDR(): Promise<TLDRData> {
+  return apiRequest('/tldr', {}, 'tldr', 60000);
+}
+
+export interface WeeklyRecapHighlight {
+  title: string;
+  url: string;
+}
+
+export interface WeeklyRecapData {
+  recapSummary: string;
+  highlights: WeeklyRecapHighlight[];
+}
+
+export async function getWeeklyRecap(): Promise<WeeklyRecapData> {
+  return apiRequest('/recap/weekly', {}, 'recap_weekly', 60000);
+}
+
+export async function getDailyTrends(): Promise<{ period: string; topics: string[] }> {
+  return apiRequest('/trends/daily', {}, 'trends_daily', 60000);
+}
+
+export async function getWeeklyTrends(): Promise<{ period: string; topics: string[] }> {
+  return apiRequest('/trends/weekly', {}, 'trends_weekly', 60000);
+}
+
+export interface TopicTrendSeries {
+  topic: string;
+  series: { date: string; count: number }[];
+}
+
+export async function getTopicTrends(): Promise<{ topics: TopicTrendSeries[] }> {
+  try {
+    return await apiRequest('/topics/trends', {}, 'topic_trends', 60000);
+  } catch (err) {
+    return { topics: [] };
+  }
+}
+// --- End Dashboard API Functions ---
+
+/**
+ * Cancel update process
+ */
+export async function cancelUpdate(): Promise<{ success: boolean; message: string }> {
+  const token = await getIdToken();
+  if (!token) throw new Error('Not authenticated');
+  const headers: Record<string, string> = {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+  const response = await fetch(`${API_BASE_URL}/update/cancel`, {
+    method: 'POST',
+    headers,
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.message || 'Failed to cancel update');
+  }
+  return data;
 } 

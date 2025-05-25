@@ -1050,20 +1050,20 @@ const RAGPage: React.FC = () => {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh', background: '#f5f5f5' }}>
+    <Layout style={{ minHeight: '100vh', background: '#f0f2f5' }}>
       <Content>
-        <div className="container" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+        <div className="container" style={{ maxWidth: 1200, margin: '0 auto', padding: '32px 0' }}>
           {/* Header card with improved styling */}
-          <Card className="mb-6">
+          <Card className="mb-6" style={{ marginBottom: 32, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
             <Row justify="space-between" align="middle">
               <Col>
-                <Title level={2} style={{ margin: 0, color: 'var(--primary-color, #00405e)' }}>
+                <Title level={2} style={{ margin: 0, color: '#00405e', letterSpacing: 1 }}>
                   <Space>
-                    <RocketOutlined style={{ fontSize: '28px', color: '#1890ff' }} />
+                    <RocketOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
                     KumbyAI Assistant
                   </Space>
                 </Title>
-                <Paragraph type="secondary" style={{ margin: '8px 0 0', color: 'var(--secondary-color, #7f9360)' }}>
+                <Paragraph type="secondary" style={{ margin: '8px 0 0', color: '#7f9360', fontSize: 18 }}>
                   Analyze pharmaceutical data with AI-powered insights
                 </Paragraph>
               </Col>
@@ -1085,13 +1085,13 @@ const RAGPage: React.FC = () => {
           </Card>
           
           {/* Navigation tabs with improved styling */}
-          <Card className="mb-6">
+          <Card className="mb-6" style={{ marginBottom: 32, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
             <Tabs 
               activeKey={activeView} 
               onChange={(key) => handleViewChange(key as ViewType)}
               size="large"
               type="card"
-              tabBarStyle={{ marginBottom: 16 }}
+              tabBarStyle={{ marginBottom: 16, fontWeight: 600, fontSize: 18 }}
             >
               <TabPane 
                 tab={<Space>{ANALYSIS_TYPES.analysis.icon} {ANALYSIS_TYPES.analysis.label}</Space>} 
@@ -1110,13 +1110,13 @@ const RAGPage: React.FC = () => {
           
           {/* Main content */}
           {activeView === 'analysis' ? (
-            <Card className="analysis-card">
+            <Card className="analysis-card" style={{ borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
               <Space direction="vertical" style={{ width: '100%' }} size="large">
                 {/* Analysis Type Selector with improved styling */}
                 <div>
-                  <Title level={4} style={{ marginBottom: 12 }}>Select Analysis Type</Title>
+                  <Title level={4} style={{ marginBottom: 12, color: '#00405e' }}>Select Analysis Type</Title>
                   <Select
-                    style={{ width: '100%' }}
+                    style={{ width: '100%', fontSize: 16, borderRadius: 8 }}
                     value={selectedAnalysisType}
                     onChange={handleAnalysisTypeChange}
                     disabled={loading}
@@ -1133,7 +1133,7 @@ const RAGPage: React.FC = () => {
                   >
                     {Object.entries(CATEGORIES).map(([category, types]) => (
                       <Select.OptGroup key={category} label={
-                        <Text strong>{category}</Text>
+                        <Text strong style={{ color: '#7f9360' }}>{category}</Text>
                       }>
                         {types.map(({ key, label, icon, description }) => (
                           <Option key={key} value={key} label={
@@ -1161,7 +1161,7 @@ const RAGPage: React.FC = () => {
 
                 {/* Query Input with improved styling */}
                 <div>
-                  <Title level={4} style={{ marginBottom: 12 }}>Your Question</Title>
+                  <Title level={4} style={{ marginBottom: 12, color: '#00405e' }}>Your Question</Title>
                   <TextArea
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -1177,8 +1177,10 @@ const RAGPage: React.FC = () => {
                     style={{ 
                       fontSize: '16px', 
                       borderRadius: '8px',
-                      padding: '12px',
-                      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
+                      padding: '16px',
+                      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.08)',
+                      border: '1.5px solid #d9e3e0',
+                      background: '#f8fafc'
                     }}
                   />
                   <div style={{ 
@@ -1193,6 +1195,7 @@ const RAGPage: React.FC = () => {
                         onClick={() => setQuery('')}
                         icon={<ClearOutlined />}
                         disabled={!query || loading}
+                        style={{ borderRadius: 8 }}
                       >
                         Clear
                       </Button>
@@ -1203,6 +1206,7 @@ const RAGPage: React.FC = () => {
                         loading={loading}
                         disabled={!query.trim()}
                         size="large"
+                        style={{ borderRadius: 8, fontWeight: 600, letterSpacing: 0.5 }}
                       >
                         {loading ? 'Analyzing...' : 'Analyze'}
                       </Button>
@@ -1234,6 +1238,7 @@ const RAGPage: React.FC = () => {
                           icon={<SaveOutlined />} 
                           onClick={handleSaveAnalysis}
                           loading={savingAnalysis}
+                          style={{ borderRadius: 8 }}
                         >
                           Save Analysis
                         </Button>
@@ -1244,7 +1249,7 @@ const RAGPage: React.FC = () => {
                         <Card 
                           title={<Space>{<BranchesOutlined />} Content Structure</Space>} 
                           className="tree-card"
-                          style={{ height: '100%' }}
+                          style={{ height: '100%', borderRadius: 12, background: '#f6f8fa' }}
                         >
                           <AnalysisTree content={response} />
                         </Card>
@@ -1253,16 +1258,17 @@ const RAGPage: React.FC = () => {
                         <Card 
                           title={<Space>{<SolutionOutlined />} Detailed Analysis</Space>}
                           className="markdown-preview"
-                          style={{ height: '100%' }}
+                          style={{ height: '100%', borderRadius: 12, background: '#fff' }}
                         >
                           <div 
                             className="markdown-content" 
                             style={{ 
                               fontSize: '16px', 
-                              lineHeight: '1.6',
-                              padding: '16px',
+                              lineHeight: '1.7',
+                              padding: '20px',
                               backgroundColor: '#fafafa',
-                              borderRadius: '8px'
+                              borderRadius: '8px',
+                              minHeight: 200
                             }}
                           >
                             <ReactMarkdown>{response}</ReactMarkdown>
@@ -1282,6 +1288,7 @@ const RAGPage: React.FC = () => {
                             </Space>
                           }
                           className="sources-card"
+                          style={{ borderRadius: 12, background: '#f6f8fa' }}
                         >
                           <List
                             size="small"

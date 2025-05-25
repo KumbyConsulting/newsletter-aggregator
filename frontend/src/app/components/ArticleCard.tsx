@@ -50,6 +50,7 @@ const { Title, Text, Paragraph } = Typography;
 interface ArticleCardProps {
   article: Article;
   className?: string;
+  highlight?: string;
 }
 
 // Add a new component to inject the styles
@@ -75,7 +76,18 @@ const ArticleCardStyles = () => {
   return null;
 };
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className }) => {
+// Highlight utility
+function highlightText(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const safeQuery = query.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${safeQuery})`, 'gi');
+  const parts = text.split(regex);
+  return parts.map((part, i) =>
+    regex.test(part) ? <mark key={i}>{part}</mark> : part
+  );
+}
+
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, highlight }) => {
   const { metadata } = article;
   const {
     title,
@@ -445,13 +457,13 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className }) 
             title={title}
           >
             <a href={link} target="_blank" rel="noopener noreferrer">
-              {title}
+              {highlightText(title, highlight || '')}
             </a>
           </Title>
 
           {/* Description */}
           <Paragraph ellipsis={{ rows: 3 }} className="article-description">
-            {snippetForCard}
+            {highlightText(snippetForCard || '', highlight || '')}
           </Paragraph>
 
           {/* Metadata Footer */}

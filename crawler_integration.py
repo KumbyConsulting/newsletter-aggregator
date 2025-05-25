@@ -12,8 +12,11 @@ import aiohttp
 import urllib.parse
 from datetime import datetime, timedelta
 import re
+import ssl
+import certifi
 
 from web_crawler import WebCrawler
+from services.storage_service import StorageService
 
 # Configure logging
 logging.basicConfig(
@@ -34,7 +37,7 @@ except ImportError:
     NEWSAPI_MAX_RESULTS = 20
     NEWSAPI_ENABLED = bool(NEWSAPI_KEY)
 
-# Example RSS feeds (replace with your actual feeds from newsLetter.py)
+
 RSS_FEEDS = {
     # Pharmaceutical Industry News
     'Pharmaceutical Technology': 'https://www.pharmaceutical-technology.com/feed/',
@@ -62,27 +65,27 @@ RSS_FEEDS = {
     'CDC': 'https://tools.cdc.gov/api/v2/resources/media/132608.rss',
     
     # European Medicines Agency (EMA) RSS Feeds
-    'EMA - Agendas and minutes': 'https://www.ema.europa.eu/en/rss-feed/committee/feed',
-    'EMA - Public consultations': 'https://www.ema.europa.eu/en/rss-feed/consultation/feed',
-    'EMA - EURD list': 'https://www.ema.europa.eu/en/rss-feed/eurd/feed',
-    'EMA - Events': 'https://www.ema.europa.eu/en/rss-feed/event/feed',
-    'EMA - Maximum residue limits': 'https://www.ema.europa.eu/en/rss-feed/mrl/feed',
-    'EMA - Paediatric investigation plans': 'https://www.ema.europa.eu/en/rss-feed/pip/feed',
-    'EMA - Press releases': 'https://www.ema.europa.eu/en/rss-feed/press_release/feed',
-    'EMA - Orphan designations': 'https://www.ema.europa.eu/en/rss-feed/orphan_designation/feed',
-    'EMA - Regulatory guidelines': 'https://www.ema.europa.eu/en/rss-feed/regulatory_procedural_guideline/feed',
-    'EMA - Scientific guidelines': 'https://www.ema.europa.eu/en/rss-feed/scientific_guideline/feed',
-    'EMA - Withdrawn applications': 'https://www.ema.europa.eu/en/rss-feed/withdrawn_applications/feed',
-    'EMA - Whats new': 'https://www.ema.europa.eu/en/rss-feed/whatsnew/feed',
-    'EMA - Herbal medicines': 'https://www.ema.europa.eu/en/rss-feed/herbal/feed',
-    'EMA - New human medicines': 'https://www.ema.europa.eu/en/rss-feed/medicine_human_new/feed',
-    'EMA - New veterinary medicines': 'https://www.ema.europa.eu/en/rss-feed/medicine_vet_new/feed',
+    'EMA - Agendas and minutes': 'https://www.ema.europa.eu/en/agendas-and-minutes.xml',
+    'EMA - Public consultations': 'https://www.ema.europa.eu/en/public-consultations.xml',
+    'EMA - EURD list': 'https://www.ema.europa.eu/en/eurd-list.xml',
+    'EMA - Events': 'https://www.ema.europa.eu/en/events.xml',
+    'EMA - Maximum residue limits': 'https://www.ema.europa.eu/en/max-residue.xml',
+    'EMA - Paediatric investigation plans': 'https://www.ema.europa.eu/en/pip.xml',
+    'EMA - Press releases': 'https://www.ema.europa.eu/en/news.xml',
+    'EMA - Orphan designations': 'https://www.ema.europa.eu/en/orphan.xml',
+    'EMA - Regulatory guidelines': 'https://www.ema.europa.eu/en/regulatory-and-procedural-guideline.xml',
+    'EMA - Scientific guidelines': 'https://www.ema.europa.eu/en/scientific-guidelines.xml',
+    'EMA - Withdrawn applications': 'https://www.ema.europa.eu/en/withdrawn-applications.xml',
+    'EMA - Whats new': 'https://www.ema.europa.eu/en/whats-new.xml',
+    'EMA - Herbal medicines': 'https://www.ema.europa.eu/en/herbal-medicine-new.xml',
+    'EMA - New human medicines': 'https://www.ema.europa.eu/en/new-human-medicine-new.xml',
+    'EMA - New veterinary medicines': 'https://www.ema.europa.eu/en/new-veterinary-medicine-new.xml',
     'EMA - Human EPARs': 'https://www.ema.europa.eu/en/rss-feed/medicine_human_epar/feed',
-    'EMA - Veterinary EPARs': 'https://www.ema.europa.eu/en/rss-feed/medicine_vet_epar/feed',
-    'EMA - Fees': 'https://www.ema.europa.eu/en/rss-feed/fee/feed',
-    'EMA - Inspections': 'https://www.ema.europa.eu/en/rss-feed/inspection/feed',
-    'EMA - Human Medicines Highlights': 'https://www.ema.europa.eu/en/news-events/publications/newsletters',
-    'EMA - Procurement': 'https://www.ema.europa.eu/en/rss-feed/procurement/feed',
+    'EMA - Veterinary EPARs': 'https://www.ema.europa.eu/en/veterinary-medicine-new.xml',
+    'EMA - Fees': 'https://www.ema.europa.eu/en/fees.xml',
+    'EMA - Inspections': 'https://www.ema.europa.eu/en/inspections.xml',
+    'EMA - Human Medicines Highlights': 'https://www.ema.europa.eu/en/human-medicine-new.xml',
+    'EMA - Procurement': 'https://www.ema.europa.eu/en/procurement.xml',
     
     # FDA RSS Feeds
     'FDA - Agency Updates': 'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/fda-news-items/rss.xml',
@@ -110,7 +113,7 @@ RSS_FEEDS = {
     'NewsAPI_Drug': 'newsapi:drug development'
 }
 
-# Example topics (replace with your actual topics)
+
 TOPICS = {
     'Clinical Trials': ['clinical trial', 'patient enrollment', 'phase 1', 'phase 2', 'phase 3', 'phase 4', 
                        'clinical study', 'study results', 'patient recruitment', 'cohort', 'double-blind',
@@ -179,6 +182,11 @@ CSV_PATH = os.path.join(DATA_DIR, "articles.csv")
 MAX_AGE_DAYS = 7
 RATE_LIMIT = 2.0  # requests per second per domain
 
+storage_service = StorageService()  # Singleton instance
+
+# Add profiling variables for match_topic
+match_topic_total_time = 0
+match_topic_call_count = 0
 
 async def match_topic(content: str, source: str = "") -> Optional[str]:
     """
@@ -191,6 +199,8 @@ async def match_topic(content: str, source: str = "") -> Optional[str]:
     Returns:
         Matched topic name or None
     """
+    global match_topic_total_time, match_topic_call_count
+    start = time.perf_counter()
     content = content.lower()
     
     # Special handling for FDA feeds
@@ -200,12 +210,36 @@ async def match_topic(content: str, source: str = "") -> Optional[str]:
         
         # Check for specific FDA-related topics first
         if any(term in content for term in ["approval", "approved", "label", "labeling", "nda", "anda", "bla"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Regulatory"
         if any(term in content for term in ["recall", "safety alert", "warning letter", "adverse event"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Safety"
         if any(term in content for term in ["clinical trial", "phase", "study results"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Clinical Trials"
         if any(term in content for term in ["guidance", "guideline", "draft guidance"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Regulatory"
     
     # Special handling for EMA feeds
@@ -215,12 +249,36 @@ async def match_topic(content: str, source: str = "") -> Optional[str]:
         
         # Check for specific EMA-related topics first
         if any(term in content for term in ["approval", "authorisation", "authorization", "chmp", "committee"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Regulatory"
         if any(term in content for term in ["pharmacovigilance", "safety", "risk", "prac"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Safety"
         if any(term in content for term in ["orphan", "rare disease", "designation"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "R&D"
         if any(term in content for term in ["paediatric", "pediatric", "pdco"]):
+            elapsed = time.perf_counter() - start
+            match_topic_total_time += elapsed
+            match_topic_call_count += 1
+            if match_topic_call_count % 100 == 0:
+                avg = match_topic_total_time / match_topic_call_count
+                logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
             return "Clinical Trials"
     else:
         default_topic = None
@@ -229,9 +287,21 @@ async def match_topic(content: str, source: str = "") -> Optional[str]:
     for topic, keywords in TOPICS.items():
         for keyword in keywords:
             if f" {keyword.lower()} " in f" {content} ":
+                elapsed = time.perf_counter() - start
+                match_topic_total_time += elapsed
+                match_topic_call_count += 1
+                if match_topic_call_count % 100 == 0:
+                    avg = match_topic_total_time / match_topic_call_count
+                    logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
                 return topic
     
     # If no match but source is FDA/EMA, return the default topic
+    elapsed = time.perf_counter() - start
+    match_topic_total_time += elapsed
+    match_topic_call_count += 1
+    if match_topic_call_count % 100 == 0:
+        avg = match_topic_total_time / match_topic_call_count
+        logging.info(f"[PROFILE] match_topic avg time: {avg*1000:.3f} ms over {match_topic_call_count} calls")
     return default_topic
 
 
@@ -320,46 +390,131 @@ async def fetch_from_newsapi(query: str, session: Optional[aiohttp.ClientSession
         return []
 
 
+# Helper: Initialize scraping environment
+async def _initialize_scraping_environment():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(limit=10, ssl=ssl_context)
+    shared_session = aiohttp.ClientSession(connector=connector)
+    return shared_session
+
+# Helper: Process a single article
+async def _process_article(article, source, crawler, status_callback, progress, idx, total_feeds, all_articles):
+    # Add source information
+    article['source'] = source
+    # Match topics based on title and description
+    content_for_matching = f"{article.get('title', '')} {article.get('description', '')}"
+    topic = await match_topic(content_for_matching, source)
+    if not topic:
+        return None
+    article['topic'] = topic
+    # Add specific metadata for FDA and EMA feeds
+    if "fda" in source.lower():
+        article['regulatory_agency'] = "FDA"
+        doc_match = re.search(r'FDA-\d{4}-[A-Z]-\d+', article.get('description', ''))
+        if doc_match:
+            article['document_id'] = doc_match.group(0)
+    elif "ema" in source.lower() or "europe" in source.lower():
+        article['regulatory_agency'] = "EMA"
+        doc_match = re.search(r'EMEA/H/C/\d+|EMA/\d+/\d+', article.get('description', ''))
+        if doc_match:
+            article['document_id'] = doc_match.group(0)
+    # Fetch full content for matched articles
+    if article.get('link'):
+        try:
+            if status_callback:
+                status_callback(progress, f"Fetching content for article: {article['title'][:30]}...", idx, total_feeds, len(all_articles))
+            result = await crawler.fetch_url(article['link'])
+            if result.get('success'):
+                if result.get('content'):
+                    article['content'] = result.get('content')
+                    article['has_full_content'] = result.get('has_full_content', False)
+                else:
+                    article['content'] = article.get('description', '')
+                    article['has_full_content'] = False
+                    article['summary'] = article.get('description', '')[:280] + '...'
+                article['excerpt'] = result.get('excerpt', article.get('description', '')[:280] + '...')
+                article['image_url'] = result.get('image_url', '')
+                article['summary'] = article['excerpt']
+                if result.get('pub_date'):
+                    article['pub_date'] = result.get('pub_date')
+                content_to_measure = article.get('content', '')
+                if content_to_measure:
+                    word_count = len(content_to_measure.split())
+                    article['reading_time'] = max(1, round(word_count / 200))
+                    article['word_count'] = word_count
+            else:
+                article['has_full_content'] = False
+                article['content'] = article.get('description', '')
+                article['summary'] = article.get('description', '')[:280] + '...'
+        except Exception as e:
+            logging.error(f"Error fetching content for {article['link']}: {e}")
+            article['has_full_content'] = False
+            article['content'] = article.get('description', '')
+    return article
+
+# Helper: Process a single feed
+async def _process_feed(source, url, crawler, shared_session, status_callback, idx, total_feeds, all_articles):
+    processed_articles = []
+    matched_articles = 0
+    total_articles = 0
+    if url.startswith('newsapi:'):
+        query = url[8:]
+        news_api_articles = await fetch_from_newsapi(query, shared_session)
+        articles = news_api_articles if news_api_articles else []
+    else:
+        articles = await crawler.fetch_rss_feed(url)
+        articles = articles if articles else []
+    for article in articles:
+        if not isinstance(article, dict):
+            logging.error(f"Non-dict article found in articles list: {type(article)} - {article}")
+            continue  # Skip non-dict entries
+        processed = await _process_article(article, source, crawler, status_callback, 5 + (idx / total_feeds * 40), idx, total_feeds, all_articles)
+        total_articles += 1
+        if processed:
+            processed_articles.append(processed)
+            matched_articles += 1
+            if isinstance(processed, dict):
+                all_articles.append(processed)
+            else:
+                logging.error(f"Attempted to append non-dict to all_articles: {type(processed)} - {processed}")
+    return processed_articles, matched_articles, total_articles
+
+# Helper: Finalize scraping
+async def _finalize_scraping(all_articles, start_time, total_feeds, successful_feeds, failed_feeds, total_articles, matched_articles, status_callback):
+    if status_callback:
+        status_callback(90, f"Scraping complete. Saving {len(all_articles)} articles...", total_feeds, total_feeds, len(all_articles))
+    if all_articles:
+        await save_articles_to_firestore(all_articles)
+    duration = time.time() - start_time
+    stats = {
+        "duration_seconds": round(duration, 2),
+        "total_feeds": total_feeds,
+        "successful_feeds": successful_feeds,
+        "failed_feeds": failed_feeds,
+        "total_articles": total_articles,
+        "matched_articles": matched_articles,
+        "match_rate": f"{(matched_articles/total_articles)*100:.1f}%" if total_articles else "0%",
+        "processing_speed": f"{total_articles/duration:.1f} articles/sec" if duration > 0 else "0 articles/sec"
+    }
+    logging.info(f"Scraping statistics: {json.dumps(stats, indent=2)}")
+    if status_callback:
+        status_callback(100, "Scraping process completed successfully!", total_feeds, total_feeds, len(all_articles))
+
+# Main orchestrator
 async def scrape_news_with_crawler(status_callback: Optional[Callable] = None) -> bool:
-    """
-    Replacement for the scrape_news function using the new WebCrawler
-    
-    Args:
-        status_callback: Optional callback for progress reporting
-        
-    Returns:
-        bool: True if successful, False otherwise
-    """
     start_time = time.time()
     logging.info("Starting news scraping with enhanced web crawler...")
-    
-    # Ensure data directory exists
-    os.makedirs(DATA_DIR, exist_ok=True)
-    
-    # Create a shared aiohttp session that will be passed to both the crawler and NewsAPI
-    connector = aiohttp.TCPConnector(limit=10, ssl=False)  # Limit concurrent connections
-    shared_session = aiohttp.ClientSession(connector=connector)
-    
+    shared_session = await _initialize_scraping_environment()
     try:
-        # Track metrics for reporting
         total_feeds = len(RSS_FEEDS)
         successful_feeds = 0
         failed_feeds = 0
         total_articles = 0
         matched_articles = 0
         all_articles = []
-        
-        # Initial status report
         if status_callback:
-            status_callback(
-                5, 
-                "Initializing scraping process...", 
-                0, 
-                total_feeds, 
-                0
-            )
-        
-        # Initialize WebCrawler with appropriate settings using async with
+            status_callback(5, "Initializing scraping process...", 0, total_feeds, 0)
         async with WebCrawler(
             cache_file=CACHE_FILE,
             max_age_days=MAX_AGE_DAYS,
@@ -371,221 +526,32 @@ async def scrape_news_with_crawler(status_callback: Optional[Callable] = None) -
             max_urls_per_domain=100,
             respect_robots_txt=True
         ) as crawler:
-            # Override the crawler's session with our shared session
             if crawler.session:
                 await crawler.session.close()
             crawler.session = shared_session
-            
-            # Process all RSS feeds
             for idx, (source, url) in enumerate(RSS_FEEDS.items()):
-                # Update status
                 if status_callback:
-                    progress = 5 + (idx / total_feeds * 40)  # Progress from 5% to 45%
-                    status_callback(
-                        progress,
-                        f"Processing feed {idx+1} of {total_feeds}...",
-                        idx,
-                        total_feeds,
-                        len(all_articles)
-                    )
-                
+                    progress = 5 + (idx / total_feeds * 40)
+                    status_callback(progress, f"Processing feed {idx+1} of {total_feeds}...", idx, total_feeds, len(all_articles))
                 try:
-                    # Check if this is a NewsAPI special feed
-                    if url.startswith('newsapi:'):
-                        logging.info(f"Processing NewsAPI feed: {source} with query: {url[8:]}")
-                        query = url[8:]  # Extract query part after 'newsapi:'
-                        news_api_articles = await fetch_from_newsapi(query, shared_session)
-                        
-                        if news_api_articles:
-                            successful_feeds += 1
-                            
-                            # Process NewsAPI articles
-                            for article in news_api_articles:
-                                article['source'] = f"{source} ({article.get('source', 'Unknown')})"
-                                
-                                # Match topics based on title and description
-                                content_for_matching = f"{article.get('title', '')} {article.get('description', '')}"
-                                topic = await match_topic(content_for_matching, source)
-                                
-                                if topic:
-                                    article['topic'] = topic
-                                    matched_articles += 1
-                                    all_articles.append(article)
-                                
-                                total_articles += 1
-                        else:
-                            failed_feeds += 1
-                            logging.warning(f"No articles found in NewsAPI feed: {source}")
+                    processed_articles, matched, total = await _process_feed(source, url, crawler, shared_session, status_callback, idx, total_feeds, all_articles)
+                    if processed_articles:
+                        successful_feeds += 1
                     else:
-                        # Normal RSS feed processing
-                        logging.info(f"Fetching feed: {source} from {url}")
-                        articles = await crawler.fetch_rss_feed(url)
-                        
-                        if articles:
-                            successful_feeds += 1
-                            
-                            # Process each article
-                            for article in articles:
-                                # Add source information
-                                article['source'] = source
-                                
-                                # Match topics based on title and description
-                                content_for_matching = f"{article.get('title', '')} {article.get('description', '')}"
-                                topic = await match_topic(content_for_matching, source)
-                                
-                                if topic:
-                                    article['topic'] = topic
-                                    matched_articles += 1
-                                    
-                                    # Add specific metadata for FDA and EMA feeds
-                                    if "fda" in source.lower():
-                                        article['regulatory_agency'] = "FDA"
-                                        # Try to extract document number (e.g., FDA-2023-N-0123)
-                                        doc_match = re.search(r'FDA-\d{4}-[A-Z]-\d+', article.get('description', ''))
-                                        if doc_match:
-                                            article['document_id'] = doc_match.group(0)
-                                    
-                                    elif "ema" in source.lower() or "europe" in source.lower():
-                                        article['regulatory_agency'] = "EMA"
-                                        # Try to extract EMA document numbers (e.g., EMEA/H/C/123456)
-                                        doc_match = re.search(r'EMEA/H/C/\d+|EMA/\d+/\d+', article.get('description', ''))
-                                        if doc_match:
-                                            article['document_id'] = doc_match.group(0)
-                                    
-                                    # Fetch full content for matched articles
-                                    if article.get('link'):
-                                        try:
-                                            # Update status for individual article
-                                            if status_callback:
-                                                status_callback(
-                                                    progress,
-                                                    f"Fetching content for article: {article['title'][:30]}...",
-                                                    idx,
-                                                    total_feeds,
-                                                    len(all_articles)
-                                                )
-                                            
-                                            # Set fetch priority higher for specific sources
-                                            fetch_priority = "high" if any(agency in source.lower() for agency in ["fda", "ema"]) else "normal"
-                                            
-                                            # Fetch and extract content
-                                            result = await crawler.fetch_url(article['link'])
-                                            
-                                            if result.get('success'):
-                                                # Add extracted content and metadata to article
-                                                # Use the potentially longer content if available
-                                                if result.get('content'):
-                                                    article['content'] = result.get('content')
-                                                    # Set the flag based on crawler result
-                                                    article['has_full_content'] = result.get('has_full_content', False)
-                                                else:
-                                                    # If crawler didn't get content, use original description and mark as not full
-                                                    article['content'] = article.get('description', '') # Fallback
-                                                    article['has_full_content'] = False
-                                                    # Set summary from description
-                                                    article['summary'] = article.get('description', '')[:280] + '...'
-
-                                                article['excerpt'] = result.get('excerpt', article.get('description', '')[:280] + '...') # Use excerpt or generate from original desc
-                                                article['image_url'] = result.get('image_url', '')
-                                                
-                                                # Use excerpt for summary field
-                                                article['summary'] = article['excerpt']
-
-                                                # Use more accurate publication date if available
-                                                if result.get('pub_date'):
-                                                    article['pub_date'] = result.get('pub_date')
-
-                                                # Calculate reading time if content is available
-                                                content_to_measure = article.get('content', '')
-                                                if content_to_measure:
-                                                    # Estimate reading time: average 200 words per minute
-                                                    word_count = len(content_to_measure.split())
-                                                    article['reading_time'] = max(1, round(word_count / 200))
-                                                    article['word_count'] = word_count
-                                            else:
-                                                 # If fetch failed, ensure flag is false
-                                                 article['has_full_content'] = False
-                                                 # Keep original description as content
-                                                 article['content'] = article.get('description', '')
-                                                 # Set summary from description
-                                                 article['summary'] = article.get('description', '')[:280] + '...'
-
-                                        except Exception as e:
-                                            logging.error(f"Error fetching content for {article['link']}: {e}")
-                                            article['has_full_content'] = False # Ensure flag is false on error
-                                            # Keep original description as content
-                                            article['content'] = article.get('description', '')
-                                    
-                                    # Add to final list
-                                    all_articles.append(article)
-                                
-                                total_articles += 1
-                        else:
-                            failed_feeds += 1
-                            logging.warning(f"No articles found in feed: {source}")
-                        
+                        failed_feeds += 1
+                    matched_articles += matched
+                    total_articles += total
                 except Exception as e:
                     failed_feeds += 1
                     logging.error(f"Error processing feed {source}: {e}")
-        
-        # Final status report
-        if status_callback:
-            status_callback(
-                90,
-                f"Scraping complete. Saving {len(all_articles)} articles...",
-                len(RSS_FEEDS),
-                len(RSS_FEEDS),
-                len(all_articles)
-            )
-        
-        # Save articles directly to Firestore
-        if all_articles:
-            await save_articles_to_firestore(all_articles)
-            
-        # Report completion
-        logging.info(f"Scraping process completed. Found {len(all_articles)} relevant articles.")
-        
-        # Report completion
-        duration = time.time() - start_time
-        stats = {
-            "duration_seconds": round(duration, 2),
-            "total_feeds": total_feeds,
-            "successful_feeds": successful_feeds,
-            "failed_feeds": failed_feeds,
-            "total_articles": total_articles,
-            "matched_articles": matched_articles,
-            "match_rate": f"{(matched_articles/total_articles)*100:.1f}%" if total_articles else "0%",
-            "processing_speed": f"{total_articles/duration:.1f} articles/sec" if duration > 0 else "0 articles/sec"
-        }
-        
-        logging.info(f"Scraping statistics: {json.dumps(stats, indent=2)}")
-        
-        if status_callback:
-            status_callback(
-                100,
-                "Scraping process completed successfully!",
-                total_feeds,
-                total_feeds,
-                len(all_articles)
-            )
-        
+        await _finalize_scraping(all_articles, start_time, total_feeds, successful_feeds, failed_feeds, total_articles, matched_articles, status_callback)
         return True
-            
     except Exception as e:
         logging.error(f"Error during scraping process: {e}")
-        
         if status_callback:
-            status_callback(
-                100,
-                f"Error during scraping: {str(e)}",
-                0,
-                total_feeds,
-                0
-            )
-            
+            status_callback(100, f"Error during scraping: {str(e)}", 0, len(RSS_FEEDS), 0)
         return False
     finally:
-        # Always close the shared session
         await shared_session.close()
 
 
@@ -598,16 +564,17 @@ async def save_articles_to_firestore(articles: List[Dict]) -> bool:
             
         # Initialize the storage service
         from services.config_service import ConfigService
-        from services.storage_service import StorageService
         
         config = ConfigService()
-        storage = StorageService()
         
         # Ensure consistent fields across all articles
         required_fields = ['title', 'link', 'source', 'pub_date', 'topic', 'description', 'content', 'summary']
         standardized_articles = []
         
         for article in articles:
+            if not isinstance(article, dict):
+                logging.error(f"Non-dict article found in articles list: {type(article)} - {article}")
+                continue  # Skip non-dict entries
             # Create a standardized article with all required fields
             standardized = {field: article.get(field, '') for field in required_fields}
             
@@ -618,13 +585,20 @@ async def save_articles_to_firestore(articles: List[Dict]) -> bool:
             
             # Add any additional fields
             for key, value in article.items():
-                if key not in required_fields:
-                    standardized[key] = value if value is not None else ''
+                if not isinstance(article, dict):
+                    logging.error(f"Expected dict for article, got {type(article)}: {article}")
+                    raise TypeError(f"Expected dict for article, got {type(article)}")
+                standardized[key] = value if value is not None else ''
+                    
+            for key, value in standardized.items():
+                if not isinstance(standardized, dict):
+                    logging.error(f"Expected dict for standardized, got {type(standardized)}: {standardized}")
+                    raise TypeError(f"Expected dict for standardized, got {type(standardized)}")
                     
             standardized_articles.append(standardized)
         
         # Batch store all articles directly to Firestore
-        success = await storage.batch_store_articles(standardized_articles)
+        success = await storage_service.batch_store_articles(standardized_articles)
         
         if success:
             logging.info(f"Successfully saved {len(standardized_articles)} articles to Firestore")
@@ -636,13 +610,6 @@ async def save_articles_to_firestore(articles: List[Dict]) -> bool:
     except Exception as e:
         logging.error(f"Error saving articles to Firestore: {e}")
         return False
-
-
-# Keep the old function for backward compatibility but make it call the new one
-async def save_articles_to_csv(articles: List[Dict]) -> bool:
-    """Legacy function maintained for backward compatibility. Now just calls save_articles_to_firestore."""
-    logging.warning("save_articles_to_csv is deprecated. Use save_articles_to_firestore instead.")
-    return await save_articles_to_firestore(articles)
 
 
 # Example status callback function

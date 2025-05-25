@@ -238,7 +238,8 @@ class WebCrawler:
     async def __aenter__(self):
         """Context manager entry"""
         # Initialize session when entering the context
-        connector = TCPConnector(limit=10, ssl=False)  # Limit concurrent connections
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        connector = TCPConnector(limit=10, ssl=ssl_context)  # Limit concurrent connections
         self.session = aiohttp.ClientSession(connector=connector)
         return self
         
@@ -502,7 +503,9 @@ class WebCrawler:
             Dict with fetched content and metadata
         """
         if not self.session:
-            raise RuntimeError("Session not initialized. Use 'async with WebCrawler() as crawler:'")
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            connector = TCPConnector(limit=10, ssl=ssl_context)  # Limit concurrent connections
+            self.session = aiohttp.ClientSession(connector=connector)
             
         # Generate cache key from URL
         cache_key = hashlib.md5(url.encode()).hexdigest()
@@ -671,7 +674,8 @@ class WebCrawler:
         
         # Make sure we have a session
         if not self.session:
-            connector = TCPConnector(limit=10, ssl=False)  # Limit concurrent connections
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            connector = TCPConnector(limit=10, ssl=ssl_context)  # Limit concurrent connections
             self.session = aiohttp.ClientSession(connector=connector)
             
         # Queue of URLs to crawl: (url, depth)
@@ -768,7 +772,9 @@ class WebCrawler:
             List of articles from the feed
         """
         if not self.session:
-            raise RuntimeError("Session not initialized. Use 'async with WebCrawler() as crawler:'")
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            connector = TCPConnector(limit=10, ssl=ssl_context)  # Limit concurrent connections
+            self.session = aiohttp.ClientSession(connector=connector)
             
         # Apply rate limiting
         await self.rate_limiter.acquire(feed_url)

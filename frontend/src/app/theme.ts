@@ -1,13 +1,12 @@
 import { ThemeConfig } from 'antd';
-import { Inter } from 'next/font/google';
-
-const inter = Inter({ subsets: ['latin'] });
 
 export const theme: ThemeConfig = {
   token: {
     colorPrimary: '#00405e',
-    borderRadius: 6,
-    fontFamily: inter.style.fontFamily,
+    colorPrimaryHover: '#fae061',
+    colorPrimaryActive: '#003c56',
+    borderRadius: 12,
+    fontFamily: 'DM Sans, Arial, Helvetica, sans-serif',
   },
   components: {
     Layout: {
@@ -19,16 +18,23 @@ export const theme: ThemeConfig = {
     },
     Card: {
       colorBorderSecondary: 'rgba(0, 64, 94, 0.1)',
+      borderRadiusLG: 20,
+      fontFamily: 'DM Sans, Arial, Helvetica, sans-serif',
     },
     Button: {
-      colorPrimaryHover: '#00567e',
+      colorPrimary: '#00405e',
+      colorPrimaryHover: '#fae061',
       colorPrimaryActive: '#003c56',
+      borderRadius: 12,
+      fontFamily: 'DM Sans, Arial, Helvetica, sans-serif',
     },
     Table: {
       fontSize: 14,
+      fontFamily: 'DM Sans, Arial, Helvetica, sans-serif',
     },
     Pagination: {
       itemActiveBg: '#00405e',
+      fontFamily: 'DM Sans, Arial, Helvetica, sans-serif',
     },
   },
 }; 

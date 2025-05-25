@@ -1,9 +1,12 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700;900&family=DM+Serif+Display:ital,wght@0,400;1,400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @theme {
-  --font-sans: var(--font-inter);
+  --font-sans: 'DM Sans', Arial, Helvetica, sans-serif;
+  --font-serif: 'DM Serif Display', serif;
   --font-mono: var(--font-geist-mono);
 }
 
@@ -11,29 +14,29 @@
   /* Frosty Oxygen Theme Colors */
   --primary-color: #00405e; /* Updated to match index.css */
   --primary-light: #5a9eff;
-  --primary-dark: #1a5cb3;
+  --primary-dark: #002b3a;
   
   /* Accent colors */
   --accent-brown: #8b6d5c;
   --accent-green: #7f9360; /* Updated to match index.css */
   --accent-beige: #e6d7c3;
-  --accent-yellow: #f9e15e; /* Updated to match index.css */
+  --accent-yellow: #fae061;
   --accent-orange: #e76f51;
   
   /* UI Colors */
   --background-color: #f1f2e7; /* Updated to match index.css */
-  --card-background: #ffffff;
+  --card-background: #fff;
   --text-color: #1f2937;
   --text-secondary: #4b5563;
   --border-color: rgba(0, 64, 94, 0.1); /* Updated to match index.css */
   
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 64, 94, 0.15);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 64, 94, 0.10);
+  --shadow-lg: 0 10px 24px -3px rgba(0, 64, 94, 0.12);
   
   /* Transitions */
-  --transition-base: all 0.2s ease;
+  --transition-base: all 0.2s cubic-bezier(0.4,0,0.2,1);
   
   /* Dark Mode Colors (will be applied with .dark class) */
   --dark-background: #121826;
@@ -41,6 +44,10 @@
   --dark-text-color: #e2e8f0;
   --dark-text-secondary: #94a3b8;
   --dark-border-color: rgba(51, 65, 85, 0.6);
+
+  /* Kumby Consulting Brand Colors */
+  --accent-olive: #809461;
+  --gradient-brand: linear-gradient(90deg, #fae061 0%, #00405e 100%);
 }
 
 /* Dark mode with class-based approach */
@@ -53,8 +60,37 @@
 }
 
 body {
+  font-family: var(--font-sans);
   background-color: var(--background-color);
   color: var(--text-color);
+}
+
+h1, h2, h3, h4, h5, h6, .ant-typography h1, .ant-typography h2, .ant-typography h3, .ant-typography h4 {
+  font-family: var(--font-sans);
+  font-weight: 900;
+  color: var(--primary-color);
+  letter-spacing: 0.01em;
+}
+
+.kumby-header, .kumby-logo, .brand-text {
+  font-family: var(--font-sans);
+  font-weight: 900;
+  color: var(--primary-color) !important;
+}
+
+.kumby-logo {
+  font-size: 2.2rem;
+  letter-spacing: -0.05em;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-weight: 900;
+}
+
+/* Kumby Gradient Utility */
+.kumby-gradient {
+  background: var(--gradient-brand);
+  color: #00405e;
 }
 
 /* Header specific styles */
@@ -131,48 +167,49 @@ body {
 /* Floating Card Design */
 .frost-card {
   background-color: var(--card-background);
-  border-radius: 1rem;
-  box-shadow: var(--shadow-md);
+  border-radius: 1.25rem !important;
+  box-shadow: var(--shadow-md) !important;
   backdrop-filter: blur(10px);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border-color) !important;
   transition: all 0.3s ease;
 }
 
 .frost-card:hover {
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg) !important;
   transform: translateY(-2px);
 }
 
 /* Buttons */
-.btn-primary {
-  background-color: var(--primary-color);
-  color: white;
-  padding: 0.5rem 1.25rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
-  transition: all 0.2s;
+.btn-primary, .ant-btn-primary {
+  background: var(--primary-color) !important;
+  color: #fff !important;
+  border-radius: 0.75rem !important;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  border: none !important;
   box-shadow: var(--shadow-sm);
+  transition: var(--transition-base);
 }
 
-.btn-primary:hover {
-  background-color: var(--primary-light);
-  box-shadow: var(--shadow-md);
+.btn-primary:hover, .ant-btn-primary:hover {
+  background: var(--accent-yellow) !important;
+  color: var(--primary-color) !important;
 }
 
-.btn-secondary {
-  background-color: white;
-  color: var(--primary-color);
-  border: 1px solid var(--border-color);
-  padding: 0.5rem 1.25rem;
-  border-radius: 0.5rem;
-  font-weight: 500;
-  transition: all 0.2s;
+.btn-secondary, .ant-btn-default {
+  background: #fff !important;
+  color: var(--primary-color) !important;
+  border: 1.5px solid var(--primary-color) !important;
+  border-radius: 0.75rem !important;
+  font-family: var(--font-sans);
+  font-weight: 600;
   box-shadow: var(--shadow-sm);
+  transition: var(--transition-base);
 }
 
-.btn-secondary:hover {
-  background-color: #f8fafc;
-  box-shadow: var(--shadow-md);
+.btn-secondary:hover, .ant-btn-default:hover {
+  background: var(--accent-yellow) !important;
+  color: var(--primary-color) !important;
 }
 
 /* Progress Bar */

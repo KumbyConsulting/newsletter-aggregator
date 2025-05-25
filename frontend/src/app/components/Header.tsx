@@ -18,6 +18,7 @@ import {
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import './Header.css';
+import { signInWithGoogle, signOut, onAuthStateChangedHelper } from '@/utils/firebaseClient';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
@@ -32,7 +33,14 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [current, setCurrent] = useState('');
   const [screenWidth, setScreenWidth] = useState(1200); // Default to desktop
+  const [user, setUser] = useState<any>(null);
   const pathname = usePathname();
+
+  // Track auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChangedHelper(setUser);
+    return () => unsubscribe();
+  }, []);
 
   // Update current based on pathname
   useEffect(() => {
@@ -69,16 +77,6 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
       label: <Link href="/">Home</Link>,
     },
     {
-      key: 'topics',
-      icon: <TagOutlined />,
-      label: <Link href="/topics">Topics</Link>,
-    },
-    {
-      key: 'sources',
-      icon: <FileTextOutlined />,
-      label: <Link href="/sources">Sources</Link>,
-    },
-    {
       key: 'rag',
       icon: <BulbOutlined />,
       label: <Link href="/rag">AI Insights</Link>,
@@ -93,7 +91,7 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
   // Mobile menu items with the update option
   const mobileMenuItems = useMemo<MenuItem[]>(() => [
     ...menuItems,
-    ...(onUpdateClick ? [{
+    ...((onUpdateClick && user) ? [{
       key: 'update',
       icon: <SyncOutlined />,
       label: <a onClick={() => { 
@@ -101,7 +99,7 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
         onUpdateClick();
       }}>Update Articles</a>,
     }] : []),
-  ], [menuItems, onUpdateClick]);
+  ], [menuItems, onUpdateClick, user]);
 
   const userMenuItems = useMemo<MenuProps['items']>(() => [
     {
@@ -124,18 +122,6 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
       label: 'Logout',
     },
   ], []);
-
-  // Memoize processed mobile menu items
-  const processedMobileMenuItems = useMemo(() => {
-    return mobileMenuItems.map(item => ({
-      ...item,
-      style: {
-        borderRadius: '0.5rem',
-        margin: '4px 0',
-        transition: 'var(--transition-base, all 0.2s ease)',
-      }
-    }));
-  }, [mobileMenuItems]);
 
   return (
     <AntHeader className="kumby-header" role="banner" aria-label="Site header">
@@ -173,7 +159,7 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
         <div className="header-right">
           <Space size={16}>
             {/* Update Button */}
-            {!isMobile && onUpdateClick && (
+            {!isMobile && onUpdateClick && user && (
               <Button 
                 type="primary" 
                 icon={<SyncOutlined />} 
@@ -204,24 +190,38 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
                   />
                 </Badge>
                 
-                <Dropdown
-                  menu={{ items: userMenuItems }}
-                  trigger={['click']}
-                  placement="bottomRight"
-                >
-                  <Button
-                    type="text"
-                    className="action-btn"
-                    aria-label="User menu"
-                    icon={
-                      <Avatar 
-                        size="small" 
-                        icon={<UserOutlined />} 
-                        style={{ backgroundColor: 'var(--primary-color, #00405e)' }} 
-                      />
-                    }
-                  />
-                </Dropdown>
+                {/* Auth Buttons */}
+                {!user ? (
+                  <Button type="primary" onClick={signInWithGoogle} icon={<UserOutlined />}>
+                    Login with Google
+                  </Button>
+                ) : (
+                  <Dropdown
+                    menu={{
+                      items: [
+                        { key: 'email', label: user.email, disabled: true },
+                        { type: 'divider' },
+                        { key: 'logout', label: 'Logout', onClick: signOut },
+                      ],
+                    }}
+                    trigger={['click']}
+                    placement="bottomRight"
+                  >
+                    <Button
+                      type="text"
+                      className="action-btn"
+                      aria-label="User menu"
+                      icon={
+                        <Avatar 
+                          size="small" 
+                          src={user.photoURL || undefined}
+                          icon={<UserOutlined />} 
+                          style={{ backgroundColor: 'var(--primary-color, #00405e)' }} 
+                        />
+                      }
+                    />
+                  </Dropdown>
+                )}
               </>
             )}
             
@@ -272,7 +272,7 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
         <Menu 
           mode="vertical" 
           selectedKeys={[current]}
-          items={processedMobileMenuItems}
+          items={mobileMenuItems}
           theme="light"
           className="mobile-menu"
           role="navigation"

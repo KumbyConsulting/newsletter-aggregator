@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional, Any, Union, Tuple
-from quart import Quart, render_template, request, jsonify, make_response, abort, redirect, url_for, session, flash, Response, send_from_directory
+from quart import Quart, render_template, request, jsonify, make_response, abort, redirect, url_for, session, flash, Response, send_from_directory, websocket  # Add this import
 from quart_cors import cors
 import pandas as pd
 import json
@@ -25,6 +25,20 @@ from queue import Queue
 from werkzeug.exceptions import ServiceUnavailable
 import psutil
 import queue
+import traceback
+import random
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
+
+
+# Initialize Firebase Admin SDK (must be before any use of firebase_auth)
+try:
+    cred = credentials.ApplicationDefault()  # Uses GCP service account if running on GCP
+    firebase_admin.initialize_app(cred)
+    logging.info("Firebase Admin initialized for authentication.")
+except Exception as e:
+    logging.error(f"Failed to initialize Firebase Admin: {e}")
+
 
 # Import services
 from services.config_service import ConfigService
@@ -63,7 +77,10 @@ monitoring_service = MonitoringService()
 logging.info("Monitoring service initialized")
 
 # Initialize services in the correct order
-cache_service = CacheService()
+cache_service = CacheService(
+    backend="redis" if os.getenv("USE_REDIS", "1") == "1" else "memory",
+    redis_url=os.getenv("REDIS_URL", "redis://localhost:6379")
+)
 rate_limiting_service = RateLimitingService()
 
 # Configure rate limits for different endpoints
@@ -106,7 +123,7 @@ print("Config keys:", list(app.config.keys()))
 app.secret_key = config.flask_secret_key
 
 # Initialize services
-storage_service = StorageService()
+storage_service = StorageService()  # Singleton instance
 
 try:
     ai_service = KumbyAI(storage_service)  # Use KumbyAI instead of AIService
@@ -172,7 +189,7 @@ def register_error_handlers(app):
         }), 403
 
     @app.errorhandler(404)
-    def not_found_error(error):
+    async def not_found_error(error):
         """Handle 404 Not Found errors with consistent format"""
         if request.path.startswith('/api/'):
             return jsonify({
@@ -180,10 +197,10 @@ def register_error_handlers(app):
                 'status': 'error',
                 'status_code': 404
             }), 404
-        return render_template('errors/404.html', error=error), 404
+        return await render_template('errors/404.html', error=error), 404
 
     @app.errorhandler(429)
-    def too_many_requests_error(error):
+    async def too_many_requests_error(error):
         """Handle 429 Too Many Requests errors with consistent format"""
         if request.path.startswith('/api/'):
             return jsonify({
@@ -192,10 +209,10 @@ def register_error_handlers(app):
                 'status_code': 429,
                 'retry_after': error.description.get('retry_after', 60)
             }), 429
-        return render_template('errors/429.html', error=error), 429
+        return await render_template('errors/429.html', error=error), 429
 
     @app.errorhandler(500)
-    def internal_error(error):
+    async def internal_error(error):
         """Handle 500 Internal Server Error with consistent format"""
         logging.error(f"Internal Server Error: {error}", exc_info=True)
         if request.path.startswith('/api/'):
@@ -204,10 +221,10 @@ def register_error_handlers(app):
                 'status': 'error',
                 'status_code': 500
             }), 500
-        return render_template('errors/500.html', error=error), 500
+        return await render_template('errors/500.html', error=error), 500
 
     @app.errorhandler(Exception)
-    def unhandled_exception(error):
+    async def unhandled_exception(error):
         """Handle any unhandled exceptions with consistent format"""
         logging.error(f"Unhandled Exception: {error}", exc_info=True)
         if request.path.startswith('/api/'):
@@ -216,7 +233,7 @@ def register_error_handlers(app):
                 'status': 'error',
                 'status_code': 500
             }), 500
-        return render_template('errors/500.html', error=error), 500
+        return await render_template('errors/500.html', error=error), 500
 
     @app.errorhandler(ServiceUnavailable)
     def handle_service_unavailable(error):
@@ -508,7 +525,7 @@ async def health_check():
             
         # Check cache service
         try:
-            cache_service.ping()
+            await cache_service.ping()
         except Exception as e:
             health_status['services']['cache'] = 'unhealthy'
             logging.error(f"Cache health check failed: {e}")
@@ -788,47 +805,15 @@ update_status = {
 update_status_lock = Lock()
 
 def update_status_safely(updates):
-    """Thread-safe update of the status dictionary with improved concurrency handling"""
+    if not isinstance(updates, dict):
+        raise ValueError(f"update_status_safely expects a dict, got {type(updates)}: {updates}")
+    for key in ("error", "message", "status"):
+        if key in updates and updates[key] is not None and not isinstance(updates[key], str):
+            raise TypeError(f"update_status_safely: '{key}' must be a string or None, got {type(updates[key])}: {updates[key]}")
     global update_status
     with update_status_lock:
-        # Make a copy of the current status to avoid partial updates
         current_status = dict(update_status)
-        
-        # Calculate estimated completion time if progress changed
-        if 'progress' in updates and updates['progress'] > 0:
-            if not current_status.get('started_at'):
-                updates['started_at'] = time.time()
-            else:
-                elapsed_time = time.time() - current_status['started_at']
-                if updates['progress'] > 0 and updates['progress'] > current_status.get('progress', 0):
-                    # Only update estimated time if progress is increasing
-                    total_estimated_time = (elapsed_time / updates['progress']) * 100
-                    updates['estimated_completion_time'] = current_status['started_at'] + total_estimated_time
-                elif 'estimated_completion_time' in current_status:
-                    # Keep the existing estimate if progress hasn't changed
-                    updates['estimated_completion_time'] = current_status['estimated_completion_time']
-        
-        # Track history of status changes
-        if 'status' in updates and updates['status'] != current_status.get('status'):
-            history = current_status.get('status_history', [])
-            history.append({
-                'timestamp': time.time(),
-                'old_status': current_status.get('status'),
-                'new_status': updates['status']
-            })
-            updates['status_history'] = history[:10]  # Keep last 10 status changes
-        
-        # Set in_progress flag consistently based on status
-        if 'status' in updates:
-            if updates['status'] in ['completed', 'failed', 'cancelled']:
-                updates['in_progress'] = False
-            elif updates['status'] in ['starting', 'running']:
-                updates['in_progress'] = True
-        
-        # Update the status atomically
         update_status.update(updates)
-        
-        # Return a new copy to avoid external modifications
         return dict(update_status)
 
 def get_update_status_safely():
@@ -972,8 +957,30 @@ def manage_request_queue_async(f):
             raise
     return decorated_function
 
-# In start_update, use asyncio.create_task to start the update
+# --- AUTH DECORATOR ---
+from functools import wraps
+from quart import request, jsonify
+
+def require_firebase_auth(f):
+    @wraps(f)
+    async def decorated(*args, **kwargs):
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            logging.warning('Missing or invalid Authorization header')
+            return jsonify({'error': 'Missing or invalid Authorization header'}), 401
+        token = auth_header.split(' ')[1]
+        try:
+            logging.info(f"Verifying Firebase token: {token[:20]}... (truncated)")
+            decoded_token = firebase_auth.verify_id_token(token)
+            request.user = decoded_token  # Attach user info to request
+        except Exception as e:
+            logging.error(f"Firebase token verification failed: {e}")
+            return jsonify({'error': 'Invalid token', 'details': str(e)}), 401
+        return await f(*args, **kwargs)
+    return decorated
+
 @app.route('/api/update/start', methods=['POST'])
+@require_firebase_auth
 @circuit_breaker_service.circuit_breaker('update')
 @manage_request_queue_async
 async def start_update():
@@ -983,7 +990,7 @@ async def start_update():
             return jsonify({
                 "success": False,
                 "message": "Update already in progress",
-                "status": get_update_status_safely()
+                "update_status": get_update_status_safely()
             })
         update_status_safely({
             "in_progress": True,
@@ -1000,27 +1007,13 @@ async def start_update():
             "estimated_completion_time": None,
             "can_be_cancelled": True
         })
-        # Start background update as an async task with timeout
-        try:
-            await asyncio.wait_for(async_update(), timeout=300)  # 5 minutes
-        except asyncio.TimeoutError:
-            logging.error("Update process timed out after 5 minutes")
-            update_status_safely({
-                "status": "failed",
-                "message": "The update process took too long and was stopped.",
-                "in_progress": False,
-                "can_be_cancelled": False
-            })
-            return jsonify({
-                "success": False,
-                "message": "The update process took too long and was stopped. Please try again later.",
-                "status": get_update_status_safely()
-            }), 504
+        # Start background update as an async task (fire-and-forget)
+        asyncio.create_task(async_update())
         monitoring_service.record_count("article_updates_started")
         return jsonify({
             "success": True,
             "message": "Update started in background",
-            "status": get_update_status_safely()
+            "update_status": get_update_status_safely()
         })
     except Exception as e:
         logging.error(f"Error starting update: {e}", exc_info=True)
@@ -1036,34 +1029,35 @@ async def start_update():
         }), 500
 
 @app.route('/api/update/cancel', methods=['POST'])
-def cancel_update():
+@require_firebase_auth
+async def cancel_update():
     """New endpoint to cancel an ongoing update"""
     try:
         if not is_update_running():
             return jsonify({
                 "success": False,
                 "message": "No update in progress",
-                "status": get_update_status_safely()
+                "update_status": get_update_status_safely()
             })
         
         if not update_status.get("can_be_cancelled", True):
             return jsonify({
                 "success": False,
                 "message": "Update cannot be cancelled at this stage",
-                "status": get_update_status_safely()
+                "update_status": get_update_status_safely()
             })
         
         if cancel_update():
             return jsonify({
                 "success": True,
                 "message": "Update cancellation initiated",
-                "status": get_update_status_safely()
+                "update_status": get_update_status_safely()
             })
         else:
             return jsonify({
                 "success": False,
                 "message": "Failed to cancel update",
-                "status": get_update_status_safely()
+                "update_status": get_update_status_safely()
             })
             
     except Exception as e:
@@ -1078,18 +1072,16 @@ def cancel_update():
 @cache_service.cache_decorator(namespace="update_status", ttl=2)  # Cache for 2 seconds
 @rate_limiting_service.rate_limit_decorator(key="api")
 async def get_update_status():
-    """Enhanced API endpoint to get the current update status"""
     try:
-        # Create new status object instead of modifying the original
         status_dict = get_update_status_safely()
         running = is_update_running()
-        
-        # Create a new dictionary with all status info
         response = {
             **status_dict,
             'is_running': running
         }
-        
+        # Fail fast: ensure only dict is returned
+        if not isinstance(response, dict):
+            raise TypeError(f"/api/update/status must return dict, got {type(response)}: {response}")
         return jsonify(response)
     except Exception as e:
         logging.error(f"Error getting update status: {e}", exc_info=True)
@@ -1107,19 +1099,18 @@ async def get_update_status():
             "estimated_completion_time": None,
             "can_be_cancelled": False,
             "is_running": False
-        }), 200  # Return 200 with fallback instead of 500 to prevent frontend errors
+        })
 
 # Legacy route that redirects to the unified endpoint
 @app.route('/update', methods=['POST'])
-def update_articles():
-    """Legacy update route - redirects to the unified API endpoint"""
+async def update_articles():
     try:
         # Just redirect to the unified API endpoint
-        result = start_update()
+        result = await start_update()
         
         # Since this is called from the UI, redirect back to index with a flash message
         if isinstance(result, tuple):
-            flash(f"Error: {result[0]['message']}", "error")
+            flash("Error: Update failed.", "error")
         else:
             flash("Update started in background. You can continue using the app.", "info")
         
@@ -1129,8 +1120,8 @@ def update_articles():
         flash("Error starting update. Please try again later.", "error")
         return redirect(url_for('index'))
 
-# Legacy API endpoint that redirects to the unified endpoint
 @app.route('/api/update', methods=['POST'])
+@require_firebase_auth
 def api_update_articles():
     """Legacy API endpoint - redirects to the unified API endpoint"""
     # Simply call start_update() directly, without the async decorator
@@ -1158,7 +1149,7 @@ async def summarize_article():
         
         # Check cache first
         cache_key = f"summary:{article_link}"
-        cached_summary = cache_service.get(cache_key)
+        cached_summary = await cache_service.get(cache_key)
         if cached_summary:
             monitoring_service.record_count("summary_cache_hits")
             return jsonify({"summary": cached_summary})
@@ -1171,7 +1162,7 @@ async def summarize_article():
                 abort(500, description="Could not generate summary")
                 
             # Cache the result
-            cache_service.set(cache_key, summary, ttl=3600)  # Cache for 1 hour
+            await cache_service.set(cache_key, summary, ttl=3600)  # Cache for 1 hour
             
             # Save summary to storage
             try:
@@ -1198,6 +1189,7 @@ async def summarize_article():
         abort(500, description="An unexpected error occurred")
 
 @app.route('/generate-summaries', methods=['POST'], endpoint='generate_summaries_endpoint')
+@require_firebase_auth
 @circuit_breaker_service.circuit_breaker('summary')
 @manage_request_queue_async
 @monitoring_service.time_async_function("generate_summaries")
@@ -1242,8 +1234,8 @@ async def generate_summaries():
 
 # Add debug route to test API
 @app.route('/test_summary', methods=['GET'])
-def test_summary():
-    return render_template('test_summary.html')
+async def test_summary():
+    return await render_template('test_summary.html')
 
 @app.route('/api/rag', methods=['POST'], endpoint='rag_query_endpoint')
 @circuit_breaker_service.circuit_breaker('rag')
@@ -1266,7 +1258,7 @@ async def rag_query():
         
         # Check cache first
         cache_key = f"rag:{query}:{use_history}"
-        cached_response = cache_service.get(cache_key)
+        cached_response = await cache_service.get(cache_key)
         if cached_response:
             monitoring_service.record_count("rag_cache_hits")
             return jsonify(cached_response)
@@ -1290,7 +1282,7 @@ async def rag_query():
             }
             
             # Cache the result
-            cache_service.set(cache_key, result, ttl=1800)  # Cache for 30 minutes
+            await cache_service.set(cache_key, result, ttl=1800)  # Cache for 30 minutes
             monitoring_service.record_count("rag_queries", labels={"success": "true"})
             
             return jsonify(result)
@@ -1350,192 +1342,147 @@ async def stream_rag_query():
     try:
         # Validate input
         data = await request.get_json()
-        if not data:
-            return jsonify({"error": "No data provided", "status": "error"}), 400
-        query = data.get('query', '').strip()
-        use_history = data.get('use_history', True)
-        insight_mode = data.get('insight_mode', False)
-        time_aware = data.get('time_aware', True)
-        analysis_type = data.get('analysis_type')
-        
-        if not query:
+        if not data or not (query := data.get('query', '').strip()):
             return jsonify({"error": "No query provided", "status": "error"}), 400
+            
+        # Extract parameters with defaults
+        use_history = data.get('use_history', True)
         
-        # Check AI service health before proceeding
+        # Check AI service health
         if not await ai_service.is_healthy():
             return jsonify({"error": "AI service is currently unavailable", "status": "error"}), 503
-            
-        # Create async generator for streaming
-        async def async_generate():
+
+        async def stream_response():
             generator = None
             try:
-                timeout = 60  # 60 seconds timeout for streaming
-                async def streaming_logic():
-                    # Create partial JSON content with metadata first
-                    partial_metadata = {
-                        "type": "metadata",
-                        "status": "processing",
-                        "confidence": 0.0,
-                        "startTime": datetime.now().isoformat()
-                    }
-                    yield json.dumps(partial_metadata) + "\n"
-                    # Stream the response content
-                    nonlocal generator
-                    generator = ai_service.generate_streaming_response(query, use_history)
+                # Initialize streaming
+                generator = ai_service.generate_streaming_response(query, use_history)
+                
+                # Send initial metadata
+                yield json.dumps({
+                    "type": "metadata",
+                    "status": "processing",
+                    "confidence": 0.0,
+                    "startTime": datetime.now().isoformat()
+                }) + "\n"
+
+                # Stream content with timeout
+                async with asyncio.timeout(60):  # 60 second timeout
                     async for chunk in generator:
                         yield json.dumps({
                             "type": "content",
                             "content": chunk,
                             "done": False
                         }) + "\n"
-                    # After streaming, fetch sources data for the response
-                    try:
-                        history = await storage_service.get_rag_history(limit=1)
-                        sources = []
-                        confidence = 0.0
-                        if history and len(history) > 0:
-                            latest_item = history[0]
-                            sources = latest_item.get('sources', [])
-                            confidence = latest_item.get('confidence', 0.0)
-                    except (AttributeError, Exception) as e:
-                        logging.warning(f"Error getting rag history: {e}, using fallback")
-                        sources = getattr(ai_service, 'relevant_articles', [])
-                        confidence = 0.7  # Default confidence value
-                    # Send sources data
-                    sources_data = {
-                        "type": "sources",
-                        "sources": sources
-                    }
-                    yield json.dumps(sources_data) + "\n"
-                    # Send final metadata
-                    final_metadata = {
-                        "type": "metadata",
-                        "status": "complete",
-                        "confidence": confidence,
-                        "endTime": datetime.now().isoformat()
-                    }
-                    yield json.dumps(final_metadata) + "\n"
-                    # Send done signal
+
+                # Get sources and confidence after streaming
+                try:
+                    history = await storage_service.get_rag_history(limit=1)
+                    sources = history[0].get('sources', []) if history else []
+                    confidence = history[0].get('confidence', 0.0) if history else 0.0
+                except Exception as e:
+                    logging.warning(f"Error getting rag history: {e}, using fallback")
+                    sources = getattr(ai_service, 'relevant_articles', [])
+                    confidence = 0.7
+
+                # Send sources
+                yield json.dumps({
+                    "type": "sources",
+                    "sources": sources
+                }) + "\n"
+
+                # Send completion metadata
+                yield json.dumps({
+                    "type": "metadata",
+                    "status": "complete",
+                    "confidence": confidence,
+                    "endTime": datetime.now().isoformat()
+                }) + "\n"
+
+                # Send done signal
+                yield json.dumps({
+                    "type": "content",
+                    "content": "",
+                    "done": True
+                }) + "\n"
+
+            except asyncio.TimeoutError:
+                logging.error("Streaming request timed out after 60 seconds")
+                yield json.dumps({
+                    "type": "error",
+                    "error": "Request timed out. Please try a shorter query.",
+                    "status": "error"
+                }) + "\n"
+                
+                # Try to get partial response
+                if partial := await ai_service.get_partial_response():
                     yield json.dumps({
                         "type": "content",
-                        "content": "",
+                        "content": partial,
+                        "is_partial": True,
                         "done": True
                     }) + "\n"
-                try:
-                    async for chunk in asyncio.wait_for(streaming_logic(), timeout=timeout):
-                        yield chunk
-                except asyncio.TimeoutError:
-                    logging.error(f"Streaming request timed out after {timeout} seconds")
-                    # Send error message to client
-                    error_message = {
-                        "type": "error",
-                        "error": "The request timed out. Please try a shorter or more specific query.",
-                        "status": "error"
-                    }
-                    yield json.dumps(error_message) + "\n"
-                    # Try to get partial response on timeout
-                    try:
-                        partial_response = await ai_service.get_partial_response()
-                        if partial_response:
-                            yield json.dumps({
-                                "type": "content",
-                                "content": partial_response,
-                                "is_partial": True,
-                                "done": True
-                            }) + "\n"
-                    except Exception as partial_error:
-                        logging.error(f"Error getting partial response: {str(partial_error)}")
-                    return
+
             except Exception as e:
-                # Log the error
-                logging.error(f"Error in streaming response: {str(e)}", exc_info=True)
-                # Send error message to client
-                error_message = {
+                logging.error(f"Error in streaming response: {e}", exc_info=True)
+                yield json.dumps({
                     "type": "error",
-                    "error": "An unexpected error occurred while streaming the response.",
+                    "error": "An unexpected error occurred.",
                     "status": "error"
-                }
-                yield json.dumps(error_message) + "\n"
-                # Try to get partial response on error
-                try:
-                    partial_response = await ai_service.get_partial_response()
-                    if partial_response:
-                        yield json.dumps({
-                            "type": "content",
-                            "content": partial_response,
-                            "is_partial": True,
-                            "done": True
-                        }) + "\n"
-                except Exception as partial_error:
-                    logging.error(f"Error getting partial response: {str(partial_error)}")
+                }) + "\n"
+                
+                # Try to get partial response
+                if partial := await ai_service.get_partial_response():
+                    yield json.dumps({
+                        "type": "content",
+                        "content": partial,
+                        "is_partial": True,
+                        "done": True
+                    }) + "\n"
+
             finally:
-                # Ensure the generator is properly closed
                 if generator and hasattr(generator, 'aclose'):
-                    try:
-                        await generator.aclose()
-                    except Exception as close_error:
-                        logging.error(f"Error closing generator: {close_error}")
-        
-        # Convert the async generator to a sync generator for Flask
+                    await generator.aclose()
+
         def sync_generator():
             loop = asyncio.new_event_loop()
-            async_gen = async_generate()
+            async_gen = stream_response()
             
-            async def consume():
-                try:
-                    async for chunk in async_gen:
-                        yield chunk
-                finally:
-                    # Make sure to close the generator even on early exit
-                    if hasattr(async_gen, 'aclose'):
-                        try:
-                            await async_gen.aclose()
-                        except Exception as e:
-                            logging.error(f"Error closing generator in consume: {e}")
-            
-            consumer = consume()
             try:
                 while True:
                     try:
-                        chunk = loop.run_until_complete(consumer.__anext__().__await__())
+                        chunk = loop.run_until_complete(async_gen.__anext__())
                         yield chunk
                     except StopAsyncIteration:
-                        # Finish the consumer to trigger the finally block
-                        loop.run_until_complete(asyncio.sleep(0))
                         break
                     except Exception as e:
                         logging.error(f"Error in sync generator: {e}")
-                        yield f"data: {json.dumps({'error': 'Stream interrupted', 'done': True})}\n\n"
+                        yield json.dumps({
+                            "type": "error",
+                            "error": "Stream interrupted",
+                            "done": True
+                        }) + "\n"
                         break
             finally:
-                # Run any pending tasks to ensure cleanup
-                pending = asyncio.all_tasks(loop)
-                if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                loop.run_until_complete(async_gen.aclose())
                 loop.close()
-        
-        # Return the streaming response
-        response = Response(
-            sync_generator(), 
+
+        return Response(
+            sync_generator(),
             mimetype='application/json',
-            status=200,
             headers={
-                'X-Accel-Buffering': 'no',  # Disable proxy buffering
+                'X-Accel-Buffering': 'no',
                 'Cache-Control': 'no-cache',
                 'Connection': 'keep-alive'
             }
         )
-        return response
-        
+
     except RateLimitException as e:
-        # Handle rate limiting
         return jsonify({"error": str(e), "status": "error"}), 429
     except AIServiceException as e:
-        # Handle AI service errors
         return jsonify({"error": str(e), "status": "error"}), 503
     except Exception as e:
-        # Log and handle any other errors
-        logging.error(f"Error in stream_rag_query: {str(e)}", exc_info=True)
+        logging.error(f"Error in stream_rag_query: {e}", exc_info=True)
         return jsonify({"error": "Internal server error", "status": "error"}), 500
 
 @app.route('/api/rag/stream', methods=['GET'], endpoint='stream_rag_query_get_endpoint')
@@ -1791,8 +1738,8 @@ async def get_recent_articles():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/rag')
-def rag_interface():
-    return render_template('rag_interface.html')
+async def rag_interface():
+    return await render_template('rag_interface.html')
 
 # Cache configurations
 article_cache = TTLCache(maxsize=100, ttl=300)  # 5 minutes TTL
@@ -1817,7 +1764,7 @@ async def get_articles():
         fields = request.args.get('fields', '').split(',') if request.args.get('fields') else None
         
         # Initialize storage service
-        storage = StorageService()
+        storage = storage_service
         
         if search_query:
             # Use enhanced search if query exists
@@ -2401,6 +2348,7 @@ async def kumbyai_chat():
 
 # Admin Routes
 @app.route('/api/admin/export-csv', endpoint='admin_export_csv_endpoint')
+@require_firebase_auth
 @monitoring_service.time_async_function("admin_export_csv")
 async def admin_export_csv():
     """Export articles as CSV"""
@@ -2444,6 +2392,7 @@ async def admin_export_csv():
         return jsonify({'error': 'Failed to export data'}), 500
 
 @app.route('/api/admin/force-sync', methods=['POST'], endpoint='admin_force_sync_endpoint')
+@require_firebase_auth
 @monitoring_service.time_async_function("admin_force_sync")
 async def admin_force_sync():
     """Force sync with all sources"""
@@ -2464,6 +2413,7 @@ async def admin_force_sync():
         }), 500
 
 @app.route('/api/admin/cleanup-duplicates', methods=['POST'], endpoint='admin_cleanup_duplicates_endpoint')
+@require_firebase_auth
 @monitoring_service.time_async_function("admin_cleanup_duplicates")
 async def admin_cleanup_duplicates():
     """Clean up duplicate articles"""
@@ -2825,7 +2775,7 @@ async def validate_articles_endpoint():
     if not request.is_json:
         return jsonify({"error": "Request must be JSON"}), 400
 
-    data = request.get_json()
+    data = await request.get_json()
     article_ids = data.get('article_ids')
 
     if not isinstance(article_ids, list):
@@ -2920,7 +2870,7 @@ async def get_saved_analyses():
             
         try:
             # Use StorageService to get saved analyses
-            results = await storage_service.get_saved_analyses(
+            results = storage_service.get_saved_analyses(
                 limit=limit,
                 offset=offset,
                 sort_by=sort_by,
@@ -3018,7 +2968,234 @@ def handle_general_exception(error): # Renamed for clarity, changed to sync def
 
 @app.route('/favicon.ico')
 async def favicon():
-    return await send_from_directory('static', 'favicon.ico')
+    try:
+        return await send_from_directory('static', 'favicon.ico')
+    except Exception as e:
+        logging.warning(f"Favicon not found or error serving favicon: {e}")
+        raise abort(404)
+
+# TEMPORARY: Debug endpoint to clear the update_status cache
+@app.route('/api/debug/clear_update_status_cache', methods=['POST'])
+async def clear_update_status_cache():
+    await cache_service.delete('get_update_status:():{}', namespace='update_status')
+    return jsonify({'success': True, 'message': 'update_status cache cleared'})
+
+# --- New endpoints for frontend dashboard features ---
+
+@app.route('/api/tldr', methods=['GET'])
+async def get_tldr():
+    import logging
+    import re
+    from datetime import datetime
+    from utils.date_utils import normalize_datetime
+    import random
+
+    def is_valid_url(url):
+        return isinstance(url, str) and re.match(r'^https?://', url)
+    def is_valid_article(article):
+        title = article.get('metadata', {}).get('title', '').strip()
+        url = article.get('metadata', {}).get('link', '').strip()
+        return bool(title) and is_valid_url(url)
+    def get_pub_date(article):
+        pd = article.get('metadata', {}).get('pub_date', '')
+        parsed = normalize_datetime(pd)
+        return parsed if parsed else datetime.min
+
+    try:
+        result = await storage_service.get_articles(
+            page=1,
+            limit=10,
+            sort_by='pub_date',
+            sort_order='desc',
+            topic=None
+        )
+        articles = result.get('articles', [])
+        articles_with_summary = [a for a in articles if a.get('metadata', {}).get('summary')]
+        valid_articles = [a for a in articles_with_summary if is_valid_article(a)]
+        articles_2025 = [a for a in valid_articles if '2025' in str(a.get('metadata', {}).get('pub_date', ''))]
+        if not articles_2025:
+            return jsonify({
+                'summary': "No 2025 summaries available.",
+                'highlights': [],
+                'sources': []
+            })
+        articles_2025.sort(key=get_pub_date, reverse=True)
+        # Random rotation: select a random window of 5 articles, stable within each 3-hour slot
+        window_size = 5
+        now = datetime.utcnow()
+        slot_hours = 3
+        slot = now.hour // slot_hours
+        random_seed = int(now.strftime('%Y%m%d')) * 10 + slot  # deterministic per slot
+        random.seed(random_seed)
+        if len(articles_2025) > window_size:
+            start_indices = list(range(0, len(articles_2025) - window_size + 1))
+            start_idx = random.choice(start_indices)
+        else:
+            start_idx = 0
+        selected_articles = articles_2025[start_idx:start_idx + window_size]
+        # Compose context for AI
+        context_lines = []
+        for i, a in enumerate(selected_articles):
+            m = a['metadata']
+            context_lines.append(f"Article {i+1}: {m.get('title', '').strip()}\nSummary: {m.get('summary', '').strip()}\n")
+        context = '\n'.join(context_lines)
+        # Compose prompt
+        prompt = (
+            "You are an expert news analyst. Summarize the key events, trends, and takeaways from the following articles published recently. "
+            "Focus on what is new, important, or signals a shift. Provide a concise summary (2-4 sentences) and 2-3 highlight articles.\n\n"
+            f"Articles:\n{context}\n\nSummary:"
+        )
+        # Generate summary
+        ai_response = await ai_service.model.generate_content(prompt)
+        summary = ai_response.text.strip() if hasattr(ai_response, 'text') else str(ai_response)
+        # Highlights and sources as before (from the selected window)
+        highlights = []
+        sources = []
+        for a in selected_articles[:3]:
+            m = a['metadata']
+            highlights.append({
+                'title': m.get('title', '').strip(),
+                'url': m.get('link', '').strip(),
+                'topic': m.get('topic', ''),
+                'source': m.get('source', ''),
+                'pub_date': m.get('pub_date', ''),
+                'image_url': m.get('image_url', ''),
+                'description': m.get('description', ''),
+                'summary': m.get('summary', ''),
+                'reading_time': m.get('reading_time', 1),
+                'has_full_content': m.get('has_full_content', False),
+            })
+            sources.append({
+                'title': m.get('title', '').strip(),
+                'url': m.get('link', '').strip(),
+                'topic': m.get('topic', ''),
+                'source': m.get('source', ''),
+                'pub_date': m.get('pub_date', ''),
+                'image_url': m.get('image_url', ''),
+                'description': m.get('description', ''),
+                'summary': m.get('summary', ''),
+                'reading_time': m.get('reading_time', 1),
+                'has_full_content': m.get('has_full_content', False),
+            })
+        return jsonify({
+            'summary': summary,
+            'highlights': highlights,
+            'sources': sources
+        })
+    except Exception as e:
+        logging.error(f"Error in /api/tldr: {e}")
+        return jsonify({
+            'summary': "Error fetching TL;DR.",
+            'highlights': [],
+            'sources': []
+        })
+
+@app.route('/api/trends/daily', methods=['GET'])
+async def get_daily_trends():
+    """Return trending topics for today (placeholder)."""
+    return jsonify({
+        'period': 'daily',
+        'topics': ["Regulatory", "Clinical Trials", "Market"]
+    })
+
+@app.route('/api/trends/weekly', methods=['GET'])
+async def get_weekly_trends():
+    """Return trending topics for the week (placeholder)."""
+    return jsonify({
+        'period': 'weekly',
+        'topics': ["Mergers", "Approvals", "Patents"]
+    })
+
+@app.route('/api/recap/weekly', methods=['GET'])
+async def get_weekly_recap():
+    """Return a weekly recap summary from articles in the last 7 days."""
+    import logging
+    try:
+        from datetime import datetime, timedelta
+        from utils.date_utils import normalize_datetime
+        now = datetime.utcnow()
+        week_ago = now - timedelta(days=7)
+        # Fetch recent articles (limit to 10 for performance)
+        result = await storage_service.get_articles(
+            page=1,
+            limit=30,  # increased from 10 to 30 for richer context
+            sort_by='pub_date',
+            sort_order='desc',
+            topic=None
+        )
+        articles = result.get('articles', [])
+        recent_articles = []
+        for a in articles:
+            pub_date = a.get('metadata', {}).get('pub_date')
+            parsed = normalize_datetime(pub_date)
+            if parsed and parsed >= week_ago:
+                recent_articles.append(a)
+            elif pub_date:
+                logging.info(f"Skipping article with pub_date '{pub_date}' (parsed: {parsed})")
+        if not recent_articles:
+            logging.info("No recent articles found for weekly recap.")
+            return jsonify({
+                'recapSummary': "No major events or trends this week.",
+                'highlights': []
+            })
+        # Use AI to generate the weekly recap
+        ai_result = await ai_service.generate_weekly_recap(recent_articles)
+        return jsonify(ai_result)
+    except Exception as e:
+        logging.error(f"Error in /api/recap/weekly: {e}", exc_info=True)
+        import traceback
+        return jsonify({
+            'recapSummary': f"Error fetching weekly recap: {str(e)}",
+            'highlights': [],
+            'traceback': traceback.format_exc()
+        })
+# --- End new endpoints ---
+
+# Global set to track connected WebSocket clients
+connected_status_websockets = set()
+
+@app.websocket('/ws/status')
+async def ws_status():
+    ws = websocket._get_current_object()
+    connected_status_websockets.add(ws)
+    try:
+        while True:
+            status = get_update_status_safely()
+            await websocket.send_json(status)
+            await asyncio.sleep(2)
+    except Exception:
+        pass  # Silently handle disconnects
+    finally:
+        connected_status_websockets.discard(ws)
+
+@app.route('/api/topics/trends', methods=['GET'])
+async def get_topic_trends():
+    """API endpoint to get per-topic time series for trends (e.g., last 14 days)"""
+    try:
+        # TODO: Replace with real storage_service method for per-topic, per-day counts
+        # Example: trends = await storage_service.get_topic_trends(days=14)
+        import random
+        from datetime import datetime, timedelta
+        days = 14
+        today = datetime.utcnow().date()
+        # Get all topics from storage_service or constants
+        from services.constants import TOPICS
+        topics = list(TOPICS.keys())
+        # Mock data: for each topic, generate a series of counts for the last 14 days
+        topics_data = []
+        for topic in topics:
+            series = []
+            base = random.randint(5, 30)
+            for i in range(days):
+                date = today - timedelta(days=days - i - 1)
+                count = max(0, base + random.randint(-3, 3) + (i // 5) * random.randint(-2, 2))
+                series.append({"date": date.isoformat(), "count": count})
+            topics_data.append({"topic": topic, "series": series})
+        return jsonify({"topics": topics_data})
+    except Exception as e:
+        import logging
+        logging.error(f"Error in get_topic_trends: {e}", exc_info=True)
+        return jsonify({"error": str(e), "topics": []}), 500
 
 if __name__ == "__main__":
     # Parse command line arguments
@@ -3087,3 +3264,4 @@ if __name__ == "__main__":
     except Exception as e:
         logging.critical(f"Fatal error starting the application: {e}", exc_info=True)
         sys.exit(1)
+

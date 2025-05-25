@@ -17,6 +17,7 @@ from google.cloud import firestore
 from google.auth.exceptions import DefaultCredentialsError
 
 from .config_service import ConfigService
+from utils.date_utils import normalize_datetime
 
 class StorageException(Exception):
     """Custom exception for storage operations"""
@@ -121,39 +122,22 @@ class StorageService:
     def _generate_article_id(self, article: Dict) -> str:
         """Generate a unique ID for an article"""
         try:
-            # Create a unique ID from title, date, and link (link is more reliable than source)
-            title_part = article['title'][:50].strip().lower()  # First 50 chars of title
+            title_part = article['title'][:50].strip().lower()
             date_part = article.get('pub_date', datetime.now().isoformat())
-            link_part = article.get('link', '')[:30]  # First 30 chars of link
-            
-            # Clean the ID components
+            link_part = article.get('link', '')[:30]
             title_part = "".join(c for c in title_part if c.isalnum() or c.isspace())
             title_part = title_part.replace(" ", "_")
             link_part = "".join(c for c in link_part if c.isalnum() or c in ['/', '.', '-', '_'])
-            
-            # Create a reliable date part
             try:
-                if isinstance(date_part, str):
-                    parsed_date = datetime.fromisoformat(date_part.replace('Z', '+00:00'))
-                else:
-                    parsed_date = date_part
-                date_part = parsed_date.strftime('%Y-%m-%d_%H-%M-%S')
+                parsed_date = normalize_datetime(date_part)
+                date_part = parsed_date.strftime('%Y-%m-%d_%H-%M-%S') if parsed_date else datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             except Exception:
                 date_part = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            
-            # Generate a hash of the full content to ensure uniqueness
-            content_hash = hashlib.md5(
-                f"{title_part}{date_part}{link_part}".encode()
-            ).hexdigest()[:8]
-            
+            content_hash = hashlib.md5(f"{title_part}{date_part}{link_part}".encode()).hexdigest()[:8]
             return f"{content_hash}_{date_part}"
-            
         except Exception as e:
             logging.error(f"Error generating article ID: {e}")
-            # Fallback to a timestamp-based ID with MD5 hash
-            fallback_id = f"{article['title']}_{time.time()}"
-            hash_id = hashlib.md5(fallback_id.encode()).hexdigest()[:10]
-            return f"article_{hash_id}"
+            return f"invalid_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
             
     def _categorize_segment(self, topic: str) -> str:
         """Categorize article into industry segments"""
@@ -170,7 +154,7 @@ class StorageService:
                 return segment
         return 'general'
         
-    async def store_article(self, article: Dict) -> bool:
+    def store_article(self, article: Dict) -> bool:
         """Store a single article with enhanced error handling and validation"""
         try:
             # Validate required fields
@@ -214,13 +198,13 @@ class StorageService:
                     if attempt == max_retries - 1:
                         raise
                     logging.warning(f"Retry {attempt + 1}/{max_retries} for storing article {article_id}")
-                    await asyncio.sleep(1)
+                    time.sleep(1)
             
         except Exception as e:
             logging.error(f"Error storing article: {e}")
             raise StorageException(f"Failed to store article: {str(e)}")
             
-    async def batch_store_articles(self, articles: List[Dict]) -> bool:
+    def batch_store_articles(self, articles: List[Dict]) -> bool:
         """Store multiple articles with enhanced error handling and duplicate detection"""
         try:
             if not articles:
@@ -356,7 +340,7 @@ class StorageService:
                             logging.error(f"Failed to commit transaction after {max_retries} attempts: {e}")
                             raise
                         logging.warning(f"Retry {attempt + 1}/{max_retries} for transaction")
-                        await asyncio.sleep(1)
+                        time.sleep(1)
                         
             # Report results
             logging.info(f"Successfully stored {stored_count} articles, skipped {skipped_count} duplicates")
@@ -365,7 +349,7 @@ class StorageService:
             # Only run cleanup if we stored a significant number of articles
             if stored_count > 10:
                 try:
-                    await self.cleanup_duplicate_articles()
+                    asyncio.get_event_loop().run_until_complete(self.cleanup_duplicate_articles())
                 except Exception as cleanup_error:
                     logging.error(f"Error during cleanup: {cleanup_error}")
                     # Don't fail the overall operation if cleanup fails
@@ -404,7 +388,7 @@ class StorageService:
             logging.error(f"Error calculating similarity: {e}")
             return 0.0
     
-    async def query_articles(self, query: str, n_results: int = 5, exclude_ids: List[str] = None) -> List[Dict]:
+    def query_articles(self, query: str, n_results: int = 5, exclude_ids: List[str] = None) -> List[Dict]:
         """Query articles using Firestore with improved matching for vague queries
         
         Args:
@@ -422,7 +406,7 @@ class StorageService:
             # For empty or very short queries, return recent articles instead
             if not query_terms or (len(query_terms) == 1 and len(query_terms[0]) <= 3):
                 logging.info(f"Query '{query}' too vague, returning recent articles instead")
-                return await self.get_recent_articles(limit=n_results)
+                return self.get_recent_articles(limit=n_results)
                 
             # Search by keywords in title, topic, and document
             docs = self.articles_collection.limit(100).stream()  # Increase limit for better coverage
@@ -523,7 +507,7 @@ class StorageService:
             # If still no results, return most recent articles as fallback
             if not results:
                 logging.warning(f"No matches found for '{query}', falling back to recent articles")
-                return await self.get_recent_articles(limit=n_results)
+                return self.get_recent_articles(limit=n_results)
             
             # Sort by score (higher is better) and limit results
             results.sort(key=lambda x: x.get('score', 0), reverse=True)
@@ -538,7 +522,7 @@ class StorageService:
             # Return recent articles on error as a fallback strategy
             logging.info(f"Falling back to recent articles due to search error")
             try:
-                return await self.get_recent_articles(limit=n_results)
+                return self.get_recent_articles(limit=n_results)
             except Exception as fallback_error:
                 logging.error(f"Error getting recent articles as fallback: {fallback_error}")
                 return []
@@ -546,20 +530,12 @@ class StorageService:
     async def get_recent_articles(self, limit: int = 10, topic: str = None) -> List[Dict]:
         """Get recent articles, optionally filtered by topic"""
         try:
-            # Start with a base query ordered by publication date
+            loop = asyncio.get_event_loop()
             query = self.articles_collection.order_by('pub_date', direction=firestore.Query.DESCENDING)
-            
-            # Apply topic filter if provided
             if topic:
                 query = query.where('topic', '==', topic)
-                
-            # Apply limit
             query = query.limit(limit)
-            
-            # Execute query
-            docs = query.stream()
-            
-            # Format results
+            docs = await loop.run_in_executor(None, lambda: list(query.stream()))
             results = []
             for doc in docs:
                 data = doc.to_dict()
@@ -583,7 +559,7 @@ class StorageService:
             logging.error(f"Error getting recent articles: {e}")
             return []
             
-    async def get_similar_articles(self, article_id: str, n_results: int = 3) -> List[Dict]:
+    def get_similar_articles(self, article_id: str, n_results: int = 3) -> List[Dict]:
         """Find articles similar to a given article"""
         try:
             # Get the original article
@@ -636,161 +612,6 @@ class StorageService:
             logging.error(f"Error finding similar articles in Firestore: {e}")
             return []
             
-    async def backup_to_gcs(self, data_file: str) -> str:
-        """Backup data file to Google Cloud Storage"""
-        if self.storage_client is None:
-            raise StorageException("GCS backup is not enabled")
-            
-        try:
-            # Read the file
-            with open(data_file, 'r') as f:
-                data = f.read()
-                
-            # Determine file type and store accordingly
-            timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            filename = f"{os.path.basename(data_file)}_{timestamp}"
-            
-            blob = self.backup_bucket.blob(f"backups/{filename}")
-            
-            if data_file.endswith('.csv'):
-                blob.upload_from_string(data, content_type='text/csv')
-            elif data_file.endswith('.json'):
-                blob.upload_from_string(data, content_type='application/json')
-            else:
-                blob.upload_from_string(data)
-                
-            return blob.public_url
-                
-        except Exception as e:
-            logging.error(f"Error backing up to GCS: {e}")
-            raise StorageException(f"Failed to backup to GCS: {str(e)}")
-            
-    async def list_gcs_backups(self) -> List[Dict]:
-        """List all backups in GCS"""
-        if self.storage_client is None:
-            raise StorageException("GCS backup is not enabled")
-            
-        try:
-            blobs = self.storage_client.list_blobs(self.backup_bucket.name, prefix="backups/")
-            
-            backups = []
-            for blob in blobs:
-                backups.append({
-                    'name': blob.name,
-                    'size': blob.size,
-                    'updated': blob.updated,
-                    'url': blob.public_url
-                })
-                
-            return backups
-            
-        except Exception as e:
-            logging.error(f"Error listing GCS backups: {e}")
-            return []
-            
-    async def restore_from_gcs(self, filename: str, target_path: str) -> bool:
-        """Restore a backup from GCS to local file"""
-        if self.storage_client is None:
-            raise StorageException("GCS backup is not enabled")
-            
-        try:
-            blob = self.backup_bucket.blob(filename)
-            
-            with open(target_path, 'wb') as f:
-                blob.download_to_file(f)
-                
-            return True
-            
-        except Exception as e:
-            logging.error(f"Error restoring from GCS: {e}")
-            return False
-
-    async def sync_from_csv(self, csv_file_path: str) -> Dict:
-        """Synchronize Firestore with CSV data to ensure all CSV articles are in Firestore
-        
-        Args:
-            csv_file_path: Path to the CSV file containing articles
-            
-        Returns:
-            Dict with statistics about the operation
-        """
-        stats = {
-            "total_csv": 0,
-            "already_in_db": 0,
-            "added_to_db": 0,
-            "failed": 0
-        }
-        
-        try:
-            # Read CSV into DataFrame
-            if not os.path.exists(csv_file_path):
-                logging.error(f"CSV file not found: {csv_file_path}")
-                return stats
-                
-            df = pd.read_csv(csv_file_path)
-            stats["total_csv"] = len(df)
-            
-            if stats["total_csv"] == 0:
-                logging.info("CSV file is empty, nothing to sync")
-                return stats
-                
-            # Convert to list of dictionaries for processing
-            articles = df.to_dict('records')
-            logging.info(f"Processing {len(articles)} articles from CSV")
-            
-            # Process each article
-            for article in articles:
-                try:
-                    # Generate article ID the same way as store_article
-                    article_id = self._generate_article_id(article)
-                    
-                    # Check if article already exists
-                    doc_ref = self.articles_collection.document(article_id)
-                    doc = doc_ref.get()
-                    
-                    if doc.exists:
-                        stats["already_in_db"] += 1
-                        continue
-                    
-                    # Create document with enhanced context
-                    document_text = f"""
-                    Title: {article['title']}
-                    Topic: {article.get('topic', '')}
-                    Description: {article.get('description', '')}
-                    Key Findings: {article.get('summary', '')}
-                    Source: {article.get('source', '')}
-                    Industry Impact: This article relates to {article.get('topic', '')} 
-                    in the pharmaceutical industry.
-                    """
-                    
-                    # Store article data
-                    doc_ref.set({
-                        'title': article['title'],
-                        'link': article.get('link', ''),
-                        'pub_date': article.get('pub_date', ''),
-                        'topic': article.get('topic', ''),
-                        'source': article.get('source', ''),
-                        'description': article.get('description', ''),
-                        'summary': article.get('summary', ''),
-                        'industry_segment': self._categorize_segment(article.get('topic', '')),
-                        'document': document_text,
-                        'created_at': firestore.SERVER_TIMESTAMP
-                    })
-                    
-                    stats["added_to_db"] += 1
-                    
-                except Exception as e:
-                    logging.error(f"Error syncing article {article.get('title', 'Unknown')}: {e}")
-                    stats["failed"] += 1
-            
-            logging.info(f"Sync completed. Stats: {stats}")
-            return stats
-            
-        except Exception as e:
-            logging.error(f"Error during CSV to Firestore sync: {e}")
-            stats["failed"] = stats["total_csv"]
-            return stats 
-
     async def delete_article(self, article_id: str) -> bool:
         """Delete an article from Firestore by ID
         
@@ -801,526 +622,22 @@ class StorageService:
             bool: True if deletion was successful, False otherwise
         """
         try:
+            loop = asyncio.get_event_loop()
             doc_ref = self.articles_collection.document(article_id)
-            doc = doc_ref.get()
+            doc = await loop.run_in_executor(None, doc_ref.get)
             
             if not doc.exists:
                 logging.warning(f"Article {article_id} not found for deletion")
                 return False
                 
             # Delete the document
-            doc_ref.delete()
+            await loop.run_in_executor(None, doc_ref.delete)
             logging.info(f"Successfully deleted article {article_id}")
             return True
             
         except Exception as e:
             logging.error(f"Error deleting article {article_id}: {e}")
             return False
-
-    async def export_to_csv(self, csv_file_path: str, limit: int = 0) -> Dict:
-        """Export articles from Firestore to CSV for archival or backup purposes
-        
-        Args:
-            csv_file_path: Path where CSV file should be saved
-            limit: Maximum number of articles to export (0 for unlimited)
-            
-        Returns:
-            Dict with statistics about the operation
-        """
-        stats = {
-            "total_exported": 0,
-            "success": False
-        }
-        
-        try:
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(csv_file_path) if os.path.dirname(csv_file_path) else '.', exist_ok=True)
-            
-            # Fetch articles from Firestore
-            if limit > 0:
-                articles_ref = self.articles_collection.limit(limit).stream()
-            else:
-                articles_ref = self.articles_collection.stream()
-            
-            articles = []
-            for doc in articles_ref:
-                article_data = doc.to_dict()
-                
-                # Add doc ID
-                article_data['id'] = doc.id
-                
-                # Remove document field generated for embedding
-                if 'document' in article_data:
-                    del article_data['document']
-                    
-                # Normalize timestamp fields to strings
-                for key, value in article_data.items():
-                    if hasattr(value, 'timestamp'):
-                        article_data[key] = value.isoformat()
-                        
-                articles.append(article_data)
-            
-            stats["total_exported"] = len(articles)
-            
-            if len(articles) > 0:
-                # Create DataFrame
-                df = pd.DataFrame(articles)
-                
-                # Save to CSV
-                df.to_csv(csv_file_path, index=False)
-                logging.info(f"Exported {len(articles)} articles to {csv_file_path}")
-                
-                stats["success"] = True
-            else:
-                logging.info(f"No articles to export")
-            
-            return stats
-            
-        except Exception as e:
-            logging.error(f"Error exporting to CSV: {e}")
-            return stats
-
-    async def cleanup_duplicate_articles(self) -> Dict:
-        """Clean up duplicate articles with enhanced error handling"""
-        try:
-            # Get all articles
-            articles = self.articles_collection.stream()
-            article_map = {}  # Map of link -> (doc_id, article_data)
-            content_map = {}  # Map of content_hash -> (doc_id, article_data)
-            duplicates = []
-            
-            for doc in articles:
-                data = doc.to_dict()
-                link = data.get('link')
-                content_hash = data.get('content_hash')
-                
-                if not link:
-                    continue
-                    
-                # Check for duplicate links
-                if link in article_map:
-                    # Compare timestamps to keep the most recent
-                    existing_doc_id, existing_data = article_map[link]
-                    existing_time = datetime.fromisoformat(existing_data.get('last_updated', '1970-01-01'))
-                    current_time = datetime.fromisoformat(data.get('last_updated', '1970-01-01'))
-                    
-                    if current_time > existing_time:
-                        duplicates.append(existing_doc_id)
-                        article_map[link] = (doc.id, data)
-                    else:
-                        duplicates.append(doc.id)
-                else:
-                    article_map[link] = (doc.id, data)
-                
-                # Check for similar content if we have a content hash
-                if content_hash:
-                    is_similar = False
-                    for existing_hash, (existing_doc_id, existing_data) in content_map.items():
-                        similarity = self._calculate_similarity(content_hash, existing_hash)
-                        if similarity > 0.9:  # 90% similarity threshold
-                            # Compare timestamps to keep the most recent
-                            existing_time = datetime.fromisoformat(existing_data.get('last_updated', '1970-01-01'))
-                            current_time = datetime.fromisoformat(data.get('last_updated', '1970-01-01'))
-                            
-                            if current_time > existing_time:
-                                duplicates.append(existing_doc_id)
-                                content_map[content_hash] = (doc.id, data)
-                            else:
-                                duplicates.append(doc.id)
-                            is_similar = True
-                            break
-                    
-                    if not is_similar:
-                        content_map[content_hash] = (doc.id, data)
-            
-            # Remove duplicates from duplicates list
-            duplicates = list(set(duplicates))
-            
-            # Delete duplicates in batches
-            batch = self.db.batch()
-            batch_count = 0
-            deleted_count = 0
-            
-            for doc_id in duplicates:
-                doc_ref = self.articles_collection.document(doc_id)
-                batch.delete(doc_ref)
-                batch_count += 1
-                deleted_count += 1
-                
-                if batch_count >= 500:  # Firestore batch limit
-                    batch.commit()
-                    batch = self.db.batch()
-                    batch_count = 0
-            
-            # Commit any remaining deletions
-            if batch_count > 0:
-                batch.commit()
-            
-            logging.info(f"Cleaned up {deleted_count} duplicate articles")
-            return {
-                "duplicates_removed": deleted_count,
-                "total_processed": len(article_map),
-                "similar_content_removed": len(duplicates) - len(set(doc_id for doc_id, _ in article_map.values()))
-            }
-            
-        except Exception as e:
-            logging.error(f"Error cleaning up duplicates: {e}")
-            raise StorageException(f"Cleanup failed: {str(e)}")
-
-    async def get_topic_counts(self) -> Dict[str, int]:
-        """Get counts of articles per topic"""
-        try:
-            # Get all articles
-            docs = self.articles_collection.stream()
-            topic_counts = {}
-            
-            for doc in docs:
-                data = doc.to_dict()
-                topic = data.get('topic', 'Uncategorized')
-                topic_counts[topic] = topic_counts.get(topic, 0) + 1
-                
-            return topic_counts
-            
-        except Exception as e:
-            logging.error(f"Error getting topic counts: {e}")
-            return {}
-
-    def _parse_date(self, date_value) -> datetime:
-        """Parse date from various formats to datetime object"""
-        try:
-            if not date_value or date_value == 'Unknown date' or pd.isna(date_value):
-                return datetime.now()
-            
-            if isinstance(date_value, datetime):
-                return self._ensure_naive_datetime(date_value)
-            
-            if isinstance(date_value, (int, float)):
-                if pd.isna(date_value):  # Handle NaN
-                    return datetime.now()
-                return datetime.fromtimestamp(date_value)
-        
-            # Define timezone mappings
-            tzinfos = {
-                'EST': -18000,  # UTC-5
-                'EDT': -14400,  # UTC-4
-                'CST': -21600,  # UTC-6
-                'CDT': -18000,  # UTC-5
-                'MST': -25200,  # UTC-7
-                'MDT': -21600,  # UTC-6
-                'PST': -28800,  # UTC-8
-                'PDT': -25200,  # UTC-7
-            }
-            
-            # Try different date formats
-            date_formats = [
-                '%Y-%m-%d %H:%M:%S',
-                '%Y-%m-%d %H:%M:%S.%f',
-                '%Y-%m-%dT%H:%M:%S',
-                '%Y-%m-%dT%H:%M:%S.%f',
-                '%Y-%m-%dT%H:%M:%SZ',
-                '%Y-%m-%d',
-                '%d/%m/%Y %H:%M:%S',
-                '%d/%m/%Y',
-                '%b %d, %Y %H:%M:%S',
-                '%B %d, %Y %H:%M:%S',
-                '%a, %d %b %Y %H:%M:%S %Z',  # RFC 2822 format
-                '%A, %d %B %Y %H:%M:%S %Z',
-            ]
-            
-            # First try parsing with standard formats
-            for fmt in date_formats:
-                try:
-                    parsed_date = datetime.strptime(str(date_value).strip(), fmt)
-                    return self._ensure_naive_datetime(parsed_date)
-                except ValueError:
-                    continue
-                
-            try:
-                # Try parsing with dateutil as a fallback, with timezone info
-                from dateutil import parser
-                parsed_date = parser.parse(str(date_value), tzinfos=tzinfos)
-                return self._ensure_naive_datetime(parsed_date)
-            except Exception as e:
-                logging.debug(f"dateutil parser failed for '{date_value}': {e}")
-                
-            # If all parsing attempts fail, return current time
-            logging.warning(f"Failed to parse date '{date_value}': Unknown string format")
-            return datetime.now()
-            
-        except Exception as e:
-            logging.warning(f"Error parsing date '{date_value}': {e}")
-            return datetime.now()
-
-    def _ensure_naive_datetime(self, dt):
-        """Ensure datetime is naive (no timezone) by converting to UTC and removing tzinfo"""
-        if dt is None:
-            return datetime.now()
-        try:
-            if dt.tzinfo is not None:
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-            return dt
-        except Exception as e:
-            logging.warning(f"Error converting timezone: {e}")
-            return datetime.now()
-
-    def _format_date(self, dt: datetime) -> str:
-        """Format datetime to consistent string format"""
-        try:
-            if dt is None:
-                dt = datetime.now()
-            
-            # Ensure datetime is naive (no timezone)
-            if dt.tzinfo is not None:
-                dt = dt.replace(tzinfo=None)
-            
-            # Format as human-readable date
-            return dt.strftime('%b %d, %Y %H:%M')
-        except Exception as e:
-            logging.warning(f"Error formatting date: {e}")
-            return datetime.now().strftime('%b %d, %Y %H:%M')
-
-    async def get_topic_distribution(self) -> Dict:
-        """Get enhanced topic distribution statistics"""
-        try:
-            # Check if we're using Firestore
-            if self.config.storage_backend == 'firestore':
-                # Get all articles from Firestore
-                docs = self.articles_collection.stream()
-                topic_stats = {}
-                total_articles = 0
-                
-                # Get current time for recent article calculation - ensure naive datetime
-                current_time = self._ensure_naive_datetime(datetime.now())
-                thirty_days_ago = current_time - timedelta(days=30)
-                
-                for doc in docs:
-                    data = doc.to_dict()
-                    topic = data.get('topic', 'Uncategorized')
-                    total_articles += 1
-                    
-                    # Initialize topic stats if not exists
-                    if topic not in topic_stats:
-                        topic_stats[topic] = {
-                            'count': 0,
-                            'recent_count': 0,
-                            'trend': 'stable',
-                            'growth_rate': 0
-                        }
-                    
-                    topic_stats[topic]['count'] += 1
-                    
-                    # Check if article is recent - ensure naive datetime for comparison
-                    try:
-                        pub_date = self._ensure_naive_datetime(self._parse_date(data.get('pub_date')))
-                        if pub_date > thirty_days_ago:
-                            topic_stats[topic]['recent_count'] += 1
-                    except Exception as e:
-                        logging.warning(f"Error processing date for topic distribution: {e}")
-                        continue
-                
-                # Calculate percentages and trends
-                for topic, stats in topic_stats.items():
-                    stats['percentage'] = (stats['count'] / total_articles) * 100 if total_articles > 0 else 0
-                    
-                    # Calculate growth rate
-                    if stats['count'] > 0:
-                        recent_ratio = stats['recent_count'] / stats['count']
-                        if recent_ratio > 0.5:
-                            stats['trend'] = 'up'
-                            stats['growth_rate'] = recent_ratio * 100
-                        elif recent_ratio > 0.2:
-                            stats['trend'] = 'stable'
-                            stats['growth_rate'] = recent_ratio * 100
-                        else:
-                            stats['trend'] = 'down'
-                            stats['growth_rate'] = recent_ratio * 100
-                
-                return topic_stats
-            else:
-                # Handle ChromaDB or other non-Firestore backends
-                filename = self.config.settings.ARTICLES_FILE_PATH
-                
-                # If file doesn't exist, return empty stats
-                if not os.path.isfile(filename):
-                    logging.warning(f"Articles file not found: {filename}")
-                    return {}
-                    
-                try:
-                    # Use pandas to read the CSV
-                    import pandas as pd
-                    df = pd.read_csv(filename, quotechar='"', escapechar='\\')
-                    
-                    # Check if 'topic' column exists
-                    if 'topic' not in df.columns:
-                        logging.error(f"No 'topic' column found in CSV file: {filename}")
-                        return {}
-                    
-                    # Get current time for recent article calculation
-                    current_time = datetime.now()
-                    thirty_days_ago = current_time - timedelta(days=30)
-                    
-                    # Calculate topic distribution
-                    topic_stats = {}
-                    total_articles = len(df)
-                    
-                    # Group by topic and count
-                    topic_counts = df['topic'].value_counts().reset_index()
-                    topic_counts.columns = ['topic', 'count']
-                    
-                    # Get recent articles
-                    # Handle different date formats
-                    try:
-                        df['pub_date_obj'] = pd.to_datetime(df['pub_date'], errors='coerce')
-                        recent_df = df[df['pub_date_obj'] > pd.Timestamp(thirty_days_ago)]
-                        recent_counts = recent_df['topic'].value_counts().to_dict()
-                    except Exception as date_err:
-                        logging.warning(f"Error parsing dates: {date_err}. Using default recent counts.")
-                        recent_counts = {}
-                    
-                    # Create topic stats
-                    for _, row in topic_counts.iterrows():
-                        topic = row['topic']
-                        if pd.isna(topic) or topic == '':
-                            continue
-                            
-                        count = row['count']
-                        recent_count = recent_counts.get(topic, 0)
-                        
-                        # Calculate percentage and trends
-                        percentage = (count / total_articles) * 100 if total_articles > 0 else 0
-                        
-                        # Calculate growth rate and trend
-                        if count > 0:
-                            recent_ratio = recent_count / count
-                            if recent_ratio > 0.5:
-                                trend = 'up'
-                            elif recent_ratio > 0.2:
-                                trend = 'stable'
-                            else:
-                                trend = 'down'
-                            growth_rate = recent_ratio * 100
-                        else:
-                            trend = 'stable'
-                            growth_rate = 0
-                            
-                        topic_stats[topic] = {
-                            'count': int(count),
-                            'percentage': percentage,
-                            'recent_count': int(recent_count),
-                            'trend': trend,
-                            'growth_rate': growth_rate
-                        }
-                    
-                    return topic_stats
-                except Exception as e:
-                    logging.error(f"Error reading articles file: {e}")
-                    return {}
-            
-        except Exception as e:
-            logging.error(f"Error getting topic distribution: {e}")
-            return {}
-
-    async def get_articles(self, page: int = 1, limit: int = 10, topic: str = None, search_query: str = None, sort_by: str = 'pub_date', sort_order: str = 'desc') -> List[Dict]:
-        """Get articles with pagination, topic filtering, search functionality, and sorting"""
-        try:
-            # Start with base query
-            query = self.articles_collection
-
-            # Apply topic filter if provided
-            if topic and topic != 'All':
-                query = query.where('topic', '==', topic)
-
-            # Get all matching documents first (for accurate pagination)
-            docs = query.stream()
-            articles = []
-
-            for doc in docs:
-                data = doc.to_dict()
-                article_id = doc.id
-                
-                # Parse the publication date
-                pub_date = self._parse_date(data.get('pub_date'))
-                    
-                metadata = {
-                    'title': data.get('title', 'Unknown Title'),
-                    'description': data.get('description', 'No description available'),
-                    'link': data.get('link', '#'),
-                    'pub_date': self._format_date(pub_date),
-                    'topic': data.get('topic', 'Uncategorized'),
-                    'source': data.get('source', 'Unknown source'),
-                    'summary': data.get('summary', None),
-                    'image_url': data.get('image_url', ''),
-                    'has_full_content': bool(data.get('document', '')),
-                    'reading_time': data.get('reading_time', 0),
-                    'relevance_score': 0  # Default relevance score
-                }
-
-                # Apply search filter if provided
-                if search_query:
-                    search_terms = search_query.lower().split()
-                    searchable_text = ' '.join([
-                        str(metadata['title']),
-                        str(metadata['description']),
-                        str(metadata['topic']),
-                        str(metadata['source'])
-                    ]).lower()
-                    
-                    # Calculate relevance score based on term matches
-                    relevance_score = 0
-                    for term in search_terms:
-                        if term in metadata['title'].lower():
-                            relevance_score += 3
-                        if term in metadata['description'].lower():
-                            relevance_score += 2
-                        if term in metadata['topic'].lower():
-                            relevance_score += 1
-                    metadata['relevance_score'] = relevance_score
-                    
-                    # Check if all search terms are present
-                    if not all(term in searchable_text for term in search_terms):
-                        continue
-
-                articles.append({
-                    'id': article_id,
-                    'metadata': metadata,
-                    'document': data.get('document', '')
-                })
-
-            # Sort articles based on sort_by and sort_order
-            reverse = sort_order.lower() == 'desc'
-            
-            if sort_by == 'pub_date':
-                articles.sort(key=lambda x: self._parse_date(x['metadata']['pub_date']), reverse=reverse)
-            elif sort_by == 'title':
-                articles.sort(key=lambda x: x['metadata']['title'].lower(), reverse=reverse)
-            elif sort_by == 'relevance' and search_query:
-                articles.sort(key=lambda x: x['metadata']['relevance_score'], reverse=True)  # Always sort relevance in descending order
-            elif sort_by == 'reading_time':
-                articles.sort(key=lambda x: x['metadata']['reading_time'], reverse=reverse)
-
-            # Apply pagination
-            start_idx = (page - 1) * limit
-            end_idx = start_idx + limit
-            paginated_articles = articles[start_idx:end_idx]
-
-            return {
-                'articles': paginated_articles,
-                'total': len(articles),
-                'page': page,
-                'total_pages': (len(articles) + limit - 1) // limit,
-                'query_time': 0  # Add query time field for consistency
-            }
-
-        except Exception as e:
-            logging.error(f"Error getting articles: {e}")
-            # Return empty result instead of raising exception
-            return {
-                'articles': [],
-                'total': 0,
-                'page': page,
-                'total_pages': 0,
-                'query_time': 0
-            }
 
     async def get_article(self, article_id: str) -> Optional[Dict]:
         """Get a single article by ID
@@ -1332,9 +649,9 @@ class StorageService:
             Dict containing the article data if found, None otherwise
         """
         try:
-            # Get the document reference
+            loop = asyncio.get_event_loop()
             doc_ref = self.articles_collection.document(article_id)
-            doc = doc_ref.get()
+            doc = await loop.run_in_executor(None, doc_ref.get)
             
             if not doc.exists:
                 logging.warning(f"Article {article_id} not found")
@@ -1362,7 +679,7 @@ class StorageService:
             logging.error(f"Error retrieving article {article_id}: {e}")
             return None
 
-    async def update_article_metadata(self, article_id: str, metadata: Dict) -> bool:
+    def update_article_metadata(self, article_id: str, metadata: Dict) -> bool:
         """Update article metadata fields
         
         Args:
@@ -1398,8 +715,8 @@ class StorageService:
             List[Dict]: List of matching articles
         """
         try:
-            # Query articles with matching URL
-            docs = self.articles_collection.where('link', '==', url).stream()
+            loop = asyncio.get_event_loop()
+            docs = await loop.run_in_executor(None, lambda: list(self.articles_collection.where('link', '==', url).stream()))
             articles = []
             
             for doc in docs:
@@ -1420,21 +737,20 @@ class StorageService:
             return []
 
     async def get_all_articles(self) -> List[Dict]:
-        """Get all articles from the database without pagination
-        
-        Returns:
-            List[Dict]: List of all articles with their complete data
-        """
+        """Get all articles from the database without pagination (async, robust date parsing)"""
         try:
-            # Get all documents from the articles collection
-            docs = self.articles_collection.stream()
+            loop = asyncio.get_event_loop()
+            docs = await loop.run_in_executor(None, lambda: list(self.articles_collection.stream()))
             articles = []
-
             for doc in docs:
                 data = doc.to_dict()
-                # Parse the publication date
-                pub_date = self._parse_date(data.get('pub_date'))
-                
+                pub_date_raw = data.get('pub_date')
+                try:
+                    pub_date = self._parse_date(pub_date_raw)
+                    formatted_pub_date = self._format_date(pub_date)
+                except Exception as e:
+                    logging.warning(f"Failed to parse pub_date '{pub_date_raw}' for article {doc.id}: {e}")
+                    formatted_pub_date = pub_date_raw or "Unknown"
                 articles.append({
                     'id': doc.id,
                     'document': data.get('document', ''),
@@ -1442,7 +758,7 @@ class StorageService:
                         'title': data.get('title', 'Unknown Title'),
                         'description': data.get('description', 'No description available'),
                         'link': data.get('link', '#'),
-                        'pub_date': self._format_date(pub_date),
+                        'pub_date': formatted_pub_date,
                         'topic': data.get('topic', 'Uncategorized'),
                         'source': data.get('source', 'Unknown source'),
                         'summary': data.get('summary', None),
@@ -1451,38 +767,23 @@ class StorageService:
                         'reading_time': data.get('reading_time', 0)
                     }
                 })
-
             return articles
-            
         except Exception as e:
             logging.error(f"Error getting all articles: {e}")
             return []
 
     async def enhanced_search(self, query: str, search_type: str = 'auto', **kwargs) -> List[Dict]:
-        """Enhanced search with multiple strategies based on query type
-        
-        Args:
-            query: Search query string
-            search_type: One of 'auto', 'exact', 'fuzzy', 'semantic'
-            **kwargs: Additional search parameters
-        
-        Returns:
-            List[Dict]: Search results with relevance scores
-        """
-        try:
-            # Analyze query to determine best search strategy if auto
-            if search_type == 'auto':
-                search_type = self._determine_search_strategy(query)
+        """Enhanced search with multiple strategies based on query type (async)."""
+        # Analyze query to determine best search strategy if auto
+        if search_type == 'auto':
+            search_type = self._determine_search_strategy(query)
 
-            if search_type == 'exact':
-                return await self._exact_field_search(query, **kwargs)
-            elif search_type == 'fuzzy':
-                return await self._enhanced_fuzzy_search(query, **kwargs)
-            else:  # semantic
-                return await self._semantic_search(query, **kwargs)
-        except Exception as e:
-            logging.error(f"Error in enhanced search: {e}")
-            return []
+        if search_type == 'exact':
+            return await self._exact_field_search(query, **kwargs)
+        elif search_type == 'fuzzy':
+            return await self._enhanced_fuzzy_search(query, **kwargs)
+        else:
+            return await self._semantic_search(query, **kwargs)
 
     def _determine_search_strategy(self, query: str) -> str:
         """Determine the best search strategy based on query characteristics"""
@@ -1504,23 +805,16 @@ class StorageService:
             return 'fuzzy'  # Default to fuzzy for medium complexity
 
     async def _exact_field_search(self, query: str, fields: List[str] = None, **kwargs) -> List[Dict]:
-        """Perform exact field matching with index optimization"""
+        """Perform exact field matching with index optimization (async)."""
         try:
             if not fields:
                 fields = ['title', 'topic', 'source']  # Default searchable fields
-                
-            # Remove quotes if present
             clean_query = query.strip('"\'').lower()
-            
-            # Start with base query
             base_query = self.articles_collection
-            
-            # Apply field filters
+            loop = asyncio.get_event_loop()
             results = []
             for field in fields:
-                # Use proper index-based query
-                docs = base_query.where(field, '==', clean_query).stream()
-                
+                docs = await loop.run_in_executor(None, lambda: list(base_query.where(field, '==', clean_query).stream()))
                 for doc in docs:
                     data = doc.to_dict()
                     results.append({
@@ -1529,48 +823,30 @@ class StorageService:
                         'metadata': self._format_article_metadata(data),
                         'match_type': 'exact',
                         'matched_field': field,
-                        'score': 1.0  # Exact matches get perfect score
+                        'score': 1.0
                     })
-                    
             return results
-            
         except Exception as e:
             logging.error(f"Error in exact field search: {e}")
             return []
 
     async def _enhanced_fuzzy_search(self, query: str, threshold: float = 0.6, **kwargs) -> List[Dict]:
-        """Improved fuzzy search with better scoring and matching"""
+        """Improved fuzzy search with better scoring and matching (async)."""
         try:
-            # Normalize query
             query_terms = self._normalize_text(query)
-            
-            # Get all articles for fuzzy matching
-            docs = self.articles_collection.stream()
+            loop = asyncio.get_event_loop()
+            docs = await loop.run_in_executor(None, lambda: list(self.articles_collection.stream()))
             results = []
-            
             for doc in docs:
                 data = doc.to_dict()
-                # Calculate fuzzy match scores for different fields
-                title_score = self._fuzzy_match_score(
-                    query_terms,
-                    self._normalize_text(data.get('title', ''))
-                )
-                topic_score = self._fuzzy_match_score(
-                    query_terms,
-                    self._normalize_text(data.get('topic', ''))
-                )
-                desc_score = self._fuzzy_match_score(
-                    query_terms,
-                    self._normalize_text(data.get('description', ''))
-                )
-                
-                # Weighted scoring
+                title_score = self._fuzzy_match_score(query_terms, self._normalize_text(data.get('title', '')))
+                topic_score = self._fuzzy_match_score(query_terms, self._normalize_text(data.get('topic', '')))
+                desc_score = self._fuzzy_match_score(query_terms, self._normalize_text(data.get('description', '')))
                 total_score = (
-                    title_score * 0.5 +    # Title matches are most important
-                    topic_score * 0.3 +    # Topic matches are second
-                    desc_score * 0.2       # Description matches are third
+                    title_score * 0.5 +
+                    topic_score * 0.3 +
+                    desc_score * 0.2
                 )
-                
                 if total_score >= threshold:
                     results.append({
                         'id': doc.id,
@@ -1579,11 +855,8 @@ class StorageService:
                         'match_type': 'fuzzy',
                         'score': total_score
                     })
-            
-            # Sort by score
             results.sort(key=lambda x: x['score'], reverse=True)
             return results
-            
         except Exception as e:
             logging.error(f"Error in fuzzy search: {e}")
             return []
@@ -1653,11 +926,11 @@ class StorageService:
         }
 
     async def _semantic_search(self, query: str, **kwargs) -> List[Dict]:
-        """Placeholder for future semantic search implementation"""
+        """Placeholder for future semantic search implementation (async)."""
         logging.warning("Semantic search not yet implemented")
         return []
 
-    async def check_articles_exist(self, article_ids: List[str]) -> Dict[str, bool]:
+    def check_articles_exist(self, article_ids: List[str]) -> Dict[str, bool]:
         """
         Check if a list of article IDs exist in the Firestore collection.
 
@@ -1768,7 +1041,7 @@ class StorageService:
             logging.error(f"Database error saving analysis: {e}")
             raise StorageException(f"Failed to save analysis: {str(e)}")
 
-    async def get_saved_analyses(self, limit: int = 10, offset: int = 0, sort_by: str = 'timestamp', sort_order: str = 'desc') -> Dict:
+    def get_saved_analyses(self, limit: int = 10, offset: int = 0, sort_by: str = 'timestamp', sort_order: str = 'desc') -> Dict:
         """Get a list of saved analyses with pagination and sorting."""
         try:
             if not self.db or isinstance(self.db, MagicMock):
@@ -1834,7 +1107,7 @@ class StorageService:
             logging.error(f"Error getting saved analyses: {e}")
             raise StorageException(f"Failed to retrieve saved analyses: {str(e)}")
 
-    async def get_saved_analysis(self, analysis_id: str) -> Optional[Dict]:
+    def get_saved_analysis(self, analysis_id: str) -> Optional[Dict]:
         """Get a specific saved analysis by ID."""
         try:
             if not self.db or isinstance(self.db, MagicMock):
@@ -1861,7 +1134,7 @@ class StorageService:
             logging.error(f"Error getting saved analysis {analysis_id}: {e}")
             raise StorageException(f"Failed to retrieve saved analysis {analysis_id}: {str(e)}")
 
-    async def delete_saved_analysis(self, analysis_id: str) -> bool:
+    def delete_saved_analysis(self, analysis_id: str) -> bool:
         """Delete a saved analysis by ID."""
         try:
             if not self.db or isinstance(self.db, MagicMock):
@@ -1876,10 +1149,118 @@ class StorageService:
                 return False # Indicate not found
 
             # Delete analysis
-            await doc_ref.delete()
+            doc_ref.delete()
             logging.info(f"Successfully deleted analysis {analysis_id}")
             return True
 
         except Exception as e:
             logging.error(f"Error deleting saved analysis {analysis_id}: {e}")
             raise StorageException(f"Failed to delete saved analysis {analysis_id}: {str(e)}")
+
+    async def get_articles(self, page=1, limit=10, topic=None, search_query=None, sort_by=None, sort_order=None):
+        """Get articles with optional pagination, topic filtering, and search (async)."""
+        from datetime import datetime, timedelta
+        from utils.date_utils import normalize_datetime
+        import logging
+        if search_query:
+            results = await self.enhanced_search(search_query)
+            # Optionally filter by topic
+            if topic and topic != 'All':
+                results = [a for a in results if a.get('metadata', {}).get('topic') == topic]
+            # Recency filter for search results
+            # (Optional: can be added if desired)
+            total = len(results)
+            start = (page - 1) * limit
+            end = start + limit
+            paginated = results[start:end]
+            return {
+                'articles': paginated,
+                'total': total
+            }
+        # Fallback to previous logic
+        all_articles = await self.get_all_articles()
+        if topic and topic != 'All':
+            all_articles = [a for a in all_articles if a.get('metadata', {}).get('topic') == topic]
+        # Recency filter unless all_time=true is in request args
+        try:
+            from quart import request
+            all_time = request.args.get('all_time', '').lower() == 'true'
+        except Exception:
+            all_time = False
+        if not all_time:
+            cutoff = datetime.utcnow() - timedelta(days=365 * 2)
+            def is_recent(article):
+                pub_date = article.get('metadata', {}).get('pub_date')
+                dt = normalize_datetime(pub_date)
+                return dt and dt >= cutoff
+            filtered_articles = [a for a in all_articles if is_recent(a)]
+            logging.info(f"Recency filter applied: {len(filtered_articles)} of {len(all_articles)} articles are recent.")
+            all_articles = filtered_articles
+        total = len(all_articles)
+        start = (page - 1) * limit
+        end = start + limit
+        paginated = all_articles[start:end]
+        return {
+            'articles': paginated,
+            'total': total
+        }
+
+    def _parse_date(self, date_str):
+        """Parse dates in various formats and return a datetime object. Falls back to current time if parsing fails."""
+        parsed = normalize_datetime(date_str)
+        return parsed if parsed else datetime.now()
+
+    def _format_date(self, dt):
+        """Format a datetime object as ISO string, or return as-is if already a string."""
+        if not dt:
+            return ""
+        if isinstance(dt, str):
+            return dt
+        try:
+            return dt.isoformat()
+        except Exception:
+            return str(dt)
+
+    async def get_topic_distribution(self):
+        """Return a dict of topic -> stats (count, percentage) for all articles."""
+        all_articles = await self.get_all_articles()
+        topic_counts = {}
+        for article in all_articles:
+            topic = article.get('metadata', {}).get('topic', 'Uncategorized')
+            topic_counts[topic] = topic_counts.get(topic, 0) + 1
+        total = sum(topic_counts.values())
+        result = {}
+        for topic, count in topic_counts.items():
+            result[topic] = {
+                'count': count,
+                'percentage': (count / total * 100) if total else 0.0
+            }
+        return result
+
+    async def cleanup_duplicate_articles(self):
+        """Remove duplicate articles by URL, keeping only one of each."""
+        articles = await self.get_all_articles()
+        seen_links = set()
+        duplicates_removed = 0
+        for article in articles:
+            link = article.get('metadata', {}).get('link')
+            if not link:
+                continue
+            if link in seen_links:
+                await self.delete_article(article['id'])
+                duplicates_removed += 1
+            else:
+                seen_links.add(link)
+        return {
+            'duplicates_removed': duplicates_removed,
+            'total_articles': len(articles)
+        }
+
+    async def get_articles_without_summaries(self) -> list:
+        """Return all articles that have full content but no summary."""
+        articles = await self.get_all_articles()
+        return [
+            article for article in articles
+            if article.get('metadata', {}).get('has_full_content')
+            and not article.get('metadata', {}).get('summary')
+        ]

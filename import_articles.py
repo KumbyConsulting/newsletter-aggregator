@@ -4,10 +4,11 @@ import logging
 from services.storage_service import StorageService
 from services.config_service import ConfigService
 
+storage_service = StorageService()  # Singleton instance
+
 async def import_articles():
     logging.basicConfig(level=logging.INFO)
     config = ConfigService()
-    storage = StorageService()
     
     print('Reading articles from CSV...')
     df = pd.read_csv(config.articles_file_path)
@@ -21,14 +22,14 @@ async def import_articles():
             print(f'  {key}: {value[:100] if isinstance(value, str) else value}')
     
     print('Storing articles in the database...')
-    success = await storage.batch_store_articles(articles)
+    success = await storage_service.batch_store_articles(articles)
     print(f'Import completed. Success: {success}')
     
     # Verify import with both methods
-    query_articles = await storage.query_articles('pharmaceutical', n_results=5)
+    query_articles = await storage_service.query_articles('pharmaceutical', n_results=5)
     print(f'Query articles found: {len(query_articles)}')
     
-    recent_articles = await storage.get_recent_articles(limit=5)
+    recent_articles = await storage_service.get_recent_articles(limit=5)
     print(f'Recent articles found: {len(recent_articles)}')
     
     if query_articles:

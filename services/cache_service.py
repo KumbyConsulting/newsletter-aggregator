@@ -12,19 +12,23 @@ from services.config_service import ConfigService
 import os
 from cachetools import TTLCache
 from services.constants import TOPICS
+try:
+    import redis.asyncio as aioredis
+except ImportError:
+    aioredis = None
 
 class CacheService:
-    """Thread-safe caching service with persistence and TTL support."""
+    """Thread-safe caching service with optional Redis backend and TTL support."""
     _instance = None
     _lock = threading.Lock()
     
-    def __new__(cls):
+    def __new__(cls, *args, **kwargs):
         if cls._instance is None:
             cls._instance = super(CacheService, cls).__new__(cls)
             cls._instance._initialized = False
         return cls._instance
     
-    def __init__(self):
+    def __init__(self, backend="memory", redis_url=None):
         if self._initialized:
             return
             
@@ -32,11 +36,19 @@ class CacheService:
         config_service = ConfigService()
         self.settings = config_service.settings
         
-        self._cache: Dict[str, Dict[str, Any]] = {}
-        self._locks: Dict[str, threading.Lock] = {}
-        self._ttl = self.settings.CACHE_TTL
+        self.backend = backend
+        self._lock = asyncio.Lock()
+        self._locks = {}  # Initialize namespace locks dictionary
+        if backend == "redis":
+            if aioredis is None:
+                raise ImportError("redis[async] is not installed. Please install with 'pip install redis[async]'.")
+            self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
+            self.redis = aioredis.from_url(self.redis_url, decode_responses=True)
+        else:
+            self._cache = {}
+        
         self._max_size = self.settings.CACHE_MAX_SIZE
-        self._global_lock = threading.Lock()
+        self._global_lock = threading.Lock()  # Remove this if not used elsewhere
         # Ensure CACHE_FILE_PATH has a default in ConfigSettings if not in .env
         self._persistence_file = Path(self.settings.CACHE_FILE_PATH)
         self._last_cleanup = time.time()
@@ -52,10 +64,10 @@ class CacheService:
     
     def _get_lock(self, namespace: str) -> threading.Lock:
         """Get or create a lock for a namespace."""
-        with self._global_lock:
-            if namespace not in self._locks:
-                self._locks[namespace] = threading.Lock()
-            return self._locks[namespace]
+        # Use asyncio.Lock for async code
+        if namespace not in self._locks:
+            self._locks[namespace] = asyncio.Lock()
+        return self._locks[namespace]
     
     def _maybe_cleanup(self) -> None:
         """Perform cleanup if needed."""
@@ -63,76 +75,79 @@ class CacheService:
         if current_time - self._last_cleanup > self._cleanup_interval:
             self.cleanup()
     
-    def get(self, key: str, namespace: str = "default") -> Optional[Any]:
+    async def get(self, key: str, namespace: str = "default") -> Optional[Any]:
         """Get a value from the cache."""
         self._maybe_cleanup()
         
-        with self._get_lock(namespace):
-            if namespace not in self._cache:
-                return None
-                
-            entry = self._cache[namespace].get(key)
-            if not entry:
-                return None
-                
-            value, expiry = entry
-            if expiry < time.time():
-                del self._cache[namespace][key]
-                return None
-                
-            return value
+        namespaced_key = f"{namespace}:{key}"
+        if self.backend == "redis":
+            value = await self.redis.get(namespaced_key)
+            return json.loads(value) if value else None
+        else:
+            async with self._lock:
+                entry = self._cache.get(namespaced_key)
+                if entry is None:
+                    return None
+                value, expires_at = entry
+                if expires_at and expires_at < asyncio.get_event_loop().time():
+                    del self._cache[namespaced_key]
+                    return None
+                return value
     
-    def set(self, key: str, value: Any, namespace: str = "default", ttl: Optional[int] = None) -> None:
+    async def set(self, key: str, value: Any, namespace: str = "default", ttl: Optional[int] = None) -> None:
         """Set a value in the cache."""
-        with self._get_lock(namespace):
-            if namespace not in self._cache:
-                self._cache[namespace] = {}
-                
-            # Use provided TTL or default
-            expiry = time.time() + (ttl if ttl is not None else self._ttl)
-            
-            # Enforce cache size limit
-            while len(self._cache[namespace]) >= self._max_size:
-                # Remove oldest entry
-                oldest_key = min(
-                    self._cache[namespace].keys(),
-                    key=lambda k: self._cache[namespace][k][1]
-                )
-                del self._cache[namespace][oldest_key]
-            
-            self._cache[namespace][key] = (value, expiry)
+        namespaced_key = f"{namespace}:{key}"
+        if self.backend == "redis":
+            value_str = json.dumps(value)
+            if ttl:
+                await self.redis.set(namespaced_key, value_str, ex=ttl)
+            else:
+                await self.redis.set(namespaced_key, value_str)
+        else:
+            async with self._lock:
+                expires_at = None
+                if ttl:
+                    expires_at = asyncio.get_event_loop().time() + ttl
+                self._cache[namespaced_key] = (value, expires_at)
     
-    def delete(self, key: str, namespace: str = "default") -> None:
+    async def delete(self, key: str, namespace: str = "default") -> None:
         """Delete a value from the cache."""
-        with self._get_lock(namespace):
-            if namespace in self._cache and key in self._cache[namespace]:
-                del self._cache[namespace][key]
+        namespaced_key = f"{namespace}:{key}"
+        if self.backend == "redis":
+            await self.redis.delete(namespaced_key)
+        else:
+            async with self._lock:
+                if namespaced_key in self._cache:
+                    del self._cache[namespaced_key]
     
     def clear(self, namespace: str = "default") -> None:
         """Clear all values in a namespace."""
-        with self._get_lock(namespace):
-            if namespace in self._cache:
-                self._cache[namespace].clear()
+        # Remove threading lock usage for in-memory cache
+        if self.backend == "redis":
+            # Not implemented for Redis
+            return
+        self._cache.clear()
     
     def cleanup(self) -> int:
         """Remove expired entries and return count of removed items."""
         removed = 0
         current_time = time.time()
         
-        with self._global_lock:
-            for namespace in list(self._cache.keys()):
-                with self._get_lock(namespace):
-                    cache = self._cache[namespace]
-                    expired_keys = [
-                        k for k, (_, expiry) in cache.items()
-                        if expiry < current_time
-                    ]
-                    for k in expired_keys:
-                        del cache[k]
-                        removed += 1
-                        
-            self._last_cleanup = current_time
-            
+        # Remove threading lock usage for in-memory cache
+        for namespace in list(self._cache.keys()):
+            lock = self._get_lock(namespace)
+            # Use async lock if needed elsewhere
+            cache = self._cache[namespace]
+            expired_keys = [
+                k for k, (_, expiry) in cache.items()
+                if expiry < current_time
+            ]
+            for k in expired_keys:
+                del cache[k]
+                removed += 1
+        
+        self._last_cleanup = current_time
+        
         return removed
     
     def _load_cache(self) -> None:
@@ -153,13 +168,19 @@ class CacheService:
             logging.error(f"Error loading cache: {e}")
     
     def _save_cache(self) -> None:
-        """Save cache to disk."""
+        """Save cache to disk with robust serialization."""
         try:
-            # Clean up expired entries before saving
             self.cleanup()
-            
+            serializable_cache = {}
+            for key, (value, expires_at) in self._cache.items():
+                try:
+                    json.dumps(value)
+                    serializable_value = value
+                except Exception:
+                    serializable_value = str(value)
+                serializable_cache[key] = (serializable_value, expires_at)
             with open(self._persistence_file, 'w') as f:
-                json.dump(self._cache, f)
+                json.dump(serializable_cache, f)
             logging.info(f"Saved cache to {self._persistence_file}")
         except Exception as e:
             logging.error(f"Error saving cache: {e}")
@@ -167,41 +188,47 @@ class CacheService:
     def cache_decorator(self, namespace: str = "default", ttl: Optional[int] = None):
         """Decorator for caching function results."""
         def decorator(func):
-            @wraps(func)
-            async def async_wrapper(*args, **kwargs):
-                # Create cache key from function name and arguments
-                key = f"{func.__name__}:{str(args)}:{str(kwargs)}"
-                
-                # Try to get from cache
-                result = self.get(key, namespace)
-                if result is not None:
-                    return result
-                
-                # If not in cache, call function and cache result
-                try:
+            if asyncio.iscoroutinefunction(func):
+                @wraps(func)
+                async def async_wrapper(*args, **kwargs):
+                    key = f"{func.__name__}:{args}:{kwargs}"
+                    result = await self.get(key, namespace)
+                    if result is not None:
+                        # Defensive: If result is a tuple, log and return only the first element
+                        if isinstance(result, tuple):
+                            logging.warning(f"[cache_decorator] Cached value for {func.__name__} is a tuple. Returning only the first element.")
+                            return result[0]
+                        return result
                     result = await func(*args, **kwargs)
-                    self.set(key, result, namespace, ttl)
-                    return result
-                except Exception as e:
-                    logging.error(f"Error in cached function {func.__name__}: {e}")
-                    raise
-            
-            @wraps(func)
-            def sync_wrapper(*args, **kwargs):
-                # Create cache key from function name and arguments
-                key = f"{func.__name__}:{str(args)}:{str(kwargs)}"
-                
-                # Try to get from cache
-                result = self.get(key, namespace)
-                if result is not None:
-                    return result
-                
-                # If not in cache, call function and cache result
-                result = func(*args, **kwargs)
-                self.set(key, result, namespace, ttl)
-                return result
-            
-            return async_wrapper if asyncio.iscoroutinefunction(func) else sync_wrapper
+                    # If result is a tuple, only cache and return the first element
+                    if isinstance(result, tuple):
+                        logging.warning(f"[cache_decorator] Function {func.__name__} returned a tuple. Caching and returning only the first element.")
+                        cache_value = result[0]
+                    else:
+                        cache_value = result
+                    await self.set(key, cache_value, namespace, ttl)
+                    return cache_value
+                return async_wrapper
+            else:
+                @wraps(func)
+                def sync_wrapper(*args, **kwargs):
+                    key = f"{func.__name__}:{args}:{kwargs}"
+                    loop = asyncio.get_event_loop()
+                    result = loop.run_until_complete(self.get(key, namespace))
+                    if result is not None:
+                        if isinstance(result, tuple):
+                            logging.warning(f"[cache_decorator] Cached value for {func.__name__} is a tuple. Returning only the first element.")
+                            return result[0]
+                        return result
+                    result = func(*args, **kwargs)
+                    if isinstance(result, tuple):
+                        logging.warning(f"[cache_decorator] Function {func.__name__} returned a tuple. Caching and returning only the first element.")
+                        cache_value = result[0]
+                    else:
+                        cache_value = result
+                    loop.run_until_complete(self.set(key, cache_value, namespace, ttl))
+                    return cache_value
+                return sync_wrapper
         return decorator
 
     async def get_cached_summary(self, text_hash):
@@ -214,3 +241,24 @@ class CacheService:
     def get_topic_keywords(self):
         """Cache topic keywords in memory"""
         return TOPICS 
+
+    # Optionally, add a ping method for health checks
+    async def ping(self):
+        if self.backend == "redis":
+            try:
+                pong = await self.redis.ping()
+                return pong
+            except Exception as e:
+                logging.error(f"Redis ping failed: {e}")
+                return False
+        return True
+
+    # Optionally, add a clear method for testing/dev
+    async def clear(self):
+        if self.backend == "redis":
+            await self.redis.flushdb()
+        else:
+            async with self._lock:
+                self._cache.clear()
+                # self._ttl.clear()  # Remove unused self._ttl
+ 

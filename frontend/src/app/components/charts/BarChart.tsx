@@ -31,12 +31,22 @@ const BarChart: React.FC<BarChartProps> = ({
 
   // Find max value for scaling
   const maxValue = Math.max(...data.map(item => item.value));
-  
+  if (maxValue <= 0) {
+    return (
+      <Card className="chart-card">
+        <Empty description="No positive data to display" />
+      </Card>
+    );
+  }
+
   return (
     <Card className="chart-card" bordered={false}>
       <Title level={5} className="chart-title">Topic Distribution</Title>
-      
-      <div style={{ height: height - 80, position: 'relative', marginTop: 20 }}>
+      <div
+        style={{ height: height - 80, position: 'relative', marginTop: 20 }}
+        role="region"
+        aria-label="Bar chart of topic distribution"
+      >
         <div className="chart-y-axis">
           {[...Array(5)].map((_, i) => {
             const value = Math.round(maxValue * (4 - i) / 4);
@@ -47,22 +57,17 @@ const BarChart: React.FC<BarChartProps> = ({
             );
           })}
         </div>
-        
         <div className="bar-chart-container">
           {data.map((item, index) => {
             const barHeight = (item.value / maxValue) * (height - 160);
-            
-            // Generate gradient background
-            const gradientId = `barGradient-${index}`;
-            
             return (
               <div key={index} className="bar-chart-column">
-                <Tooltip 
+                <Tooltip
                   title={
                     <div className="chart-tooltip">
                       <div className="tooltip-title">{item.name}</div>
                       <div className="tooltip-item">
-                        <span>Count:</span> 
+                        <span>Count:</span>
                         <span className="tooltip-value">{item.value}</span>
                       </div>
                       <div className="tooltip-item">
@@ -72,27 +77,23 @@ const BarChart: React.FC<BarChartProps> = ({
                     </div>
                   }
                 >
-                  <div className="bar-chart-bar-container">
-                    <svg width="0" height="0">
-                      <defs>
-                        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor={item.fill} stopOpacity={0.8} />
-                          <stop offset="100%" stopColor={item.fill} stopOpacity={0.4} />
-                        </linearGradient>
-                      </defs>
-                    </svg>
-                    <div 
-                      className="bar-chart-bar" 
-                      style={{ 
+                  <div
+                    className="bar-chart-bar-container"
+                    role="presentation"
+                  >
+                    <div
+                      className="bar-chart-bar"
+                      style={{
                         height: `${barHeight}px`,
-                        background: `url(#${gradientId})`,
-                        backgroundColor: item.fill 
+                        backgroundColor: item.fill,
                       }}
+                      role="img"
+                      aria-label={`${item.name}: ${item.value} articles (${item.percentage.toFixed(1)}%)`}
                     />
                   </div>
                 </Tooltip>
-                <Text 
-                  className="bar-chart-label" 
+                <Text
+                  className="bar-chart-label"
                   ellipsis={{ tooltip: item.name }}
                 >
                   {item.name}
@@ -101,7 +102,6 @@ const BarChart: React.FC<BarChartProps> = ({
             );
           })}
         </div>
-        
         <div className="chart-x-axis">
           <Text type="secondary">Topics</Text>
         </div>

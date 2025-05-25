@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Card, 
   Typography, 
@@ -56,67 +56,57 @@ export default function UpdateStatus({ visible, onClose }: UpdateStatusProps) {
   const [metrics, setMetrics] = useState<ScrapingMetrics | null>(null);
   const [showMetrics, setShowMetrics] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [pollingInterval, setPollingInterval] = useState(2000); // Start with 2 seconds
-  const maxPollingInterval = 10000; // Max 10 seconds
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!visible) return;
 
-    // Initial status check
-    fetchUpdateStatus();
+    // Helper to connect WebSocket
+    const connectWS = () => {
+      // Use correct protocol for current page
+      const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${protocol}://${window.location.host}/ws/status`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setStatusData(data);
+        } catch (e) {
+          // Ignore parse errors
+        }
+      };
+      ws.onerror = () => {
+        ws.close();
+      };
+      ws.onclose = () => {
+        wsRef.current = null;
+        // Attempt to reconnect after 2 seconds if still visible
+        if (visible && !reconnectTimeout.current) {
+          reconnectTimeout.current = setTimeout(() => {
+            reconnectTimeout.current = null;
+            connectWS();
+          }, 2000);
+        }
+      };
+    };
+
+    connectWS();
     fetchScrapingMetrics();
 
-    let intervalId: NodeJS.Timeout | null = null;
-    
-    // Dynamic polling function
-    const pollStatus = () => {
-      if (statusData.in_progress) {
-        fetchUpdateStatus();
-        
-        // Adjust polling interval based on progress
-        if (statusData.progress > 0) {
-          // As progress increases, increase polling interval to reduce server load
-          const newInterval = Math.min(
-            maxPollingInterval,
-            2000 + (statusData.progress / 100) * 8000
-          );
-          setPollingInterval(newInterval);
-        }
-      }
-    };
-
-    // Set up polling interval with dynamic interval
-    intervalId = setInterval(pollStatus, pollingInterval);
-
-    // Cleanup function
     return () => {
-      if (intervalId) clearInterval(intervalId);
-    };
-  }, [visible, statusData.in_progress, statusData.progress, pollingInterval]);
-
-  const fetchUpdateStatus = async () => {
-    try {
-      const data = await getUpdateStatus();
-      setStatusData(data);
-
-      // If update is complete, fetch final metrics
-      if (data.in_progress === false && statusData.in_progress === true) {
-        fetchScrapingMetrics();
-        
-        // Show appropriate message based on status
-        if (data.status === 'completed') {
-          message.success('Update completed successfully!');
-        } else if (data.status === 'failed') {
-          message.error(`Update failed: ${data.error || 'Unknown error'}`);
-        } else if (data.status.includes('warnings') || data.status.includes('errors')) {
-          message.warning('Update completed with some issues.');
-        }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
-    } catch (error) {
-      console.error('Error fetching update status:', error);
-      message.error('Failed to fetch update status');
-    }
-  };
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+        reconnectTimeout.current = null;
+      }
+    };
+  }, [visible]);
 
   const fetchScrapingMetrics = async () => {
     try {

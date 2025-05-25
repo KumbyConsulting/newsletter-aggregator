@@ -15,6 +15,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 import aiohttp
 import math
 import httpx
+from utils.date_utils import normalize_datetime
 
 # Update Vertex AI imports to use stable API
 from google.cloud import aiplatform
@@ -31,12 +32,12 @@ class PromptTemplate(Enum):
     As a pharmaceutical industry expert, please answer this question:
     Question: {query}
     
-    Important: Your training data only goes up to November 2023, but the following context contains pharmaceutical articles with information that may be more recent (up to March 2025). Consider this information as accurate and up-to-date.
+    Important: Your training data only goes up to November 2024, but the following context contains pharmaceutical articles with information that may be more recent (up to March 2025). Consider this information as accurate and up-to-date.
     
     Context: {context}
     
     Base your answer primarily on the provided context. If the context doesn't contain enough information, 
-    you can use your general knowledge but clearly indicate when you're doing so, and note that your general knowledge may be outdated if discussing events after November 2023.
+    you can use your general knowledge but clearly indicate when you're doing so, and note that your general knowledge may be outdated if discussing events after November 2024.
     
     {output_format}
     Include citations to specific articles where appropriate using [Article X] notation.
@@ -46,7 +47,7 @@ class PromptTemplate(Enum):
     Please summarize the following pharmaceutical text:
     Text: {text}
     
-    Important: Your training data only goes up to November 2023, but this content may contain more recent information (up to March 2025). Consider this information as accurate and up-to-date.
+    Important: Your training data only goes up to November 2024, but this content may contain more recent information (up to March 2025). Consider this information as accurate and up-to-date.
     
     Additional context: {context}
     
@@ -54,7 +55,7 @@ class PromptTemplate(Enum):
     1. Key findings or announcements
     2. Industry impact
     3. Regulatory implications (if any)
-    4. Timeline relevance (is this new information since 2023?)
+    4. Timeline relevance (is this new information since 2024?)
     
     {output_format}
     If this information updates or contradicts your training data, explicitly highlight what's new.
@@ -65,19 +66,19 @@ class PromptTemplate(Enum):
     TOPIC_ANALYSIS = """
     Analyze the pharmaceutical industry trends on this topic: {topic}
     
-    Important: Your training data only goes up to November 2023, but the following articles contain information that may be more recent (up to March 2025). Consider this information as accurate and up-to-date.
+    Important: Your training data only goes up to November 2024, but the following articles contain information that may be more recent (up to March 2025). Consider this information as accurate and up-to-date.
     
     Articles for analysis:
     {context}
     
     Provide a comprehensive analysis including:
-    1. Key developments in this area since 2023
+    1. Key developments in this area since 2024
     2. Regulatory changes and implications 
     3. Market impact and industry responses
     4. Future outlook based on these trends
     
     {output_format}
-    Include citations to specific articles using [Article X] notation. Clearly distinguish between information from the provided articles and your pre-2023 knowledge.
+    Include citations to specific articles using [Article X] notation. Clearly distinguish between information from the provided articles and your pre-2024 knowledge.
     """
     
     COMPREHENSIVE_ANALYSIS = """
@@ -89,7 +90,7 @@ class PromptTemplate(Enum):
     Topic: {topic}
     Date: {date}
     
-    Important: Your training data goes up to November 2023, but you have access to more recent information through the provided context. Consider all information as accurate and up-to-date.
+    Important: Your training data goes up to November 2024, but you have access to more recent information through the provided context. Consider all information as accurate and up-to-date.
     
     Related Articles Context:
     {context}
@@ -108,7 +109,7 @@ class PromptTemplate(Enum):
     6. Action Points for Stakeholders
     
     Format your analysis in markdown. Include citations to specific articles using [Article X] notation.
-    Clearly distinguish between information from the provided article, related context, and your pre-2023 knowledge.
+    Clearly distinguish between information from the provided article, related context, and your pre-2024 knowledge.
     """
 
 @dataclass
@@ -751,7 +752,8 @@ class AIService:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    articles = await self.storage_service.query_articles(query, n_results=5)
+                    loop = asyncio.get_event_loop()
+                    articles = await loop.run_in_executor(None, lambda: self.storage_service.query_articles(query, n_results=5))
                     # Store articles as instance attribute for source extraction
                     self.relevant_articles = articles
                     break
@@ -803,9 +805,9 @@ class AIService:
             # Get relevant articles with retry logic and timeout
             articles = []
             try:
-                # Set shorter timeout for article retrieval
+                loop = asyncio.get_event_loop()
                 articles = await asyncio.wait_for(
-                    self.storage_service.query_articles(query, n_results=4),  # Reduced from 5 to 4
+                    loop.run_in_executor(None, lambda: self.storage_service.query_articles(query, n_results=4)),
                     timeout=3  # Very short timeout for article query
                 )
             except asyncio.TimeoutError:
@@ -1019,92 +1021,12 @@ class AIService:
         """Helper method to parse dates in various formats"""
         if not date_str:
             return "Date unknown"
-            
         try:
-            # Handle numeric timestamp (including NaN check)
-            if isinstance(date_str, (int, float)):
-                if not isinstance(date_str, bool) and not math.isnan(float(date_str)):
-                    date_obj = datetime.fromtimestamp(float(date_str))
-                    is_valid, result = self._validate_date(date_obj, article_index)
-                    return result
-                return "Date unknown"
-                
-            if not isinstance(date_str, str):
-                return "Date unknown"
-                
-            date_str = date_str.strip()
-            
-            # Try parsing RFC format first (handles timezone)
-            try:
-                from email.utils import parsedate_to_datetime
-                date_obj = parsedate_to_datetime(date_str)
-                is_valid, result = self._validate_date(date_obj, article_index)
+            parsed = normalize_datetime(date_str)
+            if parsed:
+                is_valid, result = self._validate_date(parsed, article_index)
                 return result
-            except (TypeError, ValueError):
-                pass
-            
-            # Try ISO format
-            try:
-                date_obj = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-                is_valid, result = self._validate_date(date_obj, article_index)
-                return result
-            except ValueError:
-                pass
-                
-            # List of date formats to try
-            date_formats = [
-                # RFC 2822 and variations
-                ('%a, %d %b %Y %H:%M:%S %z', True),  # RFC 2822
-                ('%a, %d %b %Y %H:%M:%S %Z', True),  # RFC 2822 with timezone name
-                ('%a, %d %b %Y %H:%M:%S', False),    # RFC 2822 without timezone
-                ('%a, %m/%d/%Y - %H:%M', False),     # Wed, 03/26/2025 - 08:23
-                ('%a, %d/%m/%Y - %H:%M', False),     # Wed, 26/03/2025 - 08:23
-                ('%a, %m/%d/%Y %H:%M', False),       # Wed, 03/26/2025 08:23
-                ('%a %m/%d/%Y - %H:%M', False),      # Wed 03/26/2025 - 08:23
-                ('%a, %m/%d/%Y', False),             # Wed, 03/26/2025
-                
-                # Common formats
-                ('%m/%d/%Y', False),                 # 03/26/2025
-                ('%d/%m/%Y', False),                 # 26/03/2025
-                ('%Y-%m-%d', False),                 # 2025-03-26
-                ('%B %d, %Y', False),                # March 26, 2025
-                ('%d %B %Y', False),                 # 26 March 2025
-                ('%d-%b-%Y', False),                 # 26-Mar-2025
-                ('%Y%m%d', False),                   # 20250326
-                
-                # With time components
-                ('%m/%d/%Y %H:%M:%S', False),       # 03/26/2025 08:23:45
-                ('%Y-%m-%d %H:%M:%S', False),       # 2025-03-26 08:23:45
-                ('%d.%m.%Y %H:%M', False),          # 26.03.2025 08:23
-            ]
-            
-            # Try each format
-            for date_format, has_timezone in date_formats:
-                try:
-                    parsed_str = date_str
-                    if has_timezone:
-                        # Handle both comma and no-comma cases
-                        if ',' in parsed_str:
-                            parsed_str = parsed_str.split(',')[1].strip()
-                        else:
-                            # Try to remove day name without comma
-                            parts = parsed_str.split()
-                            if len(parts) > 1:
-                                parsed_str = ' '.join(parts[1:])
-                    
-                    # Remove everything after hyphen if present
-                    if ' - ' in parsed_str:
-                        parsed_str = parsed_str.split(' - ')[0].strip()
-                    
-                    date_obj = datetime.strptime(parsed_str, date_format)
-                    is_valid, result = self._validate_date(date_obj, article_index)
-                    return result
-                except ValueError:
-                    continue
-            
-            logging.warning(f"Error parsing date for article {article_index}: Unrecognized format: {date_str}")
             return "Date unknown"
-            
         except Exception as e:
             logging.warning(f"Error parsing date for article {article_index}: {str(e)}")
             return "Date unknown"
@@ -1145,11 +1067,9 @@ class AIService:
                     # Format date for readability if available
                     date_str = ""
                     if pub_date:
-                        # Try to standardize date format
                         try:
-                            date_obj = datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
-                            # Format as YYYY-MM-DD
-                            date_str = date_obj.strftime('%Y-%m-%d')
+                            date_obj = normalize_datetime(pub_date)
+                            date_str = date_obj.strftime('%Y-%m-%d') if date_obj else pub_date
                         except Exception:
                             date_str = pub_date
                     
@@ -1586,7 +1506,7 @@ URL: {chunk['url']}
             context = ""
             if topic_articles:
                 # Track newest article date for time context
-                newest_date = datetime(2023, 11, 1)  # Default to training cutoff
+                newest_date = datetime(2024, 11, 1)  # Default to training cutoff
                 context = "Here are some similar articles for context:\n\n"
                 
                 for i, article in enumerate(topic_articles):
@@ -1617,7 +1537,7 @@ URL: {chunk['url']}
                     context += f"Summary: {metadata.get('summary', 'No summary available')}\n\n"
                 
                 # Add temporal context if we have newer articles
-                if newest_date > datetime(2023, 11, 1):
+                if newest_date > datetime(2024, 11, 1):
                     context += f"\nNote: Some of these articles contain information as recent as {newest_date.strftime('%B %Y')}, which is beyond the AI's training data cutoff.\n\n"
             
             # Prepare prompt
@@ -1641,7 +1561,7 @@ URL: {chunk['url']}
         """Generate analysis of a specific pharmaceutical industry topic
         
         Provides an in-depth analysis of trends, developments, and outlook for a specific topic
-        with temporal awareness of pre and post-2023 information.
+        with temporal awareness of pre and post-2024 information.
         
         Args:
             topic: The pharmaceutical topic to analyze
@@ -1651,7 +1571,8 @@ URL: {chunk['url']}
         """
         try:
             # Get relevant articles for this topic
-            articles = await self.storage_service.query_articles(topic, n_results=8)
+            loop = asyncio.get_event_loop()
+            articles = await loop.run_in_executor(None, lambda: self.storage_service.query_articles(topic, n_results=8))
             self.relevant_articles = articles
             
             # Use more articles for topic analysis (8 instead of 5)
@@ -2036,6 +1957,45 @@ URL: {chunk['url']}
             logging.error(f"Error extracting sources: {e}")
             return []
 
+    async def generate_weekly_recap(self, articles: List[Dict]) -> Dict:
+        """
+        Generate an AI-powered weekly recap from a list of articles.
+        Args:
+            articles: List of article dicts (with 'metadata' containing 'title', 'summary', 'link')
+        Returns:
+            Dict with 'recapSummary' and 'highlights' (list of {title, url})
+        """
+        try:
+            # Build context string from articles
+            context_lines = []
+            highlights = []
+            for i, a in enumerate(articles):
+                m = a.get('metadata', {})
+                title = m.get('title', '').strip()
+                summary = m.get('summary', '').strip()
+                url = m.get('link', '').strip()
+                if title:
+                    context_lines.append(f"Article {i+1}: {title}\nSummary: {summary}\nURL: {url}\n")
+                    if url:
+                        highlights.append({'title': title, 'url': url})
+            context = '\n'.join(context_lines)
+            if not context:
+                return {'recapSummary': 'No major events or trends this week.', 'highlights': []}
+            # Compose prompt
+            prompt = (
+                "You are an expert news analyst. Summarize the key events, trends, and takeaways from the following articles published this week. "
+                "Focus on what is new, important, or signals a shift. Provide a concise summary (2-4 sentences) and 3-5 highlight articles.\n\n"
+                f"Articles:\n{context}\n\nSummary:"
+            )
+            # Generate summary
+            response = await self.model.generate_content(prompt)
+            summary = response.text.strip() if hasattr(response, 'text') else str(response)
+            # Limit highlights to 5
+            return {'recapSummary': summary, 'highlights': highlights[:5]}
+        except Exception as e:
+            logging.error(f"Error generating weekly recap: {e}")
+            return {'recapSummary': 'Error generating weekly recap.', 'highlights': []}
+
 class PromptLibrary:
     """Library of specialized prompts for pharmaceutical industry analysis with structured output support"""
     
@@ -2146,7 +2106,7 @@ class PromptLibrary:
        - Potential challenges
        - Timeline projections
     
-    Note any significant developments or changes since November 2023.
+    Note any significant developments or changes since November 2024.
     
     {output_format}
     """
@@ -2197,7 +2157,7 @@ class PromptLibrary:
        - Lifecycle management opportunities
        - Generic entry implications
     
-    Consider recent legal precedents and regulatory changes since November 2023.
+    Consider recent legal precedents and regulatory changes since November 2024.
     
     {output_format}
     """
@@ -2248,7 +2208,7 @@ class PromptLibrary:
        - Efficiency opportunities
        - Comparative advantages
     
-    Include recent supply chain disruptions and regulatory changes since November 2023.
+    Include recent supply chain disruptions and regulatory changes since November 2024.
     
     {output_format}
     """
@@ -2373,7 +2333,7 @@ class KumbyAI(AIService):
             super().__init__(storage_service)
             self.industry_context = {
                 "domain": "pharmaceutical",
-                "training_cutoff": "November 2023",
+                "training_cutoff": "November 2024",
                 "capabilities": [
                     "regulatory_analysis",
                     "market_trends",

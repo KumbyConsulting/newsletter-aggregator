@@ -26,6 +26,10 @@ import {
   SortAscendingOutlined,
   SortDescendingOutlined,
   ReloadOutlined,
+  DashboardOutlined,
+  FireOutlined,
+  CalendarOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import debounce from 'lodash/debounce';
 import dynamic from 'next/dynamic';
@@ -36,7 +40,14 @@ import {
   getArticles as fetchArticlesService, 
   getTopicStats, 
   Article as ApiArticle,
-  mapCoreToArticle
+  mapCoreToArticle,
+  getTLDR,
+  getDailyTrends,
+  getWeeklyTrends,
+  getWeeklyRecap,
+  WeeklyRecapData,
+  TLDRData,
+  getSources,
 } from '@/services/api';
 import { Article, ArticlesApiResponse, TopicStat, TopicsApiResponse, ApiErrorResponse } from '@/types';
 
@@ -48,6 +59,8 @@ import TopicDistribution from './components/TopicDistribution';
 import ErrorDisplay from './components/ErrorDisplay';
 import ClientInteractions from './components/ClientInteractions';
 import { SearchOptions } from './components/AdvancedSearchControls';
+import TLDRCard from './components/TLDRCard';
+import WeeklyRecap from './components/WeeklyRecap';
 
 const { Content } = Layout;
 const { Title, Text, Paragraph } = Typography;
@@ -106,6 +119,18 @@ function stableStringify(obj: any) {
   );
 }
 
+// Helper to validate TLDR data
+function isValidTLDR(data: any): boolean {
+  return (
+    data &&
+    typeof data.summary === 'string' && data.summary.trim() &&
+    Array.isArray(data.highlights) &&
+    Array.isArray(data.sources) &&
+    data.highlights.every((h: any) => h.title && h.url) &&
+    data.sources.every((s: any) => s.title && s.url)
+  );
+}
+
 // Main page component - Now a Client Component
 export default function Home() {
   const router = useRouter();
@@ -120,6 +145,13 @@ export default function Home() {
   const [searchParamsObj, setSearchParamsObj] = useState<URLSearchParams | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const MAX_RETRIES = 2;
+  const [tldr, setTldr] = useState<TLDRData | null>(null);
+  const [dailyTrends, setDailyTrends] = useState<string[]>([]);
+  const [weeklyTrends, setWeeklyTrends] = useState<string[]>([]);
+  const [weeklyRecap, setWeeklyRecap] = useState<WeeklyRecapData | null>(null);
+  const [weeklyRecapError, setWeeklyRecapError] = useState<string | null>(null);
+  const [sources, setSources] = useState<{ name: string; count: number }[]>([]);
+  const [currentSource, setCurrentSource] = useState<string>('');
 
   // --- Derive all search/filter/sort state from searchParamsObj ---
   const currentPage = safeParseInt(searchParamsObj?.get('page') || '1', 1);
@@ -265,6 +297,41 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTopic, currentSearch, currentSortBy, currentSortOrder, currentLimit, currentPage, searchParamsObj, retryCount]);
 
+  useEffect(() => {
+    getTLDR().then(setTldr);
+    getDailyTrends().then(data => setDailyTrends(data.topics));
+    getWeeklyTrends().then(data => setWeeklyTrends(data.topics));
+    getWeeklyRecap()
+      .then(data => {
+        // Defensive: check for correct shape
+        if (
+          typeof data?.recapSummary === 'string' &&
+          Array.isArray(data?.highlights) &&
+          data.highlights.every(
+            h => typeof h.title === 'string' && typeof h.url === 'string'
+          )
+        ) {
+          setWeeklyRecap(data);
+          setWeeklyRecapError(null);
+        } else {
+          setWeeklyRecap(null);
+          setWeeklyRecapError('Invalid data format from server.');
+          console.error('WeeklyRecap: Invalid data format', data);
+        }
+      })
+      .catch(err => {
+        setWeeklyRecap(null);
+        setWeeklyRecapError(
+          err?.message || 'Failed to fetch weekly recap. Please try again later.'
+        );
+        console.error('WeeklyRecap: Error fetching data', err);
+      });
+    // Fetch sources for the filter dropdown
+    getSources().then(res => {
+      if (res && res.sources) setSources(res.sources);
+    });
+  }, []);
+
   // --- Handlers ---
   function handleSearchInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     setSearchValue(e.target.value);
@@ -333,6 +400,18 @@ export default function Home() {
     setRetryCount(c => c + 1);
   }
 
+  function handleSourceChange(value: string) {
+    setCurrentSource(value);
+    const params = new URLSearchParams((searchParamsRef.current || new URLSearchParams()).toString());
+    if (value) {
+      params.set('source', value);
+    } else {
+      params.delete('source');
+    }
+    params.set('page', '1');
+    router.push(`/?${params.toString()}`);
+  }
+
   // --- Memoized components (only for expensive renders) ---
   // (Removed unnecessary useMemo for simple components)
 
@@ -347,37 +426,67 @@ export default function Home() {
           {(searchParams) => {
             useEffect(() => {
               setSearchParamsObj(searchParams);
+              setCurrentSource(searchParams.get('source') || '');
             }, [searchParams]);
+
             return (
               <Content className="main-content">
-                <div className="container" style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-                  <Card className="header-card mb-6">
-                    <Row justify="space-between" align="middle" gutter={[16, 16]}>
-                      <Col xs={24} md={16}>
-                        <Title level={2} style={{ marginBottom: 8, color: 'var(--primary-color, #00405e)' }}>
-                          Kumby Consulting Newsboard
-                        </Title>
-                        <Paragraph className="tagline" style={{ color: 'var(--secondary-color, #7f9360)' }}>
-                          Stay updated with the latest industry news, research, and regulatory developments across various business sectors.
-                        </Paragraph>
-                      </Col>
-                    </Row>
-                  </Card>
-                  <Card className="search-form mb-6">
-                    <div className="search-form-header mb-4 flex justify-between items-center">
+                <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+                  {/* Summary Section */}
+                  <Row gutter={[24, 24]} className="mb-8">
+                    <Col xs={24} lg={16}>
+                      <Card className="h-full">
+                        <div className="flex items-center mb-4">
+                          <DashboardOutlined className="text-2xl text-blue-500 mr-2" />
+                          <Title level={4} className="m-0">TL;DR</Title>
+                        </div>
+                        {tldr && isValidTLDR(tldr) ? (
+                          <TLDRCard summary={tldr.summary} highlights={tldr.highlights} sources={tldr.sources} />
+                        ) : (
+                          <div className="text-gray-400 italic min-h-[40px]">
+                            No summary available today. The news gods are silent.
+                          </div>
+                        )}
+                      </Card>
+                    </Col>
+                    <Col xs={24} lg={8}>
+                      <Card className="h-full">
+                        <div className="flex items-center mb-4">
+                          <CalendarOutlined className="text-2xl text-green-500 mr-2" />
+                          <Title level={4} className="m-0">Weekly Recap</Title>
+                        </div>
+                        {weeklyRecapError ? (
+                          <div className="text-red-500 min-h-[60px]">{weeklyRecapError}</div>
+                        ) : weeklyRecap ? (
+                          <WeeklyRecap
+                            recapSummary={weeklyRecap.recapSummary}
+                            highlights={weeklyRecap.highlights}
+                          />
+                        ) : (
+                          <div className="min-h-[60px]">Loading...</div>
+                        )}
+                      </Card>
+                    </Col>
+                  </Row>
+
+                  {/* Search Section */}
+                  <Card className="mb-8">
+                    <div className="flex justify-between items-center mb-6">
                       <div>
-                        <Title level={4} style={{ marginBottom: 4 }}>Search Articles</Title>
+                        <Title level={4} className="mb-1">Search Articles</Title>
                         <Text type="secondary">Search through {pagination.total} articles</Text>
                       </div>
                       <Button 
                         type="link" 
                         icon={<FilterOutlined />} 
                         onClick={toggleAdvancedSearch}
+                        className="flex items-center"
                       >
                         {advancedSearchVisible ? 'Simple Search' : 'Advanced Search'}
                       </Button>
                     </div>
-                    <Row gutter={16}>
+
+                    <Row gutter={[16, 16]}>
                       <Col xs={24} md={18} lg={20}>
                         <Search
                           placeholder="Enter keywords, phrases, or article titles..."
@@ -392,39 +501,43 @@ export default function Home() {
                             fields: (searchParams.get('fields') ?? '').split(',').filter(Boolean)
                           })}
                           loading={isLoading}
+                          className="w-full"
                         />
-                        <div className="mt-1 text-xs text-gray-500">
-                          {advancedSearchVisible ? (
-                            'Use advanced options below to refine your search'
-                          ) : (
-                            'Use quotes for exact phrases, OR for alternatives, - to exclude terms'
-                          )}
+                        <div className="mt-2 text-xs text-gray-500">
+                          {advancedSearchVisible 
+                            ? 'Use advanced options below to refine your search'
+                            : 'Use quotes for exact phrases, OR for alternatives, - to exclude terms'
+                          }
                         </div>
                       </Col>
-                      <Col xs={24} md={6} lg={4} style={{ display: 'flex', alignItems: 'flex-start' }}>
+                      <Col xs={24} md={6} lg={4}>
                         <Button 
                           icon={<ReloadOutlined />} 
                           size="large" 
                           onClick={resetFilters}
-                          style={{ width: '100%' }}
+                          className="w-full"
                         >
                           Reset
                         </Button>
                       </Col>
                     </Row>
+
                     {advancedSearchVisible && (
-                      <DynamicAdvancedSearchControls 
-                        visible={advancedSearchVisible}
-                        onSearch={handleSearch}
-                        currentSearchValue={searchValue}
-                      />
+                      <div className="mt-4">
+                        <DynamicAdvancedSearchControls 
+                          visible={advancedSearchVisible}
+                          onSearch={handleSearch}
+                          currentSearchValue={searchValue}
+                        />
+                      </div>
                     )}
-                    <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-                      <Col xs={24} sm={12} md={6}>
-                        <div>
+
+                    <Row gutter={[16, 16]} className="mt-6">
+                      <Col xs={24} sm={12} md={8}>
+                        <div className="space-y-1">
                           <Text strong>Topic</Text>
                           <Select
-                            style={{ width: '100%', marginTop: 4 }}
+                            className="w-full"
                             placeholder="Select a topic"
                             value={currentTopic === 'All' ? undefined : currentTopic}
                             onChange={handleTopicChange}
@@ -439,12 +552,33 @@ export default function Home() {
                           </Select>
                         </div>
                       </Col>
-                      <Col xs={24} sm={12} md={6}>
-                        <div>
+                      <Col xs={24} sm={12} md={8}>
+                        <div className="space-y-1">
+                          <Text strong>Source</Text>
+                          <Select
+                            className="w-full"
+                            placeholder="Select a source"
+                            value={currentSource || undefined}
+                            onChange={handleSourceChange}
+                            allowClear
+                            showSearch
+                            optionFilterProp="children"
+                          >
+                            <Option value="">All Sources</Option>
+                            {sources.map((source) => (
+                              <Option key={source.name} value={source.name}>
+                                {source.name} ({source.count})
+                              </Option>
+                            ))}
+                          </Select>
+                        </div>
+                      </Col>
+                      <Col xs={24} sm={12} md={8}>
+                        <div className="space-y-1">
                           <Text strong>Sort By</Text>
-                          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                          <div className="flex gap-2">
                             <Select
-                              style={{ flex: 1 }}
+                              className="flex-1"
                               value={currentSortBy}
                               onChange={handleSortChange}
                             >
@@ -461,16 +595,17 @@ export default function Home() {
                         </div>
                       </Col>
                     </Row>
-                    {(currentTopic !== 'All' || currentSearch || searchParams.get('searchType')) && (
-                      <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+
+                    {/* Active Filters */}
+                    {(currentTopic !== 'All' || currentSource || currentSearch || searchParams.get('searchType')) && (
+                      <div className="flex flex-wrap gap-2 mt-4">
                         {currentSearch && (
                           <Tag 
-                            className="filter-tag search-tag"
+                            className="filter-tag search-tag flex items-center px-2 py-1"
                             closable 
                             onClose={() => handleSearch('')}
-                            style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
                           >
-                            <SearchOutlined style={{ marginRight: 4 }} /> 
+                            <SearchOutlined className="mr-1" /> 
                             {currentSearch}
                             {searchParams.get('searchType') && (
                               <span className="ml-1 text-xs">
@@ -481,30 +616,42 @@ export default function Home() {
                         )}
                         {currentTopic !== 'All' && (
                           <Tag 
-                            className="filter-tag topic-tag"
+                            className="filter-tag topic-tag flex items-center px-2 py-1"
                             closable 
                             onClose={() => handleTopicChange('All')}
-                            style={{ display: 'flex', alignItems: 'center', padding: '4px 8px' }}
                           >
-                            <FilterOutlined style={{ marginRight: 4 }} /> {currentTopic}
+                            <FilterOutlined className="mr-1" /> {currentTopic}
+                          </Tag>
+                        )}
+                        {currentSource && (
+                          <Tag
+                            className="filter-tag source-tag flex items-center px-2 py-1"
+                            closable
+                            onClose={() => handleSourceChange('')}
+                          >
+                            <FileTextOutlined className="mr-1" /> {currentSource}
                           </Tag>
                         )}
                       </div>
                     )}
                   </Card>
-                  <Card className="mb-6">
+
+                  {/* Topic Distribution */}
+                  <Card className="mb-8">
                     <Title level={4}>Topic Distribution</Title>
-                    <Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                    <Paragraph type="secondary" className="mb-4">
                       Distribution of articles across different topics
                     </Paragraph>
                     {isLoading ? (
-                      <div style={{ height: 200, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                      <div className="h-[200px] flex justify-center items-center">
                         <Skeleton active paragraph={{ rows: 5 }} />
                       </div>
                     ) : (
                       <TopicDistribution topics={topics} />
                     )}
                   </Card>
+
+                  {/* Article List */}
                   {fetchError && (
                     <ErrorDisplay 
                       error={fetchError.error} 
@@ -512,12 +659,14 @@ export default function Home() {
                       onRetry={handleRetry}
                     />
                   )}
+                  
                   <div className="articles-section">
-                    <Title level={4}>
+                    <Title level={4} className="mb-4">
                       {pagination.total} Articles Found
                       {currentSearch && <span> for "{currentSearch}"</span>}
                       {currentTopic !== 'All' && <span> in {currentTopic}</span>}
                     </Title>
+                    
                     {isLoading ? (
                       <div className="article-skeletons">
                         <Row gutter={[16, 16]}>
@@ -531,7 +680,13 @@ export default function Home() {
                         </Row>
                       </div>
                     ) : (
-                      <ArticlesGrid articles={articles} loading={isLoading} />
+                      <ArticlesGrid
+                        articles={articles}
+                        loading={isLoading}
+                        error={fetchError?.error}
+                        emptyMessage={fetchError ? fetchError.error : undefined}
+                        currentSearch={currentSearch}
+                      />
                     )}
                   </div>
                   <div style={{ margin: '32px 0' }}>

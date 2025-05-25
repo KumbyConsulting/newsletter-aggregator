@@ -34,6 +34,7 @@ import atexit
 from contextlib import contextmanager
 import calendar
 from services.constants import TOPICS
+from utils.date_utils import normalize_datetime
 
 # Import the WebCrawler implementation
 from web_crawler import WebCrawler
@@ -45,7 +46,7 @@ from crawler_integration import scrape_news_with_crawler
 config = ConfigService()
 cache_service = CacheService()
 rate_limiter = RateLimitingService()
-storage_service = StorageService()
+storage_service = StorageService()  # Singleton instance
 config_service = config  # Add this line to make config accessible as config_service
 
 # Configure rate limits for different operations
@@ -237,17 +238,13 @@ async def process_article(session: aiohttp.ClientSession, article: Dict, source:
             return None
             
         # Parse publication date
-        pub_date = parse_date(article['pub_date'])
+        pub_date = normalize_datetime(article['pub_date'])
         
         # Check if article is recent (within last 48 hours)
         is_recent = False
-        try:
-            pub_datetime = datetime.fromisoformat(pub_date)
-            is_recent = (datetime.now() - pub_datetime) < timedelta(hours=48)
-        except (ValueError, TypeError):
-            # If date parsing fails, don't mark as recent
-            pass
-            
+        if pub_date:
+            is_recent = (datetime.utcnow() - pub_date) < timedelta(hours=48)
+        
         # Clean and validate article data
         cleaned_article = {
             'id': article_id,
@@ -255,7 +252,7 @@ async def process_article(session: aiohttp.ClientSession, article: Dict, source:
                 'title': article['title'],
                 'link': article['link'],
                 'description': clean_html(article['description']),
-                'pub_date': pub_date,
+                'pub_date': pub_date.isoformat() if pub_date else datetime.utcnow().isoformat(),
                 'source': source,
                 'topic': classify_topic(article['title'], article['description']),
                 'has_full_content': False,
@@ -436,110 +433,6 @@ async def verify_database_consistency() -> tuple[bool, dict]:
     except Exception as e:
         logging.error(f"Error verifying database consistency: {e}")
         return False, {"error": str(e)}
-
-def parse_date(date_str: str) -> str:
-    """
-    Parse dates in various formats and return in a standard format.
-    Handles special formats including the problematic 'Tue, 03/04/2025 - 20:34' format.
-    
-    Args:
-        date_str: Date string in various formats
-        
-    Returns:
-        Standardized date string in ISO format, or the current time in ISO format if parsing fails
-    """
-    if not date_str:
-        return datetime.now().isoformat()
-        
-    try:
-        # Handle problematic format: 'Tue, 03/04/2025 - 20:34' or 'Thu, 01/30/2025 - 19:50'
-        drupal_match = re.search(r'(\w+), (\d{2})/(\d{2})/(\d{4}) - (\d{2}):(\d{2})', date_str)
-        if drupal_match:
-            _, month, day, year, hour, minute = drupal_match.groups()
-            try:
-                # Create datetime object - properly handle month/day order
-                dt = datetime(int(year), int(month), int(day), int(hour), int(minute))
-                return dt.isoformat()
-            except ValueError:
-                # If month > 12, then it's likely day/month format instead of month/day
-                if int(month) > 12 and int(day) <= 12:
-                    dt = datetime(int(year), int(day), int(month), int(hour), int(minute))
-                    return dt.isoformat()
-                # Otherwise re-raise the exception to be caught by the outer try/except
-                raise
-            
-        # Handle common RSS/RFC formats with timezones
-        rfc_patterns = [
-            # GMT format: "Sun, 02 Mar 2025 23:56:00 GMT"
-            r'(\w+), (\d{2}) (\w+) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT',
-            # UTC offset format: "Tue, 01 Apr 2025 15:07:40 +0000"
-            r'(\w+), (\d{2}) (\w+) (\d{4}) (\d{2}):(\d{2}):(\d{2}) [+-]\d{4}',
-            # EST/EDT format: "Mon, 3 Mar 2025 00:00:00 EST"
-            r'(\w+), (\d+) (\w+) (\d{4}) (\d{2}):(\d{2}):(\d{2}) (EST|EDT)'
-        ]
-        
-        for pattern in rfc_patterns:
-            match = re.match(pattern, date_str)
-            if match:
-                groups = match.groups()
-                weekday, day, month, year, hour, minute, second = groups[:7]
-                # Convert month name to number
-                month_num = list(calendar.month_abbr).index(month[:3].title())
-                # Create datetime object
-                dt = datetime(int(year), month_num, int(day), int(hour), int(minute), int(second))
-                
-                # Handle timezone adjustments
-                if pattern.endswith('GMT'):
-                    # Already in UTC/GMT, just return as is
-                    return dt.isoformat()
-                elif 'EST' in pattern or 'EDT' in pattern:
-                    # Convert EST/EDT to UTC by adding 4/5 hours
-                    tz_offset = 5 if groups[-1] == 'EST' else 4
-                    dt = dt + timedelta(hours=tz_offset)
-                    return dt.isoformat()
-                else:
-                    # For +0000 format, already in UTC
-                    return dt.isoformat()
-                
-        # Try ISO format if it contains a T
-        if 'T' in date_str:
-            # Remove Z and replace with +00:00 for consistent parsing
-            clean_date = date_str.replace('Z', '+00:00')
-            dt = datetime.fromisoformat(clean_date)
-            # Convert to UTC and remove timezone info
-            if dt.tzinfo is not None:
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-            return dt.isoformat()
-        
-        # Try common formats
-        formats = [
-            '%Y-%m-%d',
-            '%Y/%m/%d',
-            '%d-%m-%Y',
-            '%d/%m/%Y',
-            '%b %d, %Y',
-            '%B %d, %Y',
-            '%Y-%m-%d %H:%M:%S',
-            '%Y/%m/%d %H:%M:%S',
-            '%a, %d %b %Y %H:%M:%S',
-            '%Y-%m-%dT%H:%M:%S',
-            '%m/%d/%Y %H:%M',  # Additional format for MM/DD/YYYY HH:MM
-            '%a, %m/%d/%Y - %H:%M'  # Additional format for Thu, 01/30/2025 - 19:50
-        ]
-        
-        for fmt in formats:
-            try:
-                dt = datetime.strptime(date_str, fmt)
-                return dt.isoformat()
-            except ValueError:
-                continue
-    
-    except Exception as e:
-        logging.warning(f"Error parsing date '{date_str}': {e}")
-    
-    # Return the current time in ISO format if all parsing attempts fail
-    logging.warning(f"Failed to parse date string '{date_str}'. Using current time.")
-    return datetime.now().isoformat()
 
 def clean_html(raw_html):
     """Clean HTML content for readability."""
