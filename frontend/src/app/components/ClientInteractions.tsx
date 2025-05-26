@@ -155,7 +155,7 @@ function UpdateButton() {
     const connectWS = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
       // Use env variable or default to current host for prod/dev
-      const backendHost = process.env.NEXT_PUBLIC_BACKEND_WS_HOST || window.location.host;
+      const backendHost = process.env.NEXT_PUBLIC_BACKEND_WS_HOST || 'newsletter-aggregator-857170198287.us-central1.run.app';
       const wsUrl = `${protocol}://${backendHost}/ws/status`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

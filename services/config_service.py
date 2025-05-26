@@ -18,7 +18,7 @@ class ConfigException(Exception):
     pass
 
 class ConfigSettings(BaseSettings):
-    # Required fields with defaults for Vertex AI mode
+    USE_VERTEX_AI: bool = False  # Moved above GEMINI_API_KEY for validator order
     GEMINI_API_KEY: str = "AI_PLACEHOLDER_FOR_VERTEX_AI"
     FLASK_SECRET_KEY: str = "dev-secret-key-placeholder"
     
@@ -39,7 +39,6 @@ class ConfigSettings(BaseSettings):
     GCP_REGION: str = "us-central1"
     GCS_BUCKET_NAME: Optional[str] = None
     USE_GCS_BACKUP: bool = False
-    USE_VERTEX_AI: bool = False
     USE_CLOUD_LOGGING: bool = False
     STORAGE_BACKEND: str = "firestore"  # Default to Firestore
     

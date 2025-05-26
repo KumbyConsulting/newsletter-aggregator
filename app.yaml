@@ -1,0 +1,19 @@
+runtime: custom
+env: flex
+entrypoint: ./entrypoint.sh
+automatic_scaling:
+  min_num_instances: 1
+  max_num_instances: 3
+  cpu_utilization:
+    target_utilization: 0.6
+resources:
+  cpu: 1
+  memory_gb: 1
+  disk_size_gb: 10
+network:
+  session_affinity: true  # Optional, helps with sticky sessions for WebSockets 
+env_variables:
+  USE_VERTEX_AI: true
+  USE_GCS_BACKUP: true
+  USE_CLOUD_LOGGING: true
+  GCP_PROJECT_ID: newsletter-450510 

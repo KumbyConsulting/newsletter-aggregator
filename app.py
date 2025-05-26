@@ -2732,6 +2732,11 @@ async def get_topic_trends():
         logging.error(f"Error in get_topic_trends: {e}", exc_info=True)
         return jsonify({"error": str(e), "topics": []}), 500
 
+def is_update_running():
+    """Return True if an update is currently in progress."""
+    status = get_update_status_safely()
+    return status.get("in_progress", False)
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Newsletter Aggregator Application')

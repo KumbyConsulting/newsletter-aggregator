@@ -1,0 +1,23 @@
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID', '.']
+    id: 'Build Image'
+
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID']
+    id: 'Push Image'
+
+  # Deploy to App Engine Flexible
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'app'
+      - 'deploy'
+      - 'app.yaml'
+      - '--project=$PROJECT_ID'
+      - '--quiet'
+    id: 'Deploy to App Engine Flex'
+
+timeout: '1600s'
