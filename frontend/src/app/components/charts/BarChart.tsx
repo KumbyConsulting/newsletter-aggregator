@@ -39,27 +39,31 @@ const BarChart: React.FC<BarChartProps> = ({
     );
   }
 
+  // Responsive height for mobile
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 600;
+  const chartHeight = isMobile ? 220 : height;
+
   return (
-    <Card className="chart-card" bordered={false}>
-      <Title level={5} className="chart-title">Topic Distribution</Title>
+    <Card className="chart-card" bordered={false} style={{ overflowX: 'auto' }}>
+      <Title level={5} className="chart-title" style={{ fontSize: isMobile ? 16 : undefined }}>Topic Distribution</Title>
       <div
-        style={{ height: height - 80, position: 'relative', marginTop: 20 }}
+        style={{ height: chartHeight - 80, position: 'relative', marginTop: 20 }}
         role="region"
         aria-label="Bar chart of topic distribution"
       >
-        <div className="chart-y-axis">
+        <div className="chart-y-axis" style={{ fontSize: isMobile ? 10 : undefined }}>
           {[...Array(5)].map((_, i) => {
             const value = Math.round(maxValue * (4 - i) / 4);
             return (
               <div key={i} className="chart-y-label">
-                <Text type="secondary">{value}</Text>
+                <Text type="secondary" style={{ fontSize: isMobile ? 10 : undefined }}>{value}</Text>
               </div>
             );
           })}
         </div>
         <div className="bar-chart-container">
           {data.map((item, index) => {
-            const barHeight = (item.value / maxValue) * (height - 160);
+            const barHeight = (item.value / maxValue) * (chartHeight - 160);
             return (
               <div key={index} className="bar-chart-column">
                 <Tooltip
@@ -86,6 +90,7 @@ const BarChart: React.FC<BarChartProps> = ({
                       style={{
                         height: `${barHeight}px`,
                         backgroundColor: item.fill,
+                        minWidth: isMobile ? 16 : 24
                       }}
                       role="img"
                       aria-label={`${item.name}: ${item.value} articles (${item.percentage.toFixed(1)}%)`}
@@ -95,6 +100,7 @@ const BarChart: React.FC<BarChartProps> = ({
                 <Text
                   className="bar-chart-label"
                   ellipsis={{ tooltip: item.name }}
+                  style={{ fontSize: isMobile ? 10 : undefined }}
                 >
                   {item.name}
                 </Text>
@@ -102,7 +108,7 @@ const BarChart: React.FC<BarChartProps> = ({
             );
           })}
         </div>
-        <div className="chart-x-axis">
+        <div className="chart-x-axis" style={{ fontSize: isMobile ? 10 : undefined }}>
           <Text type="secondary">Topics</Text>
         </div>
       </div>

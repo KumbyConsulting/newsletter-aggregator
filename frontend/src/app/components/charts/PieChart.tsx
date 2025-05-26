@@ -60,34 +60,35 @@ const PieChart: React.FC<PieChartProps> = ({
     return `conic-gradient(${gradientString})`;
   };
 
+  // Responsive size for mobile
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 600;
+  const chartSize = isMobile ? 180 : size;
+
   return (
-    <Card className="chart-card" bordered={false}>
-      <Title level={5} className="chart-title">Topic Distribution</Title>
-      
-      <div className="pie-chart-content">
+    <Card className="chart-card" bordered={false} style={{ overflowX: 'auto' }}>
+      <Title level={5} className="chart-title" style={{ fontSize: isMobile ? 16 : undefined }}>Topic Distribution</Title>
+      <div className="pie-chart-content" style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: 'center' }}>
         <div className="pie-chart-visual">
           <div 
             className="pie-chart"
             style={{
-              width: `${size}px`,
-              height: `${size}px`,
+              width: `${chartSize}px`,
+              height: `${chartSize}px`,
               borderRadius: '50%',
               background: generatePieChartBackground(),
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
             }}
           >
-            <div className="pie-chart-center">
-              <Title level={3}>{total}</Title>
-              <Text>Total Articles</Text>
+            <div className="pie-chart-center" style={{ fontSize: isMobile ? 12 : undefined }}>
+              <Title level={3} style={{ fontSize: isMobile ? 18 : undefined }}>{total}</Title>
+              <Text style={{ fontSize: isMobile ? 12 : undefined }}>Total Articles</Text>
             </div>
           </div>
         </div>
-        
         <Divider orientation="left">
-          <Text type="secondary">Legend</Text>
+          <Text type="secondary" style={{ fontSize: isMobile ? 12 : undefined }}>Legend</Text>
         </Divider>
-        
-        <div className="pie-chart-legend">
+        <div className="pie-chart-legend" style={{ fontSize: isMobile ? 12 : undefined }}>
           {segments.map((segment, index) => (
             <Tooltip 
               key={index}
@@ -110,10 +111,10 @@ const PieChart: React.FC<PieChartProps> = ({
                   color={segment.fill} 
                   text={
                     <div className="legend-text">
-                      <Text ellipsis={{ tooltip: segment.name }} className="legend-label">
+                      <Text ellipsis={{ tooltip: segment.name }} className="legend-label" style={{ fontSize: isMobile ? 12 : undefined }}>
                         {segment.name}
                       </Text>
-                      <Text type="secondary" className="legend-value">
+                      <Text type="secondary" className="legend-value" style={{ fontSize: isMobile ? 12 : undefined }}>
                         {segment.value} ({segment.itemPercentage.toFixed(1)}%)
                       </Text>
                     </div>

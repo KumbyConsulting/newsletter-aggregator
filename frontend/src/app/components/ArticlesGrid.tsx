@@ -127,9 +127,9 @@ export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
             style={{ marginBottom: 16 }}
           />
         )}
-        <Row gutter={[24, 24]} className="fade-in-up">
+        <Row gutter={[8, 8]} className="fade-in-up">
           {[...Array(6)].map((_, index) => (
-            <Col key={index} span={getSpan()} style={{ animationDelay: `${0.05 * index}s` }}>
+            <Col key={index} xs={24} sm={12} md={8} xxl={6} style={{ animationDelay: `${0.05 * index}s`, minHeight: 44 }}>
               <ArticleCardSkeleton />
             </Col>
           ))}
@@ -199,7 +199,7 @@ export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
   // Show articles grid with sync warning if needed
   console.log(`Rendering ${displayArticles.length} articles grid`);
   return (
-    <div className="articles-grid">
+    <div className="articles-grid" style={{ overflowX: 'auto' }}>
       <ArticlesGridStyles />
       {showSyncWarning && (
         <Alert
@@ -210,9 +210,9 @@ export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
           style={{ marginBottom: 16 }}
         />
       )}
-      <Row gutter={[24, 24]} className="fade-in-up">
+      <Row gutter={[8, 8]} className="fade-in-up">
         {displayArticles.map((article, index) => (
-          <Col key={article.id} span={getSpan()} style={{ animationDelay: `${0.05 * index}s` }}>
+          <Col key={article.id} xs={24} sm={12} md={8} xxl={6} style={{ animationDelay: `${0.05 * index}s`, minHeight: 44 }}>
             <ArticleCard 
               article={article} 
               highlight={currentSearch}

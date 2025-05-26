@@ -431,57 +431,57 @@ export default function Home() {
 
             return (
               <Content className="main-content">
-                <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-                  {/* Summary Section */}
-                  <Row gutter={[24, 24]} className="mb-8">
-                    <Col xs={24} lg={16}>
-                      <Card className="h-full">
-                        <div className="flex items-center mb-4">
-                          <DashboardOutlined className="text-2xl text-blue-500 mr-2" />
-                          <Title level={4} className="m-0">TL;DR</Title>
+                <div className="container mx-auto max-w-7xl px-2 sm:px-4 lg:px-8 py-3 md:py-6">
+                  {/* --- Summary Section --- */}
+                  <Row gutter={[12, 12]} className="mb-4 md:mb-8">
+                    <Col xs={24} md={16}>
+                      <Card className="h-full p-2 md:p-6">
+                        <div className="flex items-center mb-2 md:mb-4">
+                          <DashboardOutlined className="text-xl md:text-2xl text-blue-500 mr-2" />
+                          <Title level={5} className="m-0">TL;DR</Title>
                         </div>
                         <TLDRCardCycler />
                       </Card>
                     </Col>
-                    <Col xs={24} lg={8}>
-                      <Card className="h-full">
-                        <div className="flex items-center mb-4">
-                          <CalendarOutlined className="text-2xl text-green-500 mr-2" />
-                          <Title level={4} className="m-0">Weekly Recap</Title>
+                    <Col xs={24} md={8}>
+                      <Card className="h-full p-2 md:p-6">
+                        <div className="flex items-center mb-2 md:mb-4">
+                          <CalendarOutlined className="text-xl md:text-2xl text-green-500 mr-2" />
+                          <Title level={5} className="m-0">Weekly Recap</Title>
                         </div>
                         {weeklyRecapError ? (
-                          <div className="text-red-500 min-h-[60px]">{weeklyRecapError}</div>
+                          <div className="text-red-500 min-h-[40px] md:min-h-[60px]">{weeklyRecapError}</div>
                         ) : weeklyRecap ? (
                           <WeeklyRecap
                             recapSummary={weeklyRecap.recapSummary}
                             highlights={weeklyRecap.highlights}
                           />
                         ) : (
-                          <div className="min-h-[60px]">Loading...</div>
+                          <div className="min-h-[40px] md:min-h-[60px]">Loading...</div>
                         )}
                       </Card>
                     </Col>
                   </Row>
 
-                  {/* Search Section */}
-                  <Card className="mb-8">
-                    <div className="flex justify-between items-center mb-6">
+                  {/* --- Search Section --- */}
+                  <Card className="mb-4 md:mb-8 p-2 md:p-6">
+                    <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-4 md:mb-6 gap-2 md:gap-0">
                       <div>
-                        <Title level={4} className="mb-1">Search Articles</Title>
-                        <Text type="secondary">Search through {pagination.total} articles</Text>
+                        <Title level={5} className="mb-1">Search Articles</Title>
+                        <Text type="secondary" className="text-xs md:text-base">Search through {pagination.total} articles</Text>
                       </div>
                       <Button 
                         type="link" 
                         icon={<FilterOutlined />} 
                         onClick={toggleAdvancedSearch}
-                        className="flex items-center"
+                        className="flex items-center w-full md:w-auto mt-2 md:mt-0"
                       >
                         {advancedSearchVisible ? 'Simple Search' : 'Advanced Search'}
                       </Button>
                     </div>
 
-                    <Row gutter={[16, 16]}>
-                      <Col xs={24} md={18} lg={20}>
+                    <Row gutter={[8, 8]} className="flex-col md:flex-row">
+                      <Col xs={24} md={18}>
                         <Search
                           placeholder="Enter keywords, phrases, or article titles..."
                           allowClear
@@ -497,19 +497,19 @@ export default function Home() {
                           loading={isLoading}
                           className="w-full"
                         />
-                        <div className="mt-2 text-xs text-gray-500">
+                        <div className="mt-1 text-xs text-gray-500">
                           {advancedSearchVisible 
                             ? 'Use advanced options below to refine your search'
                             : 'Use quotes for exact phrases, OR for alternatives, - to exclude terms'
                           }
                         </div>
                       </Col>
-                      <Col xs={24} md={6} lg={4}>
+                      <Col xs={24} md={6}>
                         <Button 
                           icon={<ReloadOutlined />} 
                           size="large" 
                           onClick={resetFilters}
-                          className="w-full"
+                          className="w-full mt-2 md:mt-0"
                         >
                           Reset
                         </Button>
@@ -517,7 +517,7 @@ export default function Home() {
                     </Row>
 
                     {advancedSearchVisible && (
-                      <div className="mt-4">
+                      <div className="mt-2 md:mt-4">
                         <DynamicAdvancedSearchControls 
                           visible={advancedSearchVisible}
                           onSearch={handleSearch}
@@ -526,10 +526,10 @@ export default function Home() {
                       </div>
                     )}
 
-                    <Row gutter={[16, 16]} className="mt-6">
+                    <Row gutter={[8, 8]} className="mt-3 md:mt-6">
                       <Col xs={24} sm={12} md={8}>
                         <div className="space-y-1">
-                          <Text strong>Topic</Text>
+                          <Text strong className="text-xs md:text-base">Topic</Text>
                           <Select
                             className="w-full"
                             placeholder="Select a topic"
@@ -548,7 +548,7 @@ export default function Home() {
                       </Col>
                       <Col xs={24} sm={12} md={8}>
                         <div className="space-y-1">
-                          <Text strong>Source</Text>
+                          <Text strong className="text-xs md:text-base">Source</Text>
                           <Select
                             className="w-full"
                             placeholder="Select a source"
@@ -569,7 +569,7 @@ export default function Home() {
                       </Col>
                       <Col xs={24} sm={12} md={8}>
                         <div className="space-y-1">
-                          <Text strong>Sort By</Text>
+                          <Text strong className="text-xs md:text-base">Sort By</Text>
                           <div className="flex gap-2">
                             <Select
                               className="flex-1"
@@ -584,6 +584,7 @@ export default function Home() {
                             <Button 
                               icon={currentSortOrder === 'asc' ? <SortAscendingOutlined /> : <SortDescendingOutlined />} 
                               onClick={toggleSortOrder}
+                              className="w-12 h-12 md:w-auto md:h-auto"
                             />
                           </div>
                         </div>
@@ -592,7 +593,7 @@ export default function Home() {
 
                     {/* Active Filters */}
                     {(currentTopic !== 'All' || currentSource || currentSearch || searchParams.get('searchType')) && (
-                      <div className="flex flex-wrap gap-2 mt-4">
+                      <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
                         {currentSearch && (
                           <Tag 
                             className="filter-tag search-tag flex items-center px-2 py-1"
@@ -630,22 +631,24 @@ export default function Home() {
                     )}
                   </Card>
 
-                  {/* Topic Distribution */}
-                  <Card className="mb-8">
-                    <Title level={4}>Topic Distribution</Title>
-                    <Paragraph type="secondary" className="mb-4">
+                  {/* --- Topic Distribution --- */}
+                  <Card className="mb-4 md:mb-8 p-2 md:p-6">
+                    <Title level={5}>Topic Distribution</Title>
+                    <Paragraph type="secondary" className="mb-2 md:mb-4 text-xs md:text-base">
                       Distribution of articles across different topics
                     </Paragraph>
                     {isLoading ? (
-                      <div className="h-[200px] flex justify-center items-center">
-                        <Skeleton active paragraph={{ rows: 5 }} />
+                      <div className="h-[120px] md:h-[200px] flex justify-center items-center">
+                        <Skeleton active paragraph={{ rows: 3 }} />
                       </div>
                     ) : (
-                      <TopicDistribution topics={topics} />
+                      <div className="overflow-x-auto">
+                        <TopicDistribution topics={topics} />
+                      </div>
                     )}
                   </Card>
 
-                  {/* Article List */}
+                  {/* --- Article List --- */}
                   {fetchError && (
                     <ErrorDisplay 
                       error={fetchError.error} 
@@ -653,21 +656,19 @@ export default function Home() {
                       onRetry={handleRetry}
                     />
                   )}
-                  
                   <div className="articles-section">
-                    <Title level={4} className="mb-4">
+                    <Title level={5} className="mb-2 md:mb-4">
                       {pagination.total} Articles Found
                       {currentSearch && <span> for "{currentSearch}"</span>}
                       {currentTopic !== 'All' && <span> in {currentTopic}</span>}
                     </Title>
-                    
                     {isLoading ? (
                       <div className="article-skeletons">
-                        <Row gutter={[16, 16]}>
+                        <Row gutter={[8, 8]}>
                           {Array.from({ length: skeletonCount }).map((_, index) => (
                             <Col xs={24} sm={12} md={8} key={index}>
                               <Card>
-                                <Skeleton active avatar paragraph={{ rows: 3 }} />
+                                <Skeleton active avatar paragraph={{ rows: 2 }} />
                               </Card>
                             </Col>
                           ))}
@@ -683,7 +684,7 @@ export default function Home() {
                       />
                     )}
                   </div>
-                  <div style={{ margin: '32px 0' }}>
+                  <div style={{ margin: '24px 0' }}>
                     <PaginationControls
                       currentPage={pagination.page}
                       totalPages={Math.max(1, pagination.total_pages)}

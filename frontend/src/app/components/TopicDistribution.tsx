@@ -471,36 +471,36 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
 
   // Dashboard Statistics Row with data from backend
   const renderStatistics = () => (
-    <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+    <Row gutter={[8, 8]} style={{ marginBottom: '24px' }}>
       <Col xs={24} sm={8}>
-        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#e6f7ff', borderRadius: '8px' }}>
+        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#e6f7ff', borderRadius: '8px', minHeight: 44 }}>
           <Statistic 
-            title={<Text type="secondary">Total Topics</Text>} 
+            title={<Text type="secondary" style={{ fontSize: 12 }}>Total Topics</Text>} 
             value={topicStats?.total_topics || topics.length} 
             prefix={<TagOutlined style={{ color: '#1890ff' }} />} 
-            valueStyle={{ color: '#1890ff' }} 
+            valueStyle={{ color: '#1890ff', fontSize: 18 }} 
           />
         </Card>
       </Col>
       <Col xs={24} sm={8}>
-        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#f6ffed', borderRadius: '8px' }}>
+        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#f6ffed', borderRadius: '8px', minHeight: 44 }}>
           <Statistic 
-            title={<Text type="secondary">Total Articles</Text>} 
+            title={<Text type="secondary" style={{ fontSize: 12 }}>Total Articles</Text>} 
             value={topicStats?.total_articles || totalCount} 
             prefix={<BarChartOutlined style={{ color: '#52c41a' }} />} 
-            valueStyle={{ color: '#52c41a' }} 
+            valueStyle={{ color: '#52c41a', fontSize: 18 }} 
           />
         </Card>
       </Col>
       <Col xs={24} sm={8}>
-        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#fffbe6', borderRadius: '8px' }}>
+        <Card className="stat-card" variant="borderless" style={{ backgroundColor: '#fffbe6', borderRadius: '8px', minHeight: 44 }}>
           <Statistic 
-            title={<Text type="secondary">Average per Topic</Text>} 
+            title={<Text type="secondary" style={{ fontSize: 12 }}>Average per Topic</Text>} 
             value={topicStats?.average_per_topic || 
               (topics.length ? (totalCount / topics.length).toFixed(1) : 0)
             } 
             prefix={<LineChartOutlined style={{ color: '#faad14' }} />} 
-            valueStyle={{ color: '#faad14' }} 
+            valueStyle={{ color: '#faad14', fontSize: 18 }} 
           />
         </Card>
       </Col>
@@ -508,16 +508,16 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
   );
 
   return (
-    <div className="dashboard-container" style={{ padding: '24px' }}>
+    <div className="dashboard-container" style={{ padding: '12px' }}>
       {/* Trends Section */}
-      <Card className="dashboard-card" style={{ marginBottom: 24, borderRadius: 12 }}>
-        <Title level={4} style={{ marginBottom: 8 }}>Topic Trends</Title>
+      <Card className="dashboard-card" style={{ marginBottom: 24, borderRadius: 12, fontSize: 14 }}>
+        <Title level={4} style={{ marginBottom: 8, fontSize: 16 }}>Topic Trends</Title>
         {trendLoading ? (
           <Spin size="large" tip="Loading trends..." />
         ) : trendError ? (
           <Text type="danger">{trendError}</Text>
         ) : (
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             {trendsToShow.map((trend, idx) => (
               <TrendRow
                 key={trend.topic}
@@ -533,26 +533,26 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
       </Card>
 
       {/* Top Movers Section */}
-      <div style={{ display: 'flex', gap: 24, marginBottom: 24, flexWrap: 'wrap' }}>
-        <Card className="stat-card" style={{ background: '#f6ffed', flex: 1, borderRadius: 12 }}>
-          <Title level={5} style={{ color: '#52c41a', marginBottom: 8 }}>Top Gainers</Title>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap', flexDirection: 'column' }}>
+        <Card className="stat-card" style={{ background: '#f6ffed', borderRadius: 12, minHeight: 44 }}>
+          <Title level={5} style={{ color: '#52c41a', marginBottom: 8, fontSize: 14 }}>Top Gainers</Title>
           {topGainers.map((t, i) => (
             <div key={t.topic} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
               <Badge color="#52c41a" aria-label="Top gainer" />
-              <Text strong style={{ marginLeft: 8 }}>{t.topic}</Text>
-              <Statistic value={t.count} valueStyle={{ fontSize: 18, marginLeft: 12 }} prefix={<span style={{ color: '#52c41a' }}>{t.growth_rate ? `+${t.growth_rate}%` : ''}</span>} />
+              <Text strong style={{ marginLeft: 8, fontSize: 12 }}>{t.topic}</Text>
+              <Statistic value={t.count} valueStyle={{ fontSize: 16, marginLeft: 12 }} prefix={<span style={{ color: '#52c41a' }}>{t.growth_rate ? `+${t.growth_rate}%` : ''}</span>} />
               <TrendChart data={t.data.map(d => ({ label: d.date, value: d.count }))} color="#52c41a" height={24} aria-label={`Trend sparkline for ${t.topic}`} />
               <span style={{ fontSize: 0, height: 0, overflow: 'hidden' }}>{`Trend data for ${t.topic}: ${t.data.map(d => `${d.date}: ${d.count}`).join(', ')}`}</span>
             </div>
           ))}
         </Card>
-        <Card className="stat-card" style={{ background: '#fff1f0', flex: 1, borderRadius: 12 }}>
-          <Title level={5} style={{ color: '#ff4d4f', marginBottom: 8 }}>Top Decliners</Title>
+        <Card className="stat-card" style={{ background: '#fff1f0', borderRadius: 12, minHeight: 44 }}>
+          <Title level={5} style={{ color: '#ff4d4f', marginBottom: 8, fontSize: 14 }}>Top Decliners</Title>
           {topDecliners.map((t, i) => (
             <div key={t.topic} style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
               <Badge color="#ff4d4f" aria-label="Top decliner" />
-              <Text strong style={{ marginLeft: 8 }}>{t.topic}</Text>
-              <Statistic value={t.count} valueStyle={{ fontSize: 18, marginLeft: 12 }} prefix={<span style={{ color: '#ff4d4f' }}>{t.growth_rate ? `${t.growth_rate}%` : ''}</span>} />
+              <Text strong style={{ marginLeft: 8, fontSize: 12 }}>{t.topic}</Text>
+              <Statistic value={t.count} valueStyle={{ fontSize: 16, marginLeft: 12 }} prefix={<span style={{ color: '#ff4d4f' }}>{t.growth_rate ? `${t.growth_rate}%` : ''}</span>} />
               <TrendChart data={t.data.map(d => ({ label: d.date, value: d.count }))} color="#ff4d4f" height={24} aria-label={`Trend sparkline for ${t.topic}`} />
               <span style={{ fontSize: 0, height: 0, overflow: 'hidden' }}>{`Trend data for ${t.topic}: ${t.data.map(d => `${d.date}: ${d.count}`).join(', ')}`}</span>
             </div>
@@ -562,11 +562,11 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
 
       {/* Existing Statistics and Table/Charts */}
       {renderStatistics()}
-      <Card className="dashboard-card" variant="borderless" style={{ borderRadius: '8px' }}>
-        <Flex justify="space-between" align="center" wrap="wrap" gap="middle" style={{ marginBottom: '16px' }}>
+      <Card className="dashboard-card" variant="borderless" style={{ borderRadius: '8px', fontSize: 14, overflowX: 'auto' }}>
+        <Flex justify="space-between" align="center" wrap="wrap" gap="middle" style={{ marginBottom: '16px', flexDirection: 'column' }}>
           <div>
-            <Title level={4} style={{ marginBottom: 4 }}>Topic Distribution</Title>
-            <Text type="secondary">
+            <Title level={4} style={{ marginBottom: 4, fontSize: 16 }}>Topic Distribution</Title>
+            <Text type="secondary" style={{ fontSize: 12 }}>
               Insights into {topicStats?.total_topics || topics.length} topics
             </Text>
           </div>
@@ -577,7 +577,7 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
               onChange={e => setSearchText(e.target.value)}
               prefix={<SearchOutlined />}
               allowClear
-              style={{ width: 200 }}
+              style={{ width: 160, fontSize: 12, minHeight: 44 }}
             />
             <Segmented
               value={viewMode}
@@ -592,6 +592,7 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
                 { value: 'timeline', icon: <LineChartOutlined />, label: 'Timeline' },
               ]}
               block
+              style={{ minHeight: 44, fontSize: 12 }}
             />
           </Space>
         </Flex>
@@ -599,31 +600,32 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
         {['barChart', 'pieChart'].includes(viewMode) && (
           <Flex justify="end" style={{ marginBottom: 16 }}>
             <Space>
-              <Text>Show:</Text>
+              <Text style={{ fontSize: 12 }}>Show:</Text>
               <Radio.Group 
                 value={topN} 
                 onChange={(e) => setTopN(e.target.value)}
                 optionType="button"
                 buttonStyle="solid"
+                style={{ minHeight: 44, fontSize: 12 }}
               >
                 <Radio.Button value={5}>Top 5</Radio.Button>
                 <Radio.Button value={10}>Top 10</Radio.Button>
                 <Radio.Button value={20}>Top 20</Radio.Button>
               </Radio.Group>
               <Tooltip title="Showing top topics by article count">
-                <InfoCircleOutlined style={{ color: 'var(--text-secondary)', cursor: 'help' }} />
+                <InfoCircleOutlined style={{ color: 'var(--text-secondary)', cursor: 'help', fontSize: 14 }} />
               </Tooltip>
             </Space>
           </Flex>
         )}
 
-        <div style={{ marginTop: '20px' }}>
+        <div style={{ marginTop: '20px', overflowX: 'auto' }}>
           {renderVisualization()}
         </div>
         
         {!loading && (
           <Flex justify="start" style={{ marginTop: 24 }}>
-            <Text type="secondary">
+            <Text type="secondary" style={{ fontSize: 12 }}>
               Total: {totalCount} articles across {topics.length} topics.
             </Text>
           </Flex>
