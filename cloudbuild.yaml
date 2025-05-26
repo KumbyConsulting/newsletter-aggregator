@@ -9,29 +9,14 @@ steps:
     args: ['push', 'gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID']
     id: 'Push Image'
 
-  # Prepare the service yaml file with the correct image and env vars
-  # The following step for env var injection is deprecated. Use Cloud Run's built-in env var management instead.
-  # - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-  #   entrypoint: 'bash'
-  #   args:
-  #     - '-c'
-  #     - |
-  #       # Replace the image placeholder
-  #       sed -i "s|gcr.io/PROJECT_ID/newsletter-aggregator:TAG|gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID|g" service.yaml
-  #       # Process environment variables from env.yaml
-  #       echo "Processing environment variables..."
-  #       # Start the env section in service.yaml
-  #       sed -i '/# The actual env vars will be managed by the Cloud Build configuration/a\          env:' service.yaml
-  #       # Add each environment variable from env.yaml
-  #       cat env.yaml | grep -v "^#" | grep -v "^$" | while read line; do
-  #         key=$(echo $line | cut -d: -f1 | tr -d ' ')
-  #         value=$(echo $line | cut -d: -f2- | tr -d ' ')
-  #         if [ ! -z "$key" ] && [ ! -z "$value" ]; then
-  #           echo "Adding env var: $key"
-  #           sed -i "/env:/a\            - name: $key\n              value: $value" service.yaml
-  #         fi
-  #       done
-  #   id: 'Prepare Service Config'
+  # Substitute the image placeholder in service.yaml with the actual image name and tag
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        sed -i "s|gcr.io/PROJECT_ID/newsletter-aggregator:TAG|gcr.io/$PROJECT_ID/newsletter-aggregator:$BUILD_ID|g" service.yaml
+    id: 'Prepare Service Config'
 
   # Deploy to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'

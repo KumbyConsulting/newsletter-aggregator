@@ -81,12 +81,17 @@ class ConfigSettings(BaseSettings):
     def validate_api_key(cls, v: str, values: Dict[str, Any]) -> str:
         # Skip validation if using Vertex AI
         use_vertex_ai = values.get('USE_VERTEX_AI', False)
+        flask_env = values.get('FLASK_ENV', 'production')
         if use_vertex_ai and v == "AI_PLACEHOLDER_FOR_VERTEX_AI":
             return v
         
         # Validate API key if not using Vertex AI
         if not v or v == "AI_PLACEHOLDER_FOR_VERTEX_AI":
-            raise ValueError("GEMINI_API_KEY is required when not using Vertex AI")
+            if flask_env == 'production':
+                raise ValueError("GEMINI_API_KEY is required when not using Vertex AI")
+            else:
+                print("\u26A0\uFE0F  Warning: GEMINI_API_KEY is missing. Some features may not work.")
+                return v
         return v
         
     @validator('ALLOWED_OUTPUT_FORMATS', pre=True, always=True)

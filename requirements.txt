@@ -36,6 +36,7 @@ vertexai>=1.71.1
 grpcio==1.59.3
 grpcio-tools==1.59.3
 grpcio-status==1.59.3
+firebase-admin==6.5.0
 
 # Development/Debug tools
 # flask-debugtoolbar>=0.13.1  # Flask only
