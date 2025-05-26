@@ -23,12 +23,13 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     // Prioritize API Gateway URL, fallback to direct API URL, then localhost
-    const apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL;
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    
+    let apiGatewayUrl = process.env.NEXT_PUBLIC_API_GATEWAY_URL || '';
+    let apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+    // Remove trailing slashes
+    apiGatewayUrl = apiGatewayUrl.replace(/\/+$/, '');
+    apiUrl = apiUrl.replace(/\/+$/, '');
     const targetUrl = apiGatewayUrl || apiUrl;
     console.log('API Target URL:', targetUrl); // Debug log
-    
     return [
       {
         source: '/api/:path*',
