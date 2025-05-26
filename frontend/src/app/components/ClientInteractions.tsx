@@ -154,8 +154,8 @@ function UpdateButton() {
   useEffect(() => {
     const connectWS = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-      // Use env variable or default to current host for prod/dev
-      const backendHost = process.env.NEXT_PUBLIC_BACKEND_WS_HOST || 'newsletter-aggregator-857170198287.us-central1.run.app';
+      const rawHost = process.env.NEXT_PUBLIC_BACKEND_WS_HOST || 'newsletter-aggregator-857170198287.us-central1.run.app';
+      const backendHost = rawHost.replace(/^https?:\/\//, '').replace(/\/+$/, '');
       const wsUrl = `${protocol}://${backendHost}/ws/status`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
