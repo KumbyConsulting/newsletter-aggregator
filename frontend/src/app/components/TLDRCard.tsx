@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 interface TLDRSource {
@@ -155,6 +155,67 @@ const TLDRCard: React.FC<TLDRCardProps> = ({ summary, highlights, sources, updat
             <span className="text-gray-400 italic">No sources available.</span>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+// --- TLDRCardCycler: Wrapper for cycling TLDR windows ---
+export const TLDRCardCycler: React.FC = () => {
+  const [windowIdx, setWindowIdx] = useState(0);
+  const [tldr, setTldr] = useState<any>(null);
+  const [maxWindows, setMaxWindows] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchTLDR = async (idx: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/tldr?window=${idx}`);
+      const data = await res.json();
+      setTldr(data);
+      setMaxWindows(data.max_windows || 1);
+    } catch (e) {
+      setError('Failed to load TL;DR.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTLDR(windowIdx);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowIdx]);
+
+  const handlePrev = () => setWindowIdx((prev) => (prev - 1 + maxWindows) % maxWindows);
+  const handleNext = () => setWindowIdx((prev) => (prev + 1) % maxWindows);
+
+  if (loading) return <div className="py-8 text-center text-gray-400">Loading TL;DR...</div>;
+  if (error) return <div className="py-8 text-center text-red-500">{error}</div>;
+  if (!tldr) return null;
+
+  return (
+    <div>
+      <TLDRCard {...tldr} />
+      <div className="flex justify-center items-center gap-4 mt-4">
+        <button
+          onClick={handlePrev}
+          disabled={maxWindows <= 1}
+          className="px-3 py-1 rounded bg-gray-100 hover:bg-blue-100 text-blue-700 font-semibold disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span className="text-sm text-gray-500">
+          {tldr.window + 1} / {maxWindows}
+        </span>
+        <button
+          onClick={handleNext}
+          disabled={maxWindows <= 1}
+          className="px-3 py-1 rounded bg-gray-100 hover:bg-blue-100 text-blue-700 font-semibold disabled:opacity-50"
+        >
+          Next
+        </button>
       </div>
     </div>
   );

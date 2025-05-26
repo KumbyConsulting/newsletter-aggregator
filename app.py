@@ -2525,6 +2525,13 @@ async def get_tldr():
     from utils.date_utils import normalize_datetime
     import random
 
+    window_size = 5
+    # Get window index from query param, default 0
+    try:
+        window = int(request.args.get('window', 0))
+    except Exception:
+        window = 0
+
     def is_valid_url(url):
         return isinstance(url, str) and re.match(r'^https?://', url)
     def is_valid_article(article):
@@ -2552,21 +2559,15 @@ async def get_tldr():
             return jsonify({
                 'summary': "No 2025 summaries available.",
                 'highlights': [],
-                'sources': []
+                'sources': [],
+                'window': 0,
+                'max_windows': 1
             })
         articles_2025.sort(key=get_pub_date, reverse=True)
-        # Random rotation: select a random window of 5 articles, stable within each 3-hour slot
-        window_size = 5
-        now = datetime.utcnow()
-        slot_hours = 3
-        slot = now.hour // slot_hours
-        random_seed = int(now.strftime('%Y%m%d')) * 10 + slot  # deterministic per slot
-        random.seed(random_seed)
-        if len(articles_2025) > window_size:
-            start_indices = list(range(0, len(articles_2025) - window_size + 1))
-            start_idx = random.choice(start_indices)
-        else:
-            start_idx = 0
+        # Allow user to cycle through windows
+        max_windows = max(1, len(articles_2025) - window_size + 1)
+        window = window % max_windows
+        start_idx = window
         selected_articles = articles_2025[start_idx:start_idx + window_size]
         # Compose context for AI
         context_lines = []
@@ -2615,14 +2616,18 @@ async def get_tldr():
         return jsonify({
             'summary': summary,
             'highlights': highlights,
-            'sources': sources
+            'sources': sources,
+            'window': window,
+            'max_windows': max_windows
         })
     except Exception as e:
         logging.error(f"Error in /api/tldr: {e}")
         return jsonify({
             'summary': "Error fetching TL;DR.",
             'highlights': [],
-            'sources': []
+            'sources': [],
+            'window': 0,
+            'max_windows': 1
         })
 
 @app.route('/api/trends/daily', methods=['GET'])
@@ -2736,6 +2741,45 @@ def is_update_running():
     """Return True if an update is currently in progress."""
     status = get_update_status_safely()
     return status.get("in_progress", False)
+
+@app.route('/api/sources', methods=['GET'])
+async def get_sources():
+    """
+    Return a list of all news sources with their URL and article count.
+    """
+    try:
+        # Get source URLs from config
+        source_urls = config.get_source_urls()
+        # Get all articles (limit=0 means all)
+        result = await storage_service.get_articles(limit=0)
+        articles = result.get('articles', []) if isinstance(result, dict) else []
+        # Count articles per source
+        source_counts = {}
+        for article in articles:
+            metadata = article.get('metadata', {})
+            source = metadata.get('source', 'Unknown source')
+            source_counts[source] = source_counts.get(source, 0) + 1
+        # Build response
+        sources = []
+        for name, url in source_urls.items():
+            sources.append({
+                "name": name,
+                "url": url,
+                "count": source_counts.get(name, 0)
+            })
+        # Optionally add sources found in articles but not in config
+        for source, count in source_counts.items():
+            if source not in source_urls:
+                sources.append({
+                    "name": source,
+                    "url": "",
+                    "count": count
+                })
+        return jsonify({"sources": sources})
+    except Exception as e:
+        import logging
+        logging.error(f"Error in /api/sources: {e}")
+        return jsonify({"sources": [], "error": str(e)}), 500
 
 if __name__ == "__main__":
     # Parse command line arguments
