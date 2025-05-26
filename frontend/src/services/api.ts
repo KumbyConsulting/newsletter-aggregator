@@ -420,7 +420,7 @@ const CACHE_TTLS = {
  */
 export async function getTopicStats(): Promise<{ topics: TopicStats[] }> {
   return apiRequest<{ topics: TopicStats[] }>(
-    '/topics/stats',
+    '/topics',
     {},
     'topic_stats',
     CACHE_TTLS.TOPICS_STATS
