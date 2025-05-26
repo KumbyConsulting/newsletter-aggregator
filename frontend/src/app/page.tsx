@@ -59,7 +59,7 @@ import TopicDistribution from './components/TopicDistribution';
 import ErrorDisplay from './components/ErrorDisplay';
 import ClientInteractions from './components/ClientInteractions';
 import { SearchOptions } from './components/AdvancedSearchControls';
-import TLDRCard from './components/TLDRCard';
+import TLDRCard, { TLDRCardCycler } from './components/TLDRCard';
 import WeeklyRecap from './components/WeeklyRecap';
 
 const { Content } = Layout;
@@ -440,13 +440,7 @@ export default function Home() {
                           <DashboardOutlined className="text-2xl text-blue-500 mr-2" />
                           <Title level={4} className="m-0">TL;DR</Title>
                         </div>
-                        {tldr && isValidTLDR(tldr) ? (
-                          <TLDRCard summary={tldr.summary} highlights={tldr.highlights} sources={tldr.sources} />
-                        ) : (
-                          <div className="text-gray-400 italic min-h-[40px]">
-                            No summary available today. The news gods are silent.
-                          </div>
-                        )}
+                        <TLDRCardCycler />
                       </Card>
                     </Col>
                     <Col xs={24} lg={8}>
