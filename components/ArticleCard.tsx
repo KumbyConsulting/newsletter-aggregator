@@ -174,7 +174,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onAnalysisComplete }
     };
 
     return (
-        <div className="article-card">
+        <div className="article-card" style={{ background: 'linear-gradient(90deg, #00405e 0%, #7f9360 100%)', color: 'white' }}>
             <div className="article-header">
                 {article.category && (
                     <span 
