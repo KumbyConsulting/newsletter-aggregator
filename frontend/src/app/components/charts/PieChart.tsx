@@ -68,10 +68,10 @@ const PieChart: React.FC<PieChartProps> = ({
   const chartSize = isMobile ? 180 : size;
 
   return (
-    <Card className="chart-card" bordered={false} style={{ overflowX: 'auto' }}>
-      <Title level={5} className="chart-title" style={{ fontSize: isMobile ? 16 : undefined }}>Topic Distribution</Title>
-      <div className="pie-chart-content" style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: 'center' }}>
-        <div className="pie-chart-visual" style={{ position: 'relative', opacity: show ? 1 : 0, transition: 'opacity 0.8s' }}>
+    <div style={{ width: '100%', overflowX: 'auto', padding: isMobile ? 0 : 8 }}>
+      <Title level={5} className="chart-title" style={{ fontSize: isMobile ? 16 : undefined, textAlign: 'center', marginBottom: 16 }}>Topic Distribution</Title>
+      <div className="pie-chart-content" style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'center', justifyContent: 'center', gap: isMobile ? 12 : 32, width: '100%' }}>
+        <div className="pie-chart-visual" style={{ position: 'relative', opacity: show ? 1 : 0, transition: 'opacity 0.8s', margin: '0 auto', maxWidth: chartSize }}>
           <div 
             className="pie-chart"
             style={{
@@ -81,6 +81,8 @@ const PieChart: React.FC<PieChartProps> = ({
               background: generatePieChartBackground(),
               boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
               position: 'relative',
+              margin: '0 auto',
+              maxWidth: chartSize,
             }}
           >
             <div className="pie-chart-center" style={{ fontSize: isMobile ? 12 : undefined }}>
@@ -117,47 +119,49 @@ const PieChart: React.FC<PieChartProps> = ({
             })}
           </div>
         </div>
-        <Divider orientation="left">
-          <Text type="secondary" style={{ fontSize: isMobile ? 12 : undefined }}>Legend</Text>
-        </Divider>
-        <div className="pie-chart-legend" style={{ fontSize: isMobile ? 12 : 13, marginBottom: 8 }}>
-          {segments.map((segment, index) => (
-            <Tooltip 
-              key={index}
-              title={
-                <div className="chart-tooltip">
-                  <div className="tooltip-title">{segment.name}</div>
-                  <div className="tooltip-item">
-                    <span>Count:</span> 
-                    <span className="tooltip-value">{segment.value}</span>
-                  </div>
-                  <div className="tooltip-item">
-                    <span>Percentage:</span>
-                    <span className="tooltip-value">{segment.itemPercentage.toFixed(1)}%</span>
-                  </div>
-                </div>
-              }
-            >
-              <div className="legend-item" style={{ marginBottom: 8 }}>
-                <Badge 
-                  color={segment.fill} 
-                  text={
-                    <div className="legend-text">
-                      <Text ellipsis={{ tooltip: segment.name }} className="legend-label" style={{ fontSize: isMobile ? 12 : 13 }}>
-                        {segment.name}
-                      </Text>
-                      <Text type="secondary" className="legend-value" style={{ fontSize: isMobile ? 12 : 13 }}>
-                        {segment.value} ({segment.itemPercentage.toFixed(1)}%)
-                      </Text>
+        <div style={{ minWidth: isMobile ? 0 : 180, maxWidth: 260, margin: isMobile ? '0 auto' : '0', flex: 1 }}>
+          <Divider orientation="left">
+            <Text type="secondary" style={{ fontSize: isMobile ? 12 : undefined }}>Legend</Text>
+          </Divider>
+          <div className="pie-chart-legend" style={{ fontSize: isMobile ? 12 : 13, marginBottom: 8 }}>
+            {segments.map((segment, index) => (
+              <Tooltip 
+                key={index}
+                title={
+                  <div className="chart-tooltip">
+                    <div className="tooltip-title">{segment.name}</div>
+                    <div className="tooltip-item">
+                      <span>Count:</span> 
+                      <span className="tooltip-value">{segment.value}</span>
                     </div>
-                  } 
-                />
-              </div>
-            </Tooltip>
-          ))}
+                    <div className="tooltip-item">
+                      <span>Percentage:</span>
+                      <span className="tooltip-value">{segment.itemPercentage.toFixed(1)}%</span>
+                    </div>
+                  </div>
+                }
+              >
+                <div className="legend-item" style={{ marginBottom: 8 }}>
+                  <Badge 
+                    color={segment.fill} 
+                    text={
+                      <div className="legend-text">
+                        <Text ellipsis={{ tooltip: segment.name }} className="legend-label" style={{ fontSize: isMobile ? 12 : 13 }}>
+                          {segment.name}
+                        </Text>
+                        <Text type="secondary" className="legend-value" style={{ fontSize: isMobile ? 12 : 13 }}>
+                          {segment.value} ({segment.itemPercentage.toFixed(1)}%)
+                        </Text>
+                      </div>
+                    } 
+                  />
+                </div>
+              </Tooltip>
+            ))}
+          </div>
         </div>
       </div>
-    </Card>
+    </div>
   );
 };
 
