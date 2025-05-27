@@ -3,23 +3,8 @@ import { toast } from 'react-hot-toast';
 import { Spinner } from './Spinner';
 import { ErrorIcon } from './ErrorIcon';
 import '../styles/ArticleCard.css';
-
-interface Article {
-    id: string;
-    title: string;
-    description: string;
-    source: string;
-    sourceUrl: string;
-    category?: string;
-    pubDate: string;
-    analysis?: string;
-    analysisMetadata?: {
-        is_partial?: boolean;
-    };
-    sources?: any[];
-    imageUrl?: string;
-    readTimeMinutes?: number;
-}
+import type { Article } from '../frontend/src/types';
+import { formatDate, getReadingTime } from '../utils/article';
 
 interface ArticleCardProps {
     article: Article;
@@ -34,8 +19,8 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onAnalysisComplete }
     const RETRY_DELAY = 3000; // 3 seconds
 
     const handleReadClick = () => {
-        if (article.sourceUrl) {
-            window.open(article.sourceUrl, '_blank', 'noopener,noreferrer');
+        if (article.metadata.link) {
+            window.open(article.metadata.link, '_blank', 'noopener,noreferrer');
         } else {
             toast('Source URL not available', {
                 icon: '❌'
@@ -46,9 +31,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onAnalysisComplete }
     const handleShareClick = () => {
         if (navigator.share) {
             navigator.share({
-                title: article.title,
-                text: article.description,
-                url: article.sourceUrl || window.location.href,
+                title: article.metadata.title,
+                text: article.metadata.description,
+                url: article.metadata.link || window.location.href,
             }).catch(error => {
                 console.error('Error sharing article:', error);
                 fallbackShare();
@@ -60,7 +45,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onAnalysisComplete }
 
     const fallbackShare = () => {
         // Fallback to copy URL to clipboard
-        const shareUrl = article.sourceUrl || window.location.href;
+        const shareUrl = article.metadata.link || window.location.href;
         navigator.clipboard.writeText(shareUrl)
             .then(() => {
                 toast('Link copied to clipboard!', {
@@ -109,9 +94,12 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onAnalysisComplete }
             // Update the article with analysis data
             onAnalysisComplete({
                 ...article,
-                analysis: data.analysis,
-                analysisMetadata: data.metadata,
-                sources: data.sources,
+                metadata: {
+                    ...article.metadata,
+                    analysis: data.analysis,
+                    analysisMetadata: data.metadata,
+                    sources: data.sources,
+                },
             });
 
             setRetryCount(0); // Reset retry count on success
@@ -147,63 +135,37 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ article, onAnalysisComplete }
         }
     };
 
-    // Format the date to be more readable
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        const now = new Date();
-        const diffTime = Math.abs(now.getTime() - date.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays <= 1) return 'Today';
-        if (diffDays <= 2) return 'Yesterday';
-        if (diffDays <= 7) return `${diffDays} days ago`;
-        
-        return date.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric'
-        });
-    };
-
-    // Calculate reading time if not provided
-    const getReadingTime = () => {
-        if (article.readTimeMinutes) return article.readTimeMinutes;
-        
-        // Estimate reading time based on description length (avg reading speed: ~200 words/minute)
-        const wordCount = article.description.split(/\s+/).length;
-        return Math.max(1, Math.round(wordCount / 200));
-    };
-
     return (
         <div className="article-card" style={{ background: 'linear-gradient(90deg, #00405e 0%, #7f9360 100%)', color: 'white' }}>
             <div className="article-header">
-                {article.category && (
+                {article.metadata.topic && (
                     <span 
                         className="article-category"
-                        data-category={article.category}
+                        data-category={article.metadata.topic}
                     >
-                        {article.category}
+                        {article.metadata.topic}
                     </span>
                 )}
                 <div className="article-metadata">
-                    <span className="article-date">{formatDate(article.pubDate)}</span>
-                    <span className="article-source">{article.source}</span>
-                    <span className="article-read-time">{getReadingTime()} min read</span>
+                    <span className="article-date">{formatDate(article.metadata.pub_date)}</span>
+                    <span className="article-source">{article.metadata.source}</span>
+                    <span className="article-read-time">{getReadingTime(article.metadata.description, article.metadata.reading_time)} min read</span>
                 </div>
             </div>
             
-            {article.imageUrl && (
+            {article.metadata.image_url && (
                 <div className="article-image-container">
                     <img 
-                        src={article.imageUrl} 
-                        alt={article.title} 
+                        src={article.metadata.image_url} 
+                        alt={article.metadata.title} 
                         className="article-image"
                         loading="lazy"
                     />
                 </div>
             )}
             
-            <h3 className="article-title">{article.title}</h3>
-            <p className="article-description">{article.description}</p>
+            <h3 className="article-title">{article.metadata.title}</h3>
+            <p className="article-description">{article.metadata.description}</p>
             
             <div className="article-actions">
                 <button 
