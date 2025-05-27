@@ -17,7 +17,9 @@
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   height: 100%;
+  padding: 0 2rem;
 }
 
 .header-left {
@@ -28,6 +30,7 @@
 .header-right {
   display: flex;
   align-items: center;
+  gap: 1.5rem;
 }
 
 /* Logo Styles */
@@ -41,8 +44,8 @@
 }
 
 .kumby-logo {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   background-color: var(--primary-color, #00405e);
   border-radius: 50%;
   display: flex;
@@ -51,7 +54,7 @@
   margin-right: 10px;
   color: white;
   font-weight: bold;
-  font-size: 20px;
+  font-size: 24px;
   transition: transform 0.3s ease;
 }
 
@@ -60,10 +63,12 @@
 }
 
 .brand-text {
-  font-size: 18px !important;
-  font-weight: 700 !important;
-  margin-left: 8px !important;
+  font-size: 20px !important;
+  font-weight: 800 !important;
+  margin-left: 12px !important;
   color: white !important;
+  font-family: 'Geist', 'Inter', sans-serif !important;
+  letter-spacing: 0.02em;
 }
 
 /* Mobile Menu Actions */
@@ -234,4 +239,22 @@
 .ant-dropdown-menu-item:hover {
   background-color: rgba(0, 64, 94, 0.05) !important;
   color: var(--primary-color, #00405e) !important;
+}
+
+@media (max-width: 768px) {
+  .header-container {
+    padding: 0 1rem;
+  }
+  .brand-text {
+    font-size: 16px !important;
+    margin-left: 6px !important;
+  }
+  .kumby-logo {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+  .header-right {
+    gap: 1rem;
+  }
 } 

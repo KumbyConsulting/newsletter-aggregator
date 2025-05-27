@@ -418,6 +418,44 @@ export default function Home() {
   // --- Skeleton loading logic ---
   const skeletonCount = Math.max(currentLimit, 6);
 
+  // --- HERO SECTION ---
+  const Hero = () => (
+    <section
+      style={{
+        width: '100%',
+        background: 'linear-gradient(90deg, #00405e 0%, #7f9360 100%)',
+        padding: '3rem 0 2rem 0',
+        marginBottom: '2rem',
+        color: 'white',
+        textAlign: 'center',
+        fontFamily: 'Geist, Inter, sans-serif',
+      }}
+    >
+      <div style={{ maxWidth: 700, margin: '0 auto', padding: '0 1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 16 }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%', background: 'rgba(0,0,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 28, letterSpacing: '0.04em', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'
+          }}>K</div>
+          <span style={{ fontSize: 28, fontWeight: 800, letterSpacing: '0.02em' }}>Kumby Consulting</span>
+        </div>
+        <h1 style={{ fontSize: 32, fontWeight: 900, margin: 0, letterSpacing: '0.01em' }}>
+          Your AI-powered newsletter, reimagined
+        </h1>
+        <p style={{ fontSize: 18, fontWeight: 400, margin: '1rem 0 2rem 0', color: 'rgba(255,255,255,0.92)' }}>
+          Discover, filter, and analyze the latest insights with clarity and speed. No noise. Just signal.
+        </p>
+        <Button
+          type="primary"
+          size="large"
+          style={{ fontWeight: 700, fontSize: 18, borderRadius: 8, padding: '0 2.5rem', background: '#7f9360', border: 'none', color: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.10)' }}
+          onClick={() => router.push('#articles')}
+        >
+          See Latest Articles
+        </Button>
+      </div>
+    </section>
+  );
+
   return (
     <Layout className="newsletter-layout">
       <ClientInteractions />
@@ -432,6 +470,7 @@ export default function Home() {
             return (
               <Content className="main-content">
                 <div className="container mx-auto max-w-7xl px-2 sm:px-4 lg:px-8 py-3 md:py-6">
+                  <Hero />
                   {/* --- Summary Section --- */}
                   <Row gutter={[12, 12]} className="mb-4 md:mb-8">
                     <Col xs={24} md={16}>

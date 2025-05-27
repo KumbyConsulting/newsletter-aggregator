@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import './Header.css';
 import { signInWithGoogle, signOut, onAuthStateChangedHelper } from '@/utils/firebaseClient';
+import ThemeToggle from './ui/ThemeToggle';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
@@ -157,43 +158,24 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
         
         {/* Right Side Actions */}
         <div className="header-right">
-          <Space size={16}>
-            {/* Update Button */}
-            {!isMobile && onUpdateClick && user && (
-              <Button 
-                type="primary" 
-                icon={<SyncOutlined />} 
-                onClick={onUpdateClick}
-                className="btn-custom"
-                aria-label="Update articles"
-              >
-                Update
-              </Button>
-            )}
-            
+          <Space size={24}>
+            <ThemeToggle />
+            {/* Update Button removed for clarity */}
             {/* Desktop Actions */}
             {!isMobile && (
               <>
-                <Button 
-                  type="text"
-                  icon={<SearchOutlined />}
-                  className="action-btn"
-                  aria-label="Search"
-                />
-                
                 <Badge count={3} size="small" color="var(--primary-color, #00405e)">
                   <Button 
                     type="text" 
-                    icon={<BellOutlined />}
-                    className="action-btn"
-                    aria-label="Notifications"
+                    icon={<BellOutlined />} 
+                    className="action-btn" 
+                    aria-label="Notifications" 
                   />
                 </Badge>
-                
                 {/* Auth Buttons */}
                 {!user ? (
                   <Button type="primary" onClick={signInWithGoogle} icon={<UserOutlined />}>
-                    Login with Google
+                    Login
                   </Button>
                 ) : (
                   <Dropdown
@@ -224,7 +206,6 @@ export default function Header({ onUpdateClick }: HeaderProps = {}) {
                 )}
               </>
             )}
-            
             {/* Mobile Menu Toggle */}
             {isMobile && (
               <Button 

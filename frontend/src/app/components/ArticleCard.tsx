@@ -401,59 +401,44 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
     );
   };
 
+  // Fallback image logic
+  const renderImage = () => {
+    if (image_url) {
+      return (
+        <div className="article-image-container" onClick={showModal}>
+          <Image
+            src={image_url}
+            alt={title}
+            layout="fill"
+            objectFit="cover"
+            className="article-image"
+            onError={(e: any) => { e.target.onerror = null; e.target.src = '/fallback-image.svg'; }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div className="article-image-fallback" onClick={showModal}>
+        <FileTextOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
+      </div>
+    );
+  };
+
   return (
     <>
       <ArticleCardStyles />
-      <Card 
+      <Card
         hoverable
-        className={`article-card ${className || ''}`}
-        cover={image_url && (
-          <div className="article-image-container cursor-pointer" onClick={showModal}>
-            <Image
-              src={image_url}
-              alt={title}
-              layout="fill"
-              objectFit="cover"
-              className="article-image"
-            />
-          </div>
-        )}
-        actions={[
-          <Tooltip title="Generate comprehensive analysis">
-            <Button 
-              type="text" 
-              icon={<BulbOutlined />} 
-              onClick={handleAnalyzeClick}
-              loading={loading}
-            >
-              Analyze
-            </Button>
-          </Tooltip>
-        ]}
+        className={`article-card redesigned ${className || ''}`}
+        cover={renderImage()}
+        bodyStyle={{ padding: 20, display: 'flex', flexDirection: 'column', height: '100%' }}
       >
-        <Space direction="vertical" size="small" className="w-full">
-          {/* Topic and Badges */}
-          <Space wrap>
-            <Tag color="blue">{topic}</Tag>
-            {is_recent && <Tag color="green">New</Tag>}
-            {has_full_content && (
-              <Tooltip title="Full content available in details">
-                <Tag icon={<FileTextOutlined />} color="purple">Full</Tag>
-              </Tooltip>
-            )}
-            {summary && (
-              <Tooltip title="AI Summary available in details">
-                <Tag icon={<InfoCircleOutlined />} color="gold">Summary</Tag>
-              </Tooltip>
-            )}
-          </Space>
-
+        <div className="article-card-content">
           {/* Title */}
           <Title
             level={4}
-            className="article-title cursor-pointer hover:text-blue-600"
+            className="article-title redesigned-title"
             ellipsis={{ rows: 2 }}
-            onClick={showModal}
             title={title}
           >
             <a href={link} target="_blank" rel="noopener noreferrer">
@@ -462,61 +447,61 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
           </Title>
 
           {/* Description */}
-          <Paragraph ellipsis={{ rows: 3 }} className="article-description">
+          <Paragraph ellipsis={{ rows: 2 }} className="article-description redesigned-desc">
             {highlightText(snippetForCard || '', highlight || '')}
           </Paragraph>
 
           {/* Metadata Footer */}
-          <Space split="•" className="text-gray-500 text-sm" style={{ flexWrap: 'wrap' }}>
-            <Space>
-              <BookOutlined />
-              <Text>{source}</Text>
-            </Space>
-            <Text>{formattedDate}</Text>
-            {reading_time && (
-              <Tooltip title="Estimated reading time">
-                <Space>
-                  <ClockCircleOutlined />
-                  <span>{reading_time} min</span>
-                </Space>
-              </Tooltip>
-            )}
-          </Space>
+          <div className="article-meta-row">
+            <span className="article-meta-source"><BookOutlined /> {source}</span>
+            <span className="article-meta-dot">•</span>
+            <span className="article-meta-date"><CalendarOutlined /> {formattedDate}</span>
+            {reading_time && <><span className="article-meta-dot">•</span><span className="article-meta-reading"><ClockCircleOutlined /> {reading_time} min</span></>}
+          </div>
 
-          {/* Action Buttons */}
-          <Space className="mt-3 justify-between items-center w-full">
-            <Button
-              type="primary"
-              size="small"
-              onClick={showModal}
-              icon={<EyeOutlined />}
-            >
-              View Details
-            </Button>
-            <Space size="small">
-              <Tooltip title="Open original article">
-                <Button
-                  type="text"
-                  size="small"
-                  href={link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  icon={<LinkOutlined />}
-                  aria-label="Open original article"
-                />
-              </Tooltip>
-              <Tooltip title="Share Article">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<ShareAltOutlined />}
-                  onClick={handleShare}
-                  aria-label="Share article"
-                />
-              </Tooltip>
-            </Space>
-          </Space>
-        </Space>
+          {/* Actions */}
+          <div className="article-actions-row">
+            <Tooltip title="View Details">
+              <Button
+                type="primary"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={showModal}
+                aria-label="View Details"
+              />
+            </Tooltip>
+            <Tooltip title="Open original article">
+              <Button
+                type="text"
+                size="small"
+                href={link}
+                target="_blank"
+                rel="noopener noreferrer"
+                icon={<LinkOutlined />}
+                aria-label="Open original article"
+              />
+            </Tooltip>
+            <Tooltip title="Share Article">
+              <Button
+                type="text"
+                size="small"
+                icon={<ShareAltOutlined />}
+                onClick={handleShare}
+                aria-label="Share article"
+              />
+            </Tooltip>
+            <Tooltip title="Analyze">
+              <Button
+                type="text"
+                size="small"
+                icon={<BulbOutlined />}
+                onClick={handleAnalyzeClick}
+                loading={loading}
+                aria-label="Analyze"
+              />
+            </Tooltip>
+          </div>
+        </div>
       </Card>
 
       <Modal
@@ -687,460 +672,92 @@ export const ArticleCardSkeleton: React.FC = () => {
 
 // Add styles to your global CSS or a separate module
 const styles = `
-.article-card {
+.article-card.redesigned {
   height: 100%;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s ease;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
   border: 1px solid var(--border-color, #e8e8e8);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  background: #ffffff;
-  border-radius: 12px;
+  background: #fff;
   overflow: hidden;
   padding: 0;
+  transition: box-shadow 0.2s, border-color 0.2s;
 }
-
-.article-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+.article-card.redesigned:hover {
+  box-shadow: 0 8px 24px rgba(24,144,255,0.12);
   border-color: var(--primary-color, #1890ff);
 }
-
 .article-image-container {
   position: relative;
   width: 100%;
-  height: 220px;
+  height: 180px;
+  background: #f5f5f5;
   overflow: hidden;
-  background-color: #f5f5f5;
 }
-
-.article-card .ant-card-body {
-  padding: 20px;
-  flex: 1;
+.article-image-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 180px;
+  background: #f0f0f0;
+}
+.article-card-content {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  gap: 8px;
 }
-
-.article-title {
-  margin-top: 8px !important;
-  margin-bottom: 16px !important;
-  font-size: 1.25rem !important;
-  line-height: 1.5 !important;
-  font-weight: 600 !important;
-  color: var(--heading-color, #262626) !important;
-  transition: color 0.3s ease;
-  letter-spacing: -0.01em;
-}
-
-.article-description {
-  color: var(--text-color, rgba(0, 0, 0, 0.85));
-  margin-bottom: 20px !important;
-  font-size: 1rem !important;
-  line-height: 1.75 !important;
-  flex-grow: 1;
-}
-
-.article-card .ant-tag {
-  font-size: 0.875rem;
-  padding: 4px 12px;
-  height: auto;
-  line-height: 1.5;
-  border-radius: 6px;
-  font-weight: 500;
-  border: none;
-}
-
-.article-card .ant-space {
-  margin-bottom: 12px;
-}
-
-.article-metadata {
-  color: var(--text-secondary, rgba(0, 0, 0, 0.65));
-  font-size: 0.9rem;
-  margin-top: auto;
-  padding-top: 16px;
-  border-top: 1px solid var(--border-color, #f0f0f0);
-}
-
-.article-card .ant-btn {
-  height: 36px;
-  padding: 0 16px;
-  font-size: 0.95rem;
-  border-radius: 8px;
-  font-weight: 500;
-}
-
-.article-card .ant-btn-primary {
-  background: var(--primary-color, #1890ff);
-  border: none;
-  box-shadow: 0 2px 4px rgba(24, 144, 255, 0.2);
-}
-
-.article-card .ant-btn-primary:hover {
-  background: var(--primary-color-hover, #40a9ff);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(24, 144, 255, 0.3);
-}
-
-/* Modal styles */
-.article-modal-content {
-  font-size: 1.1rem !important;
-  line-height: 1.8 !important;
-  color: rgba(0, 0, 0, 0.85) !important;
-  padding: 0 16px !important;
-}
-
-.article-modal-content p {
-  margin-bottom: 1.5em !important;
-}
-
-.article-modal-header {
-  background: #fafafa !important;
-  padding: 24px !important;
-  border-radius: 12px !important;
-  margin-bottom: 24px !important;
-}
-
-/* Fix for article snippet text color */
-.article-snippet, 
-.article-modal .ant-modal-body p,
-.prose,
-.ant-modal-body .prose p,
-.ant-modal-body .article-modal-content {
-  color: rgba(0, 0, 0, 0.85) !important;
-  font-size: 1rem !important;
-  line-height: 1.6 !important;
-}
-
-/* Additional text color fixes */
-.ant-modal-body .prose * {
-  color: rgba(0, 0, 0, 0.85) !important;
-}
-
-.ant-modal-body span, 
-.ant-modal-body div,
-.ant-modal-body li,
-.ant-modal-body blockquote {
-  color: rgba(0, 0, 0, 0.85) !important;
-}
-
-.ant-modal-body .text-gray-600,
-.ant-modal-body .text-gray-500,
-.ant-modal-body .text-gray-400 {
-  color: rgba(0, 0, 0, 0.65) !important;
-}
-
-.ant-modal-body .text-xs {
-  color: rgba(0, 0, 0, 0.65) !important;
-}
-
-/* Analysis Modal Styles */
-.analysis-content {
-  padding: 16px !important;
-  background: #fff !important;
-  border-radius: 8px !important;
-  margin: 16px !important;
-}
-
-.analysis-content .ant-tag {
-  margin-bottom: 12px !important;
-  font-size: 0.85rem !important;
-  padding: 2px 10px !important;
-  border-radius: 4px !important;
-}
-
-/* Analysis Modal */
-.analysis-modal .ant-modal-content {
-  overflow: hidden !important;
-  border-radius: 12px !important;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1) !important;
-}
-
-.analysis-modal .ant-modal-header {
-  background-color: #f9fafb !important;
-  border-bottom: 1px solid #f0f0f0 !important;
-  padding: 16px 24px !important;
-}
-
-.analysis-modal .ant-modal-body {
-  padding: 0 !important;
-  background-color: #f9fafb !important;
-  max-height: 70vh !important;
-  overflow-y: auto !important;
-}
-
-.analysis-modal .ant-modal-footer {
-  border-top: 1px solid #f0f0f0 !important;
-  padding: 12px 24px !important;
-  text-align: right !important;
-}
-
-.analysis-modal-title {
-  display: flex !important;
-  align-items: center !important;
-}
-
-.analysis-modal-title .anticon {
-  margin-right: 12px !important;
-}
-
-.analysis-modal-title .ant-typography {
-  margin: 0 !important;
-  color: #1f2937 !important;
-  font-size: 1.25rem !important;
-}
-
-.analysis-metadata {
-  display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 8px !important;
-  margin-bottom: 16px !important;
-}
-
-/* Markdown content */
-.markdown-content {
-  line-height: 1.8 !important;
-  color: rgba(0, 0, 0, 0.85) !important;
-  font-size: 1rem !important;
-  padding: 16px 24px !important;
-  background-color: white !important;
-  border-radius: 8px !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-  margin: 0 16px 16px 16px !important;
-}
-
-.markdown-content h1, 
-.markdown-content h2, 
-.markdown-content h3, 
-.markdown-content h4 {
-  margin-top: 1.5em !important;
-  margin-bottom: 0.5em !important;
-  font-weight: 600 !important;
-  color: #1f2937 !important;
+.redesigned-title {
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
   line-height: 1.4 !important;
 }
-
-.markdown-content h1 {
-  font-size: 1.8rem !important;
-}
-
-.markdown-content h2 {
-  font-size: 1.5rem !important;
-}
-
-.markdown-content h3 {
-  font-size: 1.3rem !important;
-}
-
-.markdown-content h4 {
-  font-size: 1.1rem !important;
-}
-
-.markdown-content p {
-  margin-bottom: 1.25em !important;
-  line-height: 1.7 !important;
-}
-
-.markdown-content ul, 
-.markdown-content ol {
-  margin-bottom: 1.25em !important;
-  padding-left: 1.5em !important;
-  list-style-position: outside !important;
-}
-
-.markdown-content li {
-  margin-bottom: 0.5em !important;
-}
-
-.markdown-content blockquote {
-  border-left: 4px solid #e5e7eb !important;
-  padding-left: 1em !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-  font-style: italic !important;
-  color: #4b5563 !important;
-}
-
-.markdown-content pre {
-  background-color: #f3f4f6 !important;
-  padding: 1em !important;
-  border-radius: 6px !important;
-  overflow-x: auto !important;
-  margin-bottom: 1.25em !important;
-  font-family: monospace !important;
-}
-
-.markdown-content code {
-  background-color: #f3f4f6 !important;
-  padding: 0.2em 0.4em !important;
-  border-radius: 3px !important;
-  font-family: monospace !important;
-  font-size: 0.9em !important;
-}
-
-.markdown-content table {
-  width: 100% !important;
-  border-collapse: collapse !important;
-  margin-bottom: 1.25em !important;
-}
-
-.markdown-content th, 
-.markdown-content td {
-  border: 1px solid #e5e7eb !important;
-  padding: 0.5em !important;
-  text-align: left !important;
-}
-
-.markdown-content th {
-  background-color: #f9fafb !important;
-  font-weight: 600 !important;
-}
-
-/* Sources list and links */
-.sources-list {
-  list-style-type: disc !important;
-  padding-left: 2em !important;
-  margin-top: 0.5em !important;
-  margin-bottom: 16px !important;
-  margin-left: 16px !important;
-  margin-right: 16px !important;
-}
-
-.sources-list li {
-  margin-bottom: 0.75em !important;
+.redesigned-desc {
+  color: var(--text-color, #444);
+  font-size: 1rem !important;
+  margin-bottom: 0 !important;
+  margin-top: 0 !important;
   line-height: 1.6 !important;
 }
-
-.source-link {
-  color: #1890ff !important;
-  text-decoration: none !important;
-  font-weight: 500 !important;
-  transition: color 0.3s !important;
+.article-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #888;
+  font-size: 0.93rem;
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
-
-.source-link:hover {
-  color: #40a9ff !important;
-  text-decoration: underline !important;
+.article-meta-dot {
+  margin: 0 4px;
+  color: #bbb;
 }
-
-.source-metadata {
-  font-size: 0.9em !important;
-  color: rgba(0, 0, 0, 0.45) !important;
+.article-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
 }
-
-/* Responsive adjustments */
-@media (max-width: 768px) {
-  .article-card .ant-card-body {
-    padding: 16px;
+@media (max-width: 600px) {
+  .article-card.redesigned {
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
   }
-
-  .article-title {
-    font-size: 1.1rem !important;
+  .article-image-container, .article-image-fallback {
+    height: 120px;
   }
-
-  .article-description {
-    font-size: 0.95rem !important;
+  .article-actions-row {
+    gap: 4px;
   }
-
-  .article-image-container {
-    height: 180px;
+  .redesigned-title {
+    font-size: 1rem !important;
   }
-  
-  .markdown-content {
-    font-size: 0.95rem;
-  }
-  
-  .markdown-content h1 {
-    font-size: 1.5rem;
-  }
-  
-  .markdown-content h2 {
-    font-size: 1.3rem;
-  }
-  
-  .markdown-content h3 {
-    font-size: 1.1rem;
-  }
-  
-  .markdown-content h4 {
-    font-size: 1rem;
-  }
-}
-
-@media (max-width: 480px) {
-  .article-image-container {
-    height: 160px;
-  }
-}
-
-/* High contrast mode */
-@media (prefers-contrast: high) {
-  .article-title {
-    color: #000000 !important;
-  }
-
-  .article-description {
-    color: #000000 !important;
-  }
-
-  .article-card {
-    border: 2px solid #000000;
-  }
-  
-  .markdown-content {
-    color: #000000;
-  }
-  
-  .markdown-content blockquote {
-    border-left-color: #000000;
-    color: #000000;
-  }
-}
-
-.analysis-content-wrapper {
-  background-color: #f9fafb !important;
-}
-
-.analysis-loading-container {
-  padding: 48px 24px !important;
-  text-align: center !important;
-  background-color: #fff !important;
-  border-radius: 8px !important;
-  margin: 16px !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-}
-
-.analysis-error-container {
-  padding: 24px !important;
-  margin: 16px !important;
-}
-
-.analysis-sources-container {
-  background-color: #fff !important;
-  border-radius: 8px !important;
-  margin: 0 16px 16px 16px !important;
-  padding-top: 8px !important;
-  padding-bottom: 16px !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-}
-
-/* Make sure this gets added to the Responsive section */
-@media (max-width: 768px) {
-  .analysis-content {
-    padding: 12px !important;
-    margin: 12px !important;
-  }
-  
-  .markdown-content {
-    padding: 12px 16px !important;
-  }
-  
-  .analysis-sources-container {
-    margin: 0 12px 12px 12px !important;
-  }
-  
-  .sources-list {
-    padding-left: 1.5em !important;
+  .redesigned-desc {
+    font-size: 0.93rem !important;
   }
 }
 `; 

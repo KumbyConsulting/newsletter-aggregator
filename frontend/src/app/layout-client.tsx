@@ -28,8 +28,10 @@ export default function RootLayout({
           <ConfigProvider theme={theme}>
             <Layout style={{ minHeight: '100vh' }}>
               <Header />
-              <Content style={{ padding: '24px', minHeight: 'calc(100vh - 64px - 70px)' }}>
-                {children}
+              <Content style={{ minHeight: 'calc(100vh - 64px - 70px)', background: 'none' }}>
+                <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 1rem', width: '100%' }}>
+                  {children}
+                </div>
               </Content>
               <Footer style={{ textAlign: 'center', padding: '24px 50px' }}>
                 Kumby Consulting Newsboard ©{new Date().getFullYear()} - Newsletter Aggregator
