@@ -53,29 +53,6 @@ interface ArticleCardProps {
   highlight?: string;
 }
 
-// Add a new component to inject the styles
-const ArticleCardStyles = () => {
-  useEffect(() => {
-    // Only inject the styles once
-    if (!document.getElementById('article-card-styles')) {
-      const styleElement = document.createElement('style');
-      styleElement.id = 'article-card-styles';
-      styleElement.innerHTML = styles;
-      document.head.appendChild(styleElement);
-    }
-    
-    // Clean up on unmount
-    return () => {
-      const styleElement = document.getElementById('article-card-styles');
-      if (styleElement) {
-        styleElement.remove();
-      }
-    };
-  }, []);
-  
-  return null;
-};
-
 // Highlight utility
 function highlightText(text: string, query: string): React.ReactNode {
   if (!query) return text;
@@ -405,7 +382,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
   const renderImage = () => {
     if (image_url) {
       return (
-        <div className="article-image-container" onClick={showModal}>
+        <div className="article-card__image" onClick={showModal}>
           <Image
             src={image_url}
             alt={title}
@@ -418,91 +395,88 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
       );
     }
     return (
-      <div className="article-image-fallback" onClick={showModal}>
+      <div className="article-card__image-placeholder" onClick={showModal}>
         <FileTextOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
       </div>
     );
   };
 
   return (
-    <>
-      <ArticleCardStyles />
-      <Card
-        hoverable
-        className={`article-card redesigned ${className || ''}`}
-        cover={renderImage()}
-        bodyStyle={{ padding: 20, display: 'flex', flexDirection: 'column', height: '100%' }}
-      >
-        <div className="article-card-content">
-          {/* Title */}
-          <Title
-            level={4}
-            className="article-title redesigned-title"
-            ellipsis={{ rows: 2 }}
-            title={title}
-          >
-            <a href={link} target="_blank" rel="noopener noreferrer">
-              {highlightText(title, highlight || '')}
-            </a>
-          </Title>
+    <Card
+      hoverable
+      className={`article-card ${className || ''}`}
+      cover={renderImage()}
+      bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
+    >
+      <div className="article-card__content">
+        {/* Title */}
+        <Title
+          level={4}
+          className="article-card__title"
+          ellipsis={{ rows: 2 }}
+          title={title}
+        >
+          <a href={link} target="_blank" rel="noopener noreferrer">
+            {highlightText(title, highlight || '')}
+          </a>
+        </Title>
 
-          {/* Description */}
-          <Paragraph ellipsis={{ rows: 2 }} className="article-description redesigned-desc">
-            {highlightText(snippetForCard || '', highlight || '')}
-          </Paragraph>
+        {/* Description */}
+        <Paragraph ellipsis={{ rows: 2 }} className="article-card__description">
+          {highlightText(snippetForCard || '', highlight || '')}
+        </Paragraph>
 
-          {/* Metadata Footer */}
-          <div className="article-meta-row">
-            <span className="article-meta-source"><BookOutlined /> {source}</span>
-            <span className="article-meta-dot">•</span>
-            <span className="article-meta-date"><CalendarOutlined /> {formattedDate}</span>
-            {reading_time && <><span className="article-meta-dot">•</span><span className="article-meta-reading"><ClockCircleOutlined /> {reading_time} min</span></>}
-          </div>
-
-          {/* Actions */}
-          <div className="article-actions-row">
-            <Tooltip title="View Details">
-              <Button
-                type="primary"
-                size="small"
-                icon={<EyeOutlined />}
-                onClick={showModal}
-                aria-label="View Details"
-              />
-            </Tooltip>
-            <Tooltip title="Open original article">
-              <Button
-                type="text"
-                size="small"
-                href={link}
-                target="_blank"
-                rel="noopener noreferrer"
-                icon={<LinkOutlined />}
-                aria-label="Open original article"
-              />
-            </Tooltip>
-            <Tooltip title="Share Article">
-              <Button
-                type="text"
-                size="small"
-                icon={<ShareAltOutlined />}
-                onClick={handleShare}
-                aria-label="Share article"
-              />
-            </Tooltip>
-            <Tooltip title="Analyze">
-              <Button
-                type="text"
-                size="small"
-                icon={<BulbOutlined />}
-                onClick={handleAnalyzeClick}
-                loading={loading}
-                aria-label="Analyze"
-              />
-            </Tooltip>
-          </div>
+        {/* Metadata Footer */}
+        <div className="article-card__footer">
+          <span className="article-meta-source"><BookOutlined /> {source}</span>
+          <span className="article-meta-dot">•</span>
+          <span className="article-meta-date"><CalendarOutlined /> {formattedDate}</span>
+          {reading_time && <><span className="article-meta-dot">•</span><span className="article-meta-reading"><ClockCircleOutlined /> {reading_time} min</span></>}
         </div>
-      </Card>
+
+        {/* Actions Footer */}
+        <div className="article-card__footer" style={{ justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+          <Tooltip title="View Details">
+            <Button
+              type="primary"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={showModal}
+              aria-label="View Details"
+            />
+          </Tooltip>
+          <Tooltip title="Open original article">
+            <Button
+              type="text"
+              size="small"
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              icon={<LinkOutlined />}
+              aria-label="Open original article"
+            />
+          </Tooltip>
+          <Tooltip title="Share Article">
+            <Button
+              type="text"
+              size="small"
+              icon={<ShareAltOutlined />}
+              onClick={handleShare}
+              aria-label="Share article"
+            />
+          </Tooltip>
+          <Tooltip title="Analyze">
+            <Button
+              type="text"
+              size="small"
+              icon={<BulbOutlined />}
+              onClick={handleAnalyzeClick}
+              loading={loading}
+              aria-label="Analyze"
+            />
+          </Tooltip>
+        </div>
+      </div>
 
       <Modal
         title={<Title level={4} style={{marginBottom: 0}} ellipsis={{rows: 2}}>{title}</Title>}
@@ -659,7 +633,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
       >
         {renderAnalysisContent()}
       </Modal>
-    </>
+    </Card>
   );
 };
 
@@ -668,96 +642,4 @@ export const ArticleCardSkeleton: React.FC = () => {
   return (
     <Card loading className="article-card-skeleton" />
   );
-};
-
-// Add styles to your global CSS or a separate module
-const styles = `
-.article-card.redesigned {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 16px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
-  border: 1px solid var(--border-color, #e8e8e8);
-  background: #fff;
-  overflow: hidden;
-  padding: 0;
-  transition: box-shadow 0.2s, border-color 0.2s;
-}
-.article-card.redesigned:hover {
-  box-shadow: 0 8px 24px rgba(24,144,255,0.12);
-  border-color: var(--primary-color, #1890ff);
-}
-.article-image-container {
-  position: relative;
-  width: 100%;
-  height: 180px;
-  background: #f5f5f5;
-  overflow: hidden;
-}
-.article-image-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 180px;
-  background: #f0f0f0;
-}
-.article-card-content {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  gap: 8px;
-}
-.redesigned-title {
-  font-size: 1.15rem !important;
-  font-weight: 700 !important;
-  margin-bottom: 0 !important;
-  margin-top: 0 !important;
-  line-height: 1.4 !important;
-}
-.redesigned-desc {
-  color: var(--text-color, #444);
-  font-size: 1rem !important;
-  margin-bottom: 0 !important;
-  margin-top: 0 !important;
-  line-height: 1.6 !important;
-}
-.article-meta-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #888;
-  font-size: 0.93rem;
-  margin-top: 2px;
-  margin-bottom: 2px;
-}
-.article-meta-dot {
-  margin: 0 4px;
-  color: #bbb;
-}
-.article-actions-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 10px;
-}
-@media (max-width: 600px) {
-  .article-card.redesigned {
-    border-radius: 10px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-  }
-  .article-image-container, .article-image-fallback {
-    height: 120px;
-  }
-  .article-actions-row {
-    gap: 4px;
-  }
-  .redesigned-title {
-    font-size: 1rem !important;
-  }
-  .redesigned-desc {
-    font-size: 0.93rem !important;
-  }
-}
-`; 
+}; 
