@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tooltip, Typography, Card, Empty, Divider, Badge } from 'antd';
 
 const { Text, Title } = Typography;
@@ -21,6 +21,9 @@ const PieChart: React.FC<PieChartProps> = ({
   data, 
   size = 300 
 }) => {
+  const [show, setShow] = useState(false);
+  useEffect(() => { setShow(true); }, []);
+
   if (!data || data.length === 0) {
     return (
       <Card className="chart-card">
@@ -68,7 +71,7 @@ const PieChart: React.FC<PieChartProps> = ({
     <Card className="chart-card" bordered={false} style={{ overflowX: 'auto' }}>
       <Title level={5} className="chart-title" style={{ fontSize: isMobile ? 16 : undefined }}>Topic Distribution</Title>
       <div className="pie-chart-content" style={{ flexDirection: isMobile ? 'column' : 'row', alignItems: 'center' }}>
-        <div className="pie-chart-visual">
+        <div className="pie-chart-visual" style={{ position: 'relative', opacity: show ? 1 : 0, transition: 'opacity 0.8s' }}>
           <div 
             className="pie-chart"
             style={{
@@ -76,19 +79,48 @@ const PieChart: React.FC<PieChartProps> = ({
               height: `${chartSize}px`,
               borderRadius: '50%',
               background: generatePieChartBackground(),
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)'
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+              position: 'relative',
             }}
           >
             <div className="pie-chart-center" style={{ fontSize: isMobile ? 12 : undefined }}>
               <Title level={3} style={{ fontSize: isMobile ? 18 : undefined }}>{total}</Title>
               <Text style={{ fontSize: isMobile ? 12 : undefined }}>Total Articles</Text>
             </div>
+            {/* Overlay percentage labels on pie segments if >8% */}
+            {segments.map((segment, index) => {
+              if (segment.itemPercentage < 8) return null;
+              // Calculate label position (middle angle)
+              const angle = (segment.startAngle + segment.endAngle) / 2;
+              const radians = (angle - 90) * (Math.PI / 180);
+              const radius = chartSize / 2 * 0.7;
+              const x = chartSize / 2 + radius * Math.cos(radians);
+              const y = chartSize / 2 + radius * Math.sin(radians);
+              return (
+                <Text
+                  key={index}
+                  style={{
+                    position: 'absolute',
+                    left: x,
+                    top: y,
+                    transform: 'translate(-50%, -50%)',
+                    fontWeight: 600,
+                    fontSize: isMobile ? 10 : 13,
+                    color: '#222',
+                    pointerEvents: 'none',
+                    textShadow: '0 1px 4px #fff',
+                  }}
+                >
+                  {segment.itemPercentage.toFixed(0)}%
+                </Text>
+              );
+            })}
           </div>
         </div>
         <Divider orientation="left">
           <Text type="secondary" style={{ fontSize: isMobile ? 12 : undefined }}>Legend</Text>
         </Divider>
-        <div className="pie-chart-legend" style={{ fontSize: isMobile ? 12 : undefined }}>
+        <div className="pie-chart-legend" style={{ fontSize: isMobile ? 12 : 13, marginBottom: 8 }}>
           {segments.map((segment, index) => (
             <Tooltip 
               key={index}
@@ -106,15 +138,15 @@ const PieChart: React.FC<PieChartProps> = ({
                 </div>
               }
             >
-              <div className="legend-item">
+              <div className="legend-item" style={{ marginBottom: 8 }}>
                 <Badge 
                   color={segment.fill} 
                   text={
                     <div className="legend-text">
-                      <Text ellipsis={{ tooltip: segment.name }} className="legend-label" style={{ fontSize: isMobile ? 12 : undefined }}>
+                      <Text ellipsis={{ tooltip: segment.name }} className="legend-label" style={{ fontSize: isMobile ? 12 : 13 }}>
                         {segment.name}
                       </Text>
-                      <Text type="secondary" className="legend-value" style={{ fontSize: isMobile ? 12 : undefined }}>
+                      <Text type="secondary" className="legend-value" style={{ fontSize: isMobile ? 12 : 13 }}>
                         {segment.value} ({segment.itemPercentage.toFixed(1)}%)
                       </Text>
                     </div>

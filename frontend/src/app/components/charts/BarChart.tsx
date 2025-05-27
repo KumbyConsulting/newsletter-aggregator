@@ -66,6 +66,9 @@ const BarChart: React.FC<BarChartProps> = ({
             const barHeight = (item.value / maxValue) * (chartHeight - 160);
             return (
               <div key={index} className="bar-chart-column">
+                {item.value > 0 && (
+                  <div style={{ fontWeight: 600, fontSize: isMobile ? 10 : 12, marginBottom: 2, textAlign: 'center' }}>{item.value}</div>
+                )}
                 <Tooltip
                   title={
                     <div className="chart-tooltip">
@@ -90,17 +93,21 @@ const BarChart: React.FC<BarChartProps> = ({
                       style={{
                         height: `${barHeight}px`,
                         backgroundColor: item.fill,
-                        minWidth: isMobile ? 16 : 24
+                        minWidth: isMobile ? 16 : 24,
+                        boxShadow: '0 4px 12px rgba(24,144,255,0.12)',
+                        cursor: 'pointer',
+                        transition: 'box-shadow 0.2s',
                       }}
                       role="img"
                       aria-label={`${item.name}: ${item.value} articles (${item.percentage.toFixed(1)}%)`}
+                      onClick={() => alert(item.name)}
                     />
                   </div>
                 </Tooltip>
                 <Text
                   className="bar-chart-label"
                   ellipsis={{ tooltip: item.name }}
-                  style={{ fontSize: isMobile ? 10 : undefined }}
+                  style={{ fontSize: isMobile ? 10 : 12, fontWeight: 600, marginTop: 2, textAlign: 'center' }}
                 >
                   {item.name}
                 </Text>

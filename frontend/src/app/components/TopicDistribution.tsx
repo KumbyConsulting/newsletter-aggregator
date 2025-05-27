@@ -312,7 +312,7 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
 
   if (!topics || topics.length === 0) {
     return (
-      <Card className="dashboard-card">
+      <Card className="dashboard-card" style={{ marginBottom: 32 }}>
         <Empty 
           image={Empty.PRESENTED_IMAGE_SIMPLE} 
           description={
@@ -510,7 +510,7 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
   return (
     <div className="dashboard-container" style={{ padding: '12px' }}>
       {/* Trends Section */}
-      <Card className="dashboard-card" style={{ marginBottom: 24, borderRadius: 12, fontSize: 14 }}>
+      <Card className="dashboard-card" style={{ marginBottom: 32, borderRadius: 12, fontSize: 14 }}>
         <Title level={4} style={{ marginBottom: 8, fontSize: 16 }}>Topic Trends</Title>
         {trendLoading ? (
           <Spin size="large" tip="Loading trends..." />
@@ -592,7 +592,7 @@ export default function TopicDistribution({ topics }: TopicDistributionProps) {
                 { value: 'timeline', icon: <LineChartOutlined />, label: 'Timeline' },
               ]}
               block
-              style={{ minHeight: 44, fontSize: 12 }}
+              style={{ position: 'sticky', top: 0, zIndex: 10, background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', minHeight: 44, fontSize: 14 }}
             />
           </Space>
         </Flex>
