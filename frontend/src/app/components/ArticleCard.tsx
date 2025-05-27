@@ -44,6 +44,7 @@ import DOMPurify from 'isomorphic-dompurify';
 import { formatDistanceToNow } from 'date-fns';
 import { Article } from '@/types';
 import { marked } from 'marked';
+import { formatDate, getReadingTime } from '../../../../utils/article';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -85,34 +86,6 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formattedDate, setFormattedDate] = useState<string>('');
-
-  // Format the publication date on the client side only
-  useEffect(() => {
-    try {
-      if (!pub_date) {
-        setFormattedDate('No date');
-        return;
-      }
-      
-      // Handle timezone-aware dates
-      const parsedDate = pub_date.endsWith('Z') || pub_date.includes('+') || pub_date.includes('-') ?
-        new Date(pub_date) :
-        new Date(pub_date + 'Z'); // Assume UTC if no timezone specified
-      
-      // Validate the date before formatting
-      if (isNaN(parsedDate.getTime())) {
-        console.error("Invalid date detected:", pub_date);
-        setFormattedDate('Invalid Date');
-        return;
-      }
-        
-      setFormattedDate(formatDistanceToNow(parsedDate, { addSuffix: true }));
-    } catch (e) {
-      console.error("Error formatting date:", pub_date, e);
-      setFormattedDate('Invalid Date');
-    }
-  }, [pub_date]);
 
   // Sanitize HTML content for modal display only if it's likely HTML
   const contentForModal = (has_full_content && description?.includes('<'))
@@ -234,10 +207,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
         };
         const analysisSources = data.result.sources || [];
 
-        // Ensure sources array exists and format if needed (assuming backend sends structured sources)
-        // No change needed here if backend already sends structured sources inside data.result.sources
-
-        // Set the state with the correct structure expected by renderAnalysisContent
+      
         setAnalysis({
           analysis: analysisContent,
           metadata: analysisMetadata,
@@ -414,10 +384,10 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
           level={4}
           className="article-card__title"
           ellipsis={{ rows: 2 }}
-          title={title}
+          title={metadata.title}
         >
-          <a href={link} target="_blank" rel="noopener noreferrer">
-            {highlightText(title, highlight || '')}
+          <a href={metadata.link} target="_blank" rel="noopener noreferrer">
+            {highlightText(metadata.title, highlight || '')}
           </a>
         </Title>
 
@@ -428,10 +398,10 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
 
         {/* Metadata Footer */}
         <div className="article-card__footer">
-          <span className="article-meta-source"><BookOutlined /> {source}</span>
+          <span className="article-meta-source"><BookOutlined /> {metadata.source}</span>
           <span className="article-meta-dot">•</span>
-          <span className="article-meta-date"><CalendarOutlined /> {formattedDate}</span>
-          {reading_time && <><span className="article-meta-dot">•</span><span className="article-meta-reading"><ClockCircleOutlined /> {reading_time} min</span></>}
+          <span className="article-meta-date"><CalendarOutlined /> {formatDate(metadata.pub_date)}</span>
+          {metadata.reading_time && <><span className="article-meta-dot">•</span><span className="article-meta-reading"><ClockCircleOutlined /> {getReadingTime(metadata.description, metadata.reading_time)} min</span></>}
         </div>
 
         {/* Actions Footer */}
@@ -449,7 +419,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
             <Button
               type="text"
               size="small"
-              href={link}
+              href={metadata.link}
               target="_blank"
               rel="noopener noreferrer"
               icon={<LinkOutlined />}
@@ -490,7 +460,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
           <Button key="share" icon={<ShareAltOutlined />} onClick={handleShare}>
             Share
           </Button>,
-          <Button key="link" type="primary" href={link} target="_blank" rel="noopener noreferrer" icon={<LinkOutlined />}>
+          <Button key="link" type="primary" href={metadata.link} target="_blank" rel="noopener noreferrer" icon={<LinkOutlined />}>
             View Original Article
           </Button>,
           <Button key="close" onClick={handleCancel}>
@@ -523,16 +493,16 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
             <Space size="small" className="text-gray-600 text-xs" wrap>
               <Space><BookOutlined /> <Text strong>{source}</Text></Space>
               •
-              <Space><CalendarOutlined /> <Text>{formattedDate}</Text></Space>
-              {article.metadata.relevance_score !== undefined && (
-                <>• <Space><SearchOutlined /> <Text>Relevance: {(article.metadata.relevance_score * 100).toFixed(0)}%</Text></Space></>
+              <Space><CalendarOutlined /> <Text>{formatDate(pub_date)}</Text></Space>
+              {metadata.relevance_score !== undefined && (
+                <>• <Space><SearchOutlined /> <Text>Relevance: {(metadata.relevance_score * 100).toFixed(0)}%</Text></Space></>
               )}
             </Space>
             
             {/* Source Link */}
             <Text className="text-xs">
               <LinkOutlined className="mr-1" />
-              <a href={link} target="_blank" rel="noopener noreferrer">{link}</a>
+              <a href={metadata.link} target="_blank" rel="noopener noreferrer">{metadata.link}</a>
             </Text>
             
             {/* ID (for reference) */}
