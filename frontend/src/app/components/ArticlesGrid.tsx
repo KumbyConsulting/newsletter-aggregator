@@ -212,10 +212,21 @@ export const ArticlesGrid: React.FC<ArticlesGridProps> = ({
       )}
       <Row gutter={[8, 8]} className="fade-in-up">
         {displayArticles.map((article, index) => (
-          <Col key={article.id} xs={24} sm={12} md={8} xxl={6} style={{ animationDelay: `${0.05 * index}s`, minHeight: 44 }}>
+          <Col
+            key={article.id}
+            xs={24}
+            sm={12}
+            md={8}
+            xxl={6}
+            style={{
+              animationDelay: `${0.05 * index}s`,
+              minHeight: 44,
+            }}
+          >
             <ArticleCard 
               article={article} 
               highlight={currentSearch}
+              highlighted={index === 1}
             />
           </Col>
         ))}

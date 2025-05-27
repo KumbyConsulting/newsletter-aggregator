@@ -52,6 +52,7 @@ interface ArticleCardProps {
   article: Article;
   className?: string;
   highlight?: string;
+  highlighted?: boolean;
 }
 
 // Highlight utility
@@ -65,7 +66,7 @@ function highlightText(text: string, query: string): React.ReactNode {
   );
 }
 
-export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, highlight }) => {
+export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, highlight, highlighted }) => {
   const { metadata } = article;
   const {
     title,
@@ -374,7 +375,7 @@ export const ArticleCard: React.FC<ArticleCardProps> = ({ article, className, hi
   return (
     <Card
       hoverable
-      className={`article-card ${className || ''}`}
+      className={`article-card${highlighted ? ' article-card--highlighted' : ''}${className ? ' ' + className : ''}`}
       cover={renderImage()}
       bodyStyle={{ padding: 0, display: 'flex', flexDirection: 'column', height: '100%' }}
     >

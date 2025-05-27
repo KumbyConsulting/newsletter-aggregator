@@ -220,6 +220,8 @@ const styles = `
   text-align: center;
 }
 
+/* Removed .second-article-col style: now handled by ArticleCard modifier class */
+
 @media (max-width: 768px) {
   .articles-container {
     padding: 16px;
