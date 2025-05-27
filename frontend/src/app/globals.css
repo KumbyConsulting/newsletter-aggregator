@@ -281,14 +281,19 @@ h1, h2, h3, h4, h5, h6, .ant-typography h1, .ant-typography h2, .ant-typography 
 
 /* Article Card */
 .article-card {
-  background-color: #f8fafc; /* lighter, modern look */
-  transition: transform 0.18s cubic-bezier(0.4,0,0.2,1), box-shadow 0.18s, border-color 0.18s;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
 }
 
 .article-card:hover {
-  transform: translateY(-6px) scale(1.025);
-  box-shadow: 0 8px 32px rgba(24,144,255,0.10), 0 1.5px 6px rgba(0,0,0,0.06);
-  border-color: var(--primary-color, #1890ff);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
 }
 
 .article-card__image {
@@ -359,24 +364,12 @@ h1, h2, h3, h4, h5, h6, .ant-typography h1, .ant-typography h2, .ant-typography 
 }
 
 .article-card__footer {
-  background: #f3f6fa;
-  border-top: 1.5px solid #e3e8ee;
-  padding-top: 0.75rem;
-  margin-top: 0.5rem;
+  margin-top: auto;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.article-card__footer .ant-btn, .article-card__footer button {
-  transition: background 0.18s, box-shadow 0.18s, transform 0.15s;
-  border-radius: 6px !important;
-}
-
-.article-card__footer .ant-btn:hover, .article-card__footer button:hover {
-  background: #e6f7ff !important;
-  box-shadow: 0 2px 8px rgba(24,144,255,0.08);
-  transform: scale(1.08);
 }
 
 .action-btn {
